@@ -1,0 +1,1035 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LaunchMe — Lina × Accenture</title>
+<link href="https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@400;500;700;800;900&family=Instrument+Sans:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ink: #0c0c10;
+  --paper: #f5f3ee;
+  --card: #ffffff;
+  --muted: #9896a0;
+  --border: #e8e5df;
+  --accent: #1a0dab;
+  --accent2: #ff4500;
+  --green: #00875a;
+  --orange: #e05c00;
+  --soft: #f0edf8;
+  --soft2: #fff8f0;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--ink);
+  color: var(--paper);
+  padding: 0 2.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.logo {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 900;
+  font-size: 1.25rem;
+  letter-spacing: -0.04em;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.logo-badge {
+  background: var(--accent2);
+  color: white;
+  font-size: 0.6rem;
+  font-weight: 700;
+  padding: 0.15rem 0.45rem;
+  border-radius: 3px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+nav { display: flex; gap: 0.2rem; }
+.nav-btn {
+  background: none;
+  border: none;
+  color: rgba(245,243,238,0.5);
+  font-family: 'Instrument Sans', sans-serif;
+  font-size: 0.82rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.nav-btn:hover { color: var(--paper); background: rgba(255,255,255,0.08); }
+.nav-btn.active { color: var(--paper); background: rgba(255,255,255,0.12); }
+
+.header-user {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-size: 0.82rem;
+  color: rgba(245,243,238,0.6);
+}
+.avatar {
+  width: 30px; height: 30px;
+  background: var(--accent2);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 800; font-size: 0.7rem;
+  color: white;
+}
+
+/* ── SECTIONS ── */
+.page { display: none; }
+.page.active { display: block; animation: fadeIn 0.3s ease; }
+@keyframes fadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
+
+.wrap { max-width: 980px; margin: 0 auto; padding: 2.5rem 2rem 5rem; }
+
+/* ── TYPO ── */
+.h1 {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 900;
+  font-size: clamp(1.8rem, 4vw, 2.8rem);
+  letter-spacing: -0.04em;
+  line-height: 1.05;
+  margin-bottom: 0.4rem;
+}
+.h1 em { font-style: normal; color: var(--accent2); }
+
+.h2 {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 800;
+  font-size: 1.1rem;
+  letter-spacing: -0.02em;
+  margin-bottom: 1rem;
+}
+
+.caption {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 500;
+}
+
+/* ── CARDS ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.4rem 1.6rem;
+}
+
+.card-grid { display: grid; gap: 1rem; }
+.grid-2 { grid-template-columns: 1fr 1fr; }
+.grid-3 { grid-template-columns: 1fr 1fr 1fr; }
+
+/* ── TAGS ── */
+.tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.22rem 0.6rem;
+  border-radius: 100px;
+  letter-spacing: 0.03em;
+}
+.tag-blue { background: #e8eaff; color: #2c34c8; }
+.tag-green { background: #e6f5ee; color: var(--green); }
+.tag-orange { background: #fff0e6; color: var(--orange); }
+.tag-red { background: #ffe8e8; color: #c00; }
+.tag-gray { background: var(--border); color: var(--muted); }
+
+/* ── DIVIDER ── */
+.divider {
+  display: flex; align-items: center; gap: 1rem;
+  margin: 2rem 0 1.2rem;
+}
+.divider span {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-size: 0.75rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.1em;
+  color: var(--muted); white-space: nowrap;
+}
+.divider-line { flex:1; height:1px; background: var(--border); }
+
+/* ═══════════════════════════════════
+   PAGE 1 — PROFIL
+═══════════════════════════════════ */
+.profil-hero {
+  background: var(--ink);
+  color: var(--paper);
+  border-radius: 16px;
+  padding: 2.5rem;
+  margin-bottom: 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  position: relative;
+  overflow: hidden;
+}
+.profil-hero::before {
+  content: '';
+  position: absolute; right: -60px; top: -60px;
+  width: 200px; height: 200px;
+  border-radius: 50%;
+  background: var(--accent2);
+  opacity: 0.12;
+}
+.profil-av {
+  width: 72px; height: 72px;
+  background: var(--accent2);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 900; font-size: 1.4rem;
+  color: white; flex-shrink: 0;
+}
+.profil-name {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 900; font-size: 1.6rem;
+  letter-spacing: -0.03em; margin-bottom: 0.2rem;
+}
+.profil-title { font-size: 0.9rem; color: rgba(245,243,238,0.6); margin-bottom: 0.6rem; }
+.profil-tags { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+.profil-tags .tag { background: rgba(255,255,255,0.1); color: rgba(245,243,238,0.8); }
+
+.cv-grid { display: grid; grid-template-columns: 1fr 1.6fr; gap: 1rem; }
+
+.xp-item { padding-bottom: 1rem; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+.xp-item:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+.xp-role { font-family: 'Cabinet Grotesk', sans-serif; font-weight: 700; font-size: 0.92rem; margin-bottom: 0.1rem; }
+.xp-company { font-size: 0.8rem; color: var(--accent); font-weight: 500; margin-bottom: 0.1rem; }
+.xp-period { font-size: 0.72rem; color: var(--muted); margin-bottom: 0.4rem; }
+.xp-bullets { list-style: none; }
+.xp-bullets li {
+  font-size: 0.8rem; color: #444;
+  padding-left: 0.9rem; position: relative;
+  margin-bottom: 0.2rem; line-height: 1.45;
+}
+.xp-bullets li::before { content: '–'; position: absolute; left: 0; color: var(--muted); }
+
+.skill-group { margin-bottom: 0.9rem; }
+.skill-group-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--muted); margin-bottom: 0.4rem; }
+.skill-chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.skill-chip {
+  font-size: 0.72rem; padding: 0.22rem 0.6rem;
+  border-radius: 6px; border: 1px solid var(--border);
+  background: var(--paper); color: #333;
+}
+
+/* ═══════════════════════════════════
+   PAGE 2 — ANALYSE
+═══════════════════════════════════ */
+.score-hero {
+  display: grid; grid-template-columns: auto 1fr; gap: 2rem;
+  align-items: center;
+  background: var(--ink); color: var(--paper);
+  border-radius: 16px; padding: 2rem 2.5rem; margin-bottom: 1.5rem;
+}
+.score-ring {
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  border: 4px solid rgba(255,255,255,0.1);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+.score-ring::before {
+  content: '';
+  position: absolute; inset: -4px;
+  border-radius: 50%;
+  background: conic-gradient(#ff4500 0% 68%, rgba(255,255,255,0.1) 68%);
+  z-index: -1;
+}
+.score-ring::after {
+  content: '';
+  position: absolute; inset: 6px;
+  border-radius: 50%;
+  background: var(--ink);
+  z-index: 0;
+}
+.score-num {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 900; font-size: 1.8rem;
+  color: var(--accent2); position: relative; z-index: 1; line-height: 1;
+}
+.score-denom { font-size: 0.65rem; color: var(--muted); position: relative; z-index: 1; }
+.score-verdict h3 {
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 800; font-size: 1.2rem; margin-bottom: 0.4rem;
+}
+.score-verdict p { font-size: 0.85rem; color: rgba(245,243,238,0.6); line-height: 1.5; }
+
+.bar-item { margin-bottom: 0.8rem; }
+.bar-meta { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.3rem; }
+.bar-pct { color: var(--muted); }
+.bar-track { height: 6px; background: var(--border); border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; border-radius: 3px; transition: width 1.2s cubic-bezier(.16,1,.3,1); width: 0; }
+
+.points-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+.points-list { list-style: none; }
+.points-list li {
+  font-size: 0.82rem; color: #333;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: flex-start; gap: 0.6rem;
+  line-height: 1.4;
+}
+.points-list li:last-child { border-bottom: none; }
+.pt-icon { flex-shrink: 0; font-size: 0.9rem; margin-top: 0.05rem; }
+
+/* OFFRE CARD */
+.offre-card {
+  background: var(--soft);
+  border: 1px solid #d8d4f0;
+  border-radius: 12px;
+  padding: 1.4rem 1.6rem;
+}
+.offre-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+.offre-logo {
+  width: 44px; height: 44px; border-radius: 10px;
+  background: var(--ink); color: white;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Cabinet Grotesk', sans-serif;
+  font-weight: 900; font-size: 0.75rem; flex-shrink: 0;
+}
+.offre-name { font-family: 'Cabinet Grotesk', sans-serif; font-weight: 800; font-size: 0.95rem; }
+.offre-poste { font-size: 0.78rem; color: var(--muted); }
+
+/* ═══════════════════════════════════
+   PAGE 3 — AMÉLIORATION
+═══════════════════════════════════ */
+.imp-card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1.1rem 1.3rem;
+  margin-bottom: 0.8rem;
+  border-left: 3px solid var(--border);
+  transition: transform 0.15s;
+}
+.imp-card:hover { transform: translateX(3px); }
+.imp-card.crit { border-left-color: #c00; }
+.imp-card.warn { border-left-color: var(--orange); }
+.imp-card.good { border-left-color: var(--green); }
+.imp-header { display: flex; align-items: center; gap: 0.7rem; margin-bottom: 0.4rem; }
+.imp-title { font-family: 'Cabinet Grotesk', sans-serif; font-weight: 700; font-size: 0.88rem; flex: 1; }
+.imp-body { font-size: 0.81rem; color: #555; line-height: 1.55; }
+.imp-sug { margin-top: 0.55rem; padding: 0.6rem 0.85rem; background: var(--soft); border-radius: 6px; font-size: 0.78rem; color: #333; border: 1px solid #d8d4f0; line-height: 1.5; }
+
+/* ═══════════════════════════════════
+   PAGE 4 — ENTRETIENS
+═══════════════════════════════════ */
+.itw-tabs { display: grid; grid-template-columns: repeat(3,1fr); gap: 0.8rem; margin-bottom: 2rem; }
+.itw-tab {
+  background: var(--card); border: 2px solid var(--border);
+  border-radius: 12px; padding: 1.1rem 1.2rem;
+  cursor: pointer; transition: all 0.18s; text-align: left;
+}
+.itw-tab:hover { border-color: var(--ink); transform: translateY(-2px); box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+.itw-tab.active { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.itw-tab.done { border-color: var(--green); }
+.tab-icon { font-size: 1.4rem; margin-bottom: 0.4rem; }
+.tab-num { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.07em; opacity: 0.5; margin-bottom: 0.15rem; }
+.tab-name { font-family: 'Cabinet Grotesk', sans-serif; font-weight: 800; font-size: 0.88rem; margin-bottom: 0.2rem; }
+.tab-who { font-size: 0.72rem; opacity: 0.6; }
+
+/* CHAT */
+.chat-area {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 14px; overflow: hidden;
+}
+.chat-topbar {
+  display: flex; align-items: center; gap: 0.9rem;
+  padding: 0.9rem 1.3rem; border-bottom: 1px solid var(--border);
+  background: var(--paper);
+}
+.chat-topbar-av {
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-family: 'Cabinet Grotesk', sans-serif; font-weight: 800; font-size: 0.72rem;
+  flex-shrink: 0;
+}
+.chat-topbar-name { font-family: 'Cabinet Grotesk', sans-serif; font-weight: 700; font-size: 0.88rem; }
+.chat-topbar-sub { font-size: 0.72rem; color: var(--muted); }
+.online-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); margin-left: auto; box-shadow: 0 0 0 2px white, 0 0 0 3px var(--green); }
+
+.chat-msgs {
+  min-height: 320px; max-height: 400px;
+  overflow-y: auto; padding: 1.3rem; display: flex; flex-direction: column; gap: 1rem;
+}
+.chat-msgs::-webkit-scrollbar { width: 3px; }
+.chat-msgs::-webkit-scrollbar-thumb { background: var(--border); }
+
+.msg { animation: fadeIn 0.25s ease; }
+.msg-who { font-size: 0.65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); margin-bottom: 0.25rem; }
+.msg.user .msg-who { text-align: right; color: var(--accent); }
+.bubble {
+  padding: 0.8rem 1rem; border-radius: 10px;
+  font-size: 0.84rem; line-height: 1.6; max-width: 84%; display: inline-block;
+}
+.msg.ai .bubble { background: var(--paper); border: 1px solid var(--border); border-top-left-radius: 3px; }
+.msg.user { display: flex; flex-direction: column; align-items: flex-end; }
+.msg.user .bubble { background: var(--ink); color: var(--paper); border-top-right-radius: 3px; }
+.msg.feedback .bubble { background: #e6f5ee; border: 1px solid #b3dfc8; border-radius: 8px; font-size: 0.79rem; color: #1a5c3a; max-width: 100%; display: block; }
+
+.chat-progress { height: 3px; background: var(--border); }
+.chat-progress-fill { height: 100%; background: var(--accent2); transition: width 0.4s ease; }
+
+.chat-bottom { border-top: 1px solid var(--border); background: var(--paper); }
+.chat-hint {
+  padding: 0.6rem 1.2rem;
+  font-size: 0.76rem; color: var(--accent);
+  border-bottom: 1px solid var(--border);
+  cursor: pointer; display: flex; align-items: center; gap: 0.5rem;
+}
+.chat-hint:hover { background: var(--soft); }
+.hint-text { display: none; }
+.hint-text.show { display: block; color: #555; margin-top: 0.3rem; font-size: 0.75rem; line-height: 1.5; }
+
+.chat-input-row { display: flex; gap: 0.6rem; padding: 0.9rem 1.1rem; }
+.chat-input {
+  flex: 1; background: white; border: 1px solid var(--border); border-radius: 8px;
+  padding: 0.65rem 0.9rem; font-family: 'Instrument Sans', sans-serif; font-size: 0.84rem;
+  color: var(--ink); outline: none; resize: none; min-height: 40px; max-height: 100px;
+  transition: border-color 0.2s; line-height: 1.5;
+}
+.chat-input:focus { border-color: var(--ink); }
+.send-btn {
+  width: 40px; height: 40px; border-radius: 8px; border: none;
+  background: var(--ink); color: white; font-size: 1rem;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s; flex-shrink: 0;
+}
+.send-btn:hover { background: #2d2d35; transform: scale(1.05); }
+
+.typing { display: flex; gap: 4px; padding: 0.3rem 0; }
+.typing-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--muted); animation: bounce 1.2s ease infinite; }
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes bounce { 0%,60%,100%{transform:translateY(0);opacity:.4;} 30%{transform:translateY(-5px);opacity:1;} }
+
+.bilan {
+  background: #e6f5ee; border: 1px solid #b3dfc8;
+  border-radius: 12px; padding: 1.4rem; margin-top: 1rem; display: none;
+}
+.bilan.show { display: block; animation: fadeIn 0.3s ease; }
+.bilan-title { font-family: 'Cabinet Grotesk', sans-serif; font-weight: 800; font-size: 0.95rem; color: var(--green); margin-bottom: 1rem; }
+.bilan-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+.bilan-col h4 { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 0.5rem; }
+.bilan-col li { font-size: 0.79rem; color: #333; margin-bottom: 0.35rem; padding-left: 0.9rem; position: relative; line-height: 1.4; }
+.bilan-col li::before { content: '→'; position: absolute; left: 0; font-size: 0.72rem; color: var(--green); }
+
+@media(max-width:640px) {
+  .grid-2,.grid-3,.cv-grid,.itw-tabs,.bilan-row,.points-grid { grid-template-columns: 1fr; }
+  .score-hero { grid-template-columns: 1fr; text-align: center; }
+  .wrap { padding: 1.5rem 1rem 4rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">LaunchMe <span class="logo-badge">POC</span></div>
+  <nav>
+    <button class="nav-btn active" onclick="goTo('profil',this)">Profil</button>
+    <button class="nav-btn" onclick="goTo('analyse',this)">Analyse</button>
+    <button class="nav-btn" onclick="goTo('amelioration',this)">CV</button>
+    <button class="nav-btn" onclick="goTo('entretiens',this)">Entretiens</button>
+  </nav>
+  <div class="header-user">
+    <div class="avatar">LB</div>
+    Lina Benzemma
+  </div>
+</header>
+
+<!-- ═══════════════════════════════════════
+     PAGE 1 — PROFIL
+═══════════════════════════════════════ -->
+<div class="page active" id="page-profil">
+<div class="wrap">
+
+  <div class="profil-hero">
+    <div class="profil-av">LB</div>
+    <div>
+      <div class="profil-name">Lina Benzemma</div>
+      <div class="profil-title">Data Scientist · MSc MOSEF Graduate · Disponible immédiatement</div>
+      <div class="profil-tags">
+        <span class="tag">✉️ lina.benzemma@outlook.fr</span>
+        <span class="tag">📍 Île-de-France</span>
+        <span class="tag">🎓 Paris 1 Sorbonne · TB 16.20</span>
+        <span class="tag">🔗 github.com/linabnz</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="cv-grid">
+
+    <!-- GAUCHE : Skills + Formation -->
+    <div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="h2">Compétences</div>
+        <div class="skill-group">
+          <div class="skill-group-title">ML / IA</div>
+          <div class="skill-chips">
+            <span class="skill-chip">Deep Learning</span><span class="skill-chip">NLP</span>
+            <span class="skill-chip">Computer Vision</span><span class="skill-chip">IA Générative</span>
+            <span class="skill-chip">Séries temporelles</span>
+          </div>
+        </div>
+        <div class="skill-group">
+          <div class="skill-group-title">Langages</div>
+          <div class="skill-chips">
+            <span class="skill-chip">Python</span><span class="skill-chip">SQL</span>
+            <span class="skill-chip">R</span><span class="skill-chip">Scala</span><span class="skill-chip">SAS</span>
+          </div>
+        </div>
+        <div class="skill-group">
+          <div class="skill-group-title">Data Engineering</div>
+          <div class="skill-chips">
+            <span class="skill-chip">Spark</span><span class="skill-chip">Docker</span>
+            <span class="skill-chip">MLflow</span><span class="skill-chip">FastAPI</span><span class="skill-chip">CI/CD</span>
+          </div>
+        </div>
+        <div class="skill-group">
+          <div class="skill-group-title">Cloud & Visu</div>
+          <div class="skill-chips">
+            <span class="skill-chip">Azure AZ-900</span><span class="skill-chip">GCP</span>
+            <span class="skill-chip">Power BI</span><span class="skill-chip">R Shiny</span><span class="skill-chip">Streamlit</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="h2">Formation</div>
+        <div class="xp-item">
+          <div class="xp-role">Master 2 Data Science & Big Data (MOSEF)</div>
+          <div class="xp-company">Université Paris 1 Sorbonne</div>
+          <div class="xp-period">2024–2025 · <strong style="color:var(--green)">Mention TB 16.20/20</strong></div>
+        </div>
+        <div class="xp-item">
+          <div class="xp-role">Master 1 Mathématiques Appliquées</div>
+          <div class="xp-company">Université Paris-Saclay</div>
+          <div class="xp-period">2023–2024</div>
+        </div>
+        <div class="xp-item">
+          <div class="xp-role">Licence Mathématiques Appliquées</div>
+          <div class="xp-company">Sorbonne Université</div>
+          <div class="xp-period">2020–2023</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DROITE : Expériences + Projets -->
+    <div>
+      <div class="card" style="margin-bottom:1rem">
+        <div class="h2">Expériences</div>
+        <div class="xp-item">
+          <div class="xp-role">Data Scientist — Alternance</div>
+          <div class="xp-company">Sanofi · Vitry-sur-Seine</div>
+          <div class="xp-period">Sept. 2024 → Sept. 2025 · 1 an</div>
+          <ul class="xp-bullets">
+            <li>Conception d'une application R Shiny automatisant les calculs statistiques et la visualisation de KPI GxP.</li>
+            <li>Analyses statistiques avancées (bayésiennes & fréquentistes), réduisant les délais de traitement.</li>
+            <li>Adoptée par plusieurs équipes R&D au-delà de l'équipe commanditaire.</li>
+          </ul>
+        </div>
+        <div class="xp-item">
+          <div class="xp-role">Ingénieure Machine Learning — Stage</div>
+          <div class="xp-company">IFPEN · Rueil-Malmaison</div>
+          <div class="xp-period">Fév. → Juil. 2024 · 5 mois</div>
+          <ul class="xp-bullets">
+            <li>Pipeline Python pour données géospatiales et cartographie prédictive des risques naturels.</li>
+            <li>Collaboration inter-équipes, amélioration de la détection précoce des zones sensibles.</li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="h2">Projets</div>
+        <div class="xp-item">
+          <div class="xp-role">Géolocalisation d'images — Computer Vision</div>
+          <div class="xp-period">2025 · PyTorch · EfficientNet · Streamlit · Folium</div>
+        </div>
+        <div class="xp-item">
+          <div class="xp-role">Optimisation portefeuilles — Kalman & RL</div>
+          <div class="xp-period">2025 · Python · scikit-learn · Q-Learning</div>
+        </div>
+        <div class="xp-item">
+          <div class="xp-role">Prédiction volatilité crypto — Deep Learning</div>
+          <div class="xp-period">2024 · GRU/LSTM · TensorFlow · FastAPI</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div style="margin-top:1.5rem;text-align:center">
+    <button class="nav-btn" style="background:var(--ink);color:var(--paper);padding:0.7rem 2rem;border-radius:8px;font-size:0.88rem;font-weight:600;cursor:pointer" onclick="goTo('analyse',null)">Analyser mon profil →</button>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     PAGE 2 — ANALYSE
+═══════════════════════════════════════ -->
+<div class="page" id="page-analyse">
+<div class="wrap">
+
+  <div class="h1" style="margin-bottom:0.3rem">Analyse <em>CV × Offre</em></div>
+  <p class="caption" style="margin-bottom:2rem">Accenture France · Data Scientist GenAI F/H · CDI · Blagnac</p>
+
+  <!-- Score -->
+  <div class="score-hero">
+    <div class="score-ring">
+      <div class="score-num">68</div>
+      <div class="score-denom">/100</div>
+    </div>
+    <div class="score-verdict">
+      <h3>Bon profil — LLM à renforcer</h3>
+      <p>Lina a toutes les bases techniques requises. Le seul gap réel : l'expérience LLM/GenAI est peu visible sur le CV alors que c'est le cœur du poste. 2–3 projets à mettre en avant suffisent à combler ça.</p>
+      <div style="margin-top:0.8rem;display:flex;gap:0.5rem;flex-wrap:wrap">
+        <span class="tag" style="background:rgba(255,255,255,0.1);color:rgba(245,243,238,0.8)">✅ 2/3 ans XP requis</span>
+        <span class="tag" style="background:rgba(255,255,255,0.1);color:rgba(245,243,238,0.8)">✅ Python maîtrisé</span>
+        <span class="tag" style="background:rgba(255,69,0,0.3);color:#ffb399">⚠️ LLM peu visible</span>
+        <span class="tag" style="background:rgba(255,255,255,0.1);color:rgba(245,243,238,0.8)">✅ Azure + GCP</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card-grid grid-2" style="margin-bottom:1.5rem">
+    <!-- Barres -->
+    <div class="card">
+      <div class="h2">Compatibilité par domaine</div>
+      <div class="bar-item">
+        <div class="bar-meta"><span>Python & Data Science</span><span class="bar-pct">92%</span></div>
+        <div class="bar-track"><div class="bar-fill" data-w="92" style="background:#00875a"></div></div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-meta"><span>Machine Learning & NLP</span><span class="bar-pct">85%</span></div>
+        <div class="bar-track"><div class="bar-fill" data-w="85" style="background:#00875a"></div></div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-meta"><span>LLM & IA Générative</span><span class="bar-pct">45%</span></div>
+        <div class="bar-track"><div class="bar-fill" data-w="45" style="background:#e05c00"></div></div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-meta"><span>Cloud Azure / GCP</span><span class="bar-pct">75%</span></div>
+        <div class="bar-track"><div class="bar-fill" data-w="75" style="background:#1a0dab"></div></div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-meta"><span>MLOps & Industrialisation</span><span class="bar-pct">70%</span></div>
+        <div class="bar-track"><div class="bar-fill" data-w="70" style="background:#1a0dab"></div></div>
+      </div>
+      <div class="bar-item">
+        <div class="bar-meta"><span>Communication client (conseil)</span><span class="bar-pct">60%</span></div>
+        <div class="bar-track"><div class="bar-fill" data-w="60" style="background:#e05c00"></div></div>
+      </div>
+    </div>
+
+    <!-- Offre -->
+    <div>
+      <div class="offre-card" style="margin-bottom:1rem">
+        <div class="offre-header">
+          <div class="offre-logo">ACC</div>
+          <div>
+            <div class="offre-name">Accenture France</div>
+            <div class="offre-poste">Data Scientist GenAI F/H · CDI · Blagnac</div>
+          </div>
+        </div>
+        <div class="caption" style="margin-bottom:0.5rem">Compétences requises</div>
+        <div style="display:flex;flex-wrap:wrap;gap:0.3rem">
+          <span class="tag tag-green">✓ Python</span>
+          <span class="tag tag-green">✓ NLP / ML</span>
+          <span class="tag tag-green">✓ Azure</span>
+          <span class="tag tag-green">✓ GCP</span>
+          <span class="tag tag-orange">~ LLM / RAG</span>
+          <span class="tag tag-orange">~ IA Agentique</span>
+          <span class="tag tag-green">✓ Bac+5</span>
+          <span class="tag tag-green">✓ 2–3 ans XP</span>
+          <span class="tag tag-green">✓ Anglais</span>
+          <span class="tag tag-orange">~ Vertex AI</span>
+          <span class="tag tag-orange">~ OpenAI API</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="caption" style="margin-bottom:0.6rem">Missions clés</div>
+        <ul class="points-list">
+          <li><span class="pt-icon">🔧</span>Développer des solutions LLM, RAG, agents IA en Python</li>
+          <li><span class="pt-icon">☁️</span>Intégrer Azure OpenAI & Vertex AI</li>
+          <li><span class="pt-icon">🤝</span>Cadrer les use cases avec les équipes métier</li>
+          <li><span class="pt-icon">🚀</span>Du POC à l'industrialisation</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- Points forts / faibles -->
+  <div class="points-grid">
+    <div class="card">
+      <div class="h2">✅ Points forts</div>
+      <ul class="points-list">
+        <li><span class="pt-icon">🟢</span>Python solide + ML classique bien maîtrisé</li>
+        <li><span class="pt-icon">🟢</span>Master MOSEF reconnu — formation quanti top</li>
+        <li><span class="pt-icon">🟢</span>Expérience livraison réelle (Sanofi app adoptée multi-équipes)</li>
+        <li><span class="pt-icon">🟢</span>Azure AZ-900 + GCP déjà dans le CV</li>
+        <li><span class="pt-icon">🟢</span>2–3 ans d'XP requis : profil compatible</li>
+      </ul>
+    </div>
+    <div class="card">
+      <div class="h2">⚠️ À combler</div>
+      <ul class="points-list">
+        <li><span class="pt-icon">🟠</span>LLM / RAG / agents IA : non visible sur le CV</li>
+        <li><span class="pt-icon">🟠</span>OpenAI API & Vertex AI : non mentionnés</li>
+        <li><span class="pt-icon">🟠</span>Expérience conseil client : à valoriser</li>
+        <li><span class="pt-icon">🟠</span>IA Agentique (LangGraph, AutoGen) : à acquérir</li>
+        <li><span class="pt-icon">🟠</span>Blagnac (Toulouse) : point à clarifier / mobilité</li>
+      </ul>
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     PAGE 3 — AMÉLIORATION CV
+═══════════════════════════════════════ -->
+<div class="page" id="page-amelioration">
+<div class="wrap">
+
+  <div class="h1" style="margin-bottom:0.3rem">Améliore ton <em>CV</em></div>
+  <p class="caption" style="margin-bottom:2rem">5 recommandations ciblées pour l'offre Accenture GenAI</p>
+
+  <div class="imp-card crit">
+    <div class="imp-header"><span>🤖</span><div class="imp-title">LLM & GenAI invisible sur le CV</div><span class="tag tag-red">Critique</span></div>
+    <div class="imp-body">C'est le cœur du poste. Tu mentionnes "IA générative" dans les skills mais aucun projet ou mission ne le démontre concrètement. Le recruteur veut voir du RAG, du LLM, du prompt engineering.</div>
+    <div class="imp-sug">💡 Ajoute dans l'expérience Sanofi : <em>"Exploration de LLM (GPT-4, Mistral) pour l'automatisation de rapports analytiques — prompt engineering, chaînes LangChain."</em></div>
+  </div>
+
+  <div class="imp-card crit">
+    <div class="imp-header"><span>🎯</span><div class="imp-title">Titre du CV non ciblé</div><span class="tag tag-red">Critique</span></div>
+    <div class="imp-body">"Data Scientist | MSc MOSEF Graduate" est générique. Pour un poste GenAI chez Accenture, le titre doit signaler immédiatement la spécialité.</div>
+    <div class="imp-sug">💡 Nouveau titre : <em>"Data Scientist — LLM & IA Générative | MSc Data Science (Paris 1 Sorbonne)"</em></div>
+  </div>
+
+  <div class="imp-card warn">
+    <div class="imp-header"><span>📊</span><div class="imp-title">Impacts non chiffrés</div><span class="tag tag-orange">Important</span></div>
+    <div class="imp-body">Tes missions sont bien décrites mais sans métriques. Un chiffre vaut 10x une phrase.</div>
+    <div class="imp-sug">💡 Ex : <em>"réduisant les délais de traitement de 40%"</em> ou <em>"adoptée par 3 équipes R&D (25+ utilisateurs actifs)"</em></div>
+  </div>
+
+  <div class="imp-card warn">
+    <div class="imp-header"><span>☁️</span><div class="imp-title">Azure OpenAI & Vertex AI manquants</div><span class="tag tag-orange">Important</span></div>
+    <div class="imp-body">L'offre cite explicitement Azure OpenAI et Vertex AI comme compétences. Tu as Azure AZ-900 et GCP mais ces services ne sont pas mentionnés.</div>
+    <div class="imp-sug">💡 Ajoute dans les skills cloud : <em>"Azure OpenAI Service · Vertex AI (Gemini) · OpenAI API"</em> même si c'est exploratoire.</div>
+  </div>
+
+  <div class="imp-card good">
+    <div class="imp-header"><span>✅</span><div class="imp-title">Stack Python & ML — ne pas toucher</div><span class="tag tag-green">Point fort</span></div>
+    <div class="imp-body">Ton stack Python/ML est exactement ce qu'Accenture cherche. La section compétences est claire et bien organisée par catégorie — garde cette structure.</div>
+    <div class="imp-sug">💡 Ajoute juste : <em>LangChain · LlamaIndex · Hugging Face · Prompt Engineering</em> à la section ML/IA.</div>
+  </div>
+
+  <div class="divider"><div class="divider-line"></div><span>Accroche CV suggérée</span><div class="divider-line"></div></div>
+
+  <div class="card" style="background:var(--soft);border-color:#d8d4f0">
+    <div class="caption" style="margin-bottom:0.6rem">✍️ Nouvelle accroche recommandée</div>
+    <p style="font-size:0.88rem;line-height:1.7;color:#333;font-style:italic">
+      "Data Scientist spécialisée en Machine Learning et IA Générative, diplômée du Master MOSEF (Paris 1 Sorbonne, mention TB). Expérience en développement d'applications data dans des environnements réglementés (Sanofi, IFPEN) et en déploiement de pipelines ML end-to-end. Passionnée par les LLM, le RAG et les architectures agents IA — prête à contribuer à des projets GenAI grands comptes."
+    </p>
+  </div>
+
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     PAGE 4 — ENTRETIENS
+═══════════════════════════════════════ -->
+<div class="page" id="page-entretiens">
+<div class="wrap">
+
+  <div class="h1" style="margin-bottom:0.3rem">Simulation <em>entretiens</em></div>
+  <p class="caption" style="margin-bottom:1.5rem">Accenture France · 3 entretiens · Réponds librement, tu auras le feedback + la réponse modèle</p>
+
+  <div class="itw-tabs">
+    <div class="itw-tab active" id="tab-rh" onclick="switchItw('rh')">
+      <div class="tab-icon">🤝</div>
+      <div class="tab-num">Entretien 1/3</div>
+      <div class="tab-name">RH · Motivation</div>
+      <div class="tab-who">Sophie · RH Accenture</div>
+    </div>
+    <div class="itw-tab" id="tab-n1" onclick="switchItw('n1')">
+      <div class="tab-icon">🧑‍💼</div>
+      <div class="tab-num">Entretien 2/3</div>
+      <div class="tab-name">Manager · Technique</div>
+      <div class="tab-who">Thomas · DS Manager</div>
+    </div>
+    <div class="itw-tab" id="tab-code" onclick="switchItw('code')">
+      <div class="tab-icon">💻</div>
+      <div class="tab-num">Entretien 3/3</div>
+      <div class="tab-name">Live Coding · Tech</div>
+      <div class="tab-who">Sarah · Lead DS</div>
+    </div>
+  </div>
+
+  <!-- CHAT -->
+  <div class="chat-area">
+    <div class="chat-topbar">
+      <div class="chat-topbar-av" id="chat-av" style="background:#0c0c10;color:white">SO</div>
+      <div>
+        <div class="chat-topbar-name" id="chat-name">Sophie · RH Senior · Accenture France</div>
+        <div class="chat-topbar-sub">Entretien RH · Motivation & soft skills</div>
+      </div>
+      <div class="online-dot"></div>
+    </div>
+    <div class="chat-progress"><div class="chat-progress-fill" id="chat-prog" style="width:0%"></div></div>
+
+    <div class="chat-msgs" id="chat-msgs"></div>
+
+    <div class="chat-bottom">
+      <div class="chat-hint" id="hint-toggle" onclick="toggleHint()">
+        💡 Besoin d'un coup de pouce ? <span style="margin-left:auto;font-size:0.7rem;opacity:0.5">▼</span>
+        <div class="hint-text" id="hint-content"></div>
+      </div>
+      <div class="chat-input-row">
+        <textarea class="chat-input" id="chat-input" rows="1"
+          placeholder="Ta réponse…"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMsg();}"
+          oninput="this.style.height='auto';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+        <button class="send-btn" onclick="sendMsg()">↑</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bilan" id="bilan-box">
+    <div class="bilan-title" id="bilan-title">🎯 Bilan coaching</div>
+    <div class="bilan-row" id="bilan-content"></div>
+  </div>
+
+</div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════
+function goTo(name, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  if (btn) btn.classList.add('active');
+  else {
+    document.querySelectorAll('.nav-btn').forEach(b => {
+      if (b.textContent.toLowerCase().includes(name.slice(0,4))) b.classList.add('active');
+    });
+  }
+  window.scrollTo({top:0, behavior:'smooth'});
+  if (name === 'analyse') animateBars();
+}
+
+// ══════════════════════════════════════════════════
+//  BARS ANIMATION
+// ══════════════════════════════════════════════════
+function animateBars() {
+  setTimeout(() => {
+    document.querySelectorAll('.bar-fill').forEach(el => {
+      el.style.width = el.dataset.w + '%';
+    });
+  }, 100);
+}
+
+// ══════════════════════════════════════════════════
+//  INTERVIEW DATA
+// ══════════════════════════════════════════════════
+const SCRIPTS = {
+  rh: {
+    meta: { av:'SO', name:'Sophie · RH Senior · Accenture France', sub:'Entretien RH · Motivation & soft skills' },
+    bilan: {
+      bien: ['Lier l\'expérience Sanofi (GxP, livrables réels) au rythme conseil Accenture', 'Montrer un intérêt genuein pour la GenAI avec exemple concret', 'Parler d\'impact business, pas juste de technique'],
+      ameliorer: ['Prépare une anecdote sur un moment difficile / comment tu l\'as surmonté', 'Prépare 2–3 questions à poser sur la culture équipe et les formations GenAI', 'Mentionne ta mobilité Blagnac si c\'est le cas'],
+      conseil: 'Ouvre avec : "J\'ai livré une app data dans un cadre réglementaire chez Sanofi — je veux faire la même chose à l\'échelle grands comptes Accenture."'
+    },
+    steps: [
+      { q:'Bonjour Lina ! Je suis Sophie, RH chez Accenture. Merci de nous rejoindre 😊 Pouvez-vous vous présenter en 2–3 minutes ?', hint:'Parcours → expérience concrète → pourquoi Accenture spécifiquement. L\'app Shiny Sanofi est ton meilleur argument.', model:'Je suis Lina Benzemma, diplômée Master 2 MOSEF Paris 1 Sorbonne mention TB. J\'ai eu une alternance d\'un an chez Sanofi — développement d\'une app R Shiny pour automatiser des analyses réglementaires GxP, adoptée par plusieurs équipes. Avant ça, un stage IFPEN sur des pipelines ML. Ce qui m\'attire chez Accenture : l\'échelle des projets GenAI et la diversité des secteurs clients.' },
+      { q:'Pourquoi la GenAI en particulier ? Vous avez un profil ML classique.', hint:'Ne pas dire "c\'est la tendance". Montre un intérêt genuein avec un exemple concret — ce que tu as exploré par curiosité.', model:'En master j\'ai travaillé sur du NLP et du Deep Learning. Chez Sanofi j\'ai exploré les LLM pour automatiser des rapports analytiques. Ce qui me passionne : la GenAI rend la data accessible aux non-techniques. Un RAG bien conçu transforme le rapport d\'un métier à ses données — c\'est un impact direct que le ML classique n\'a pas.' },
+      { q:'Accenture c\'est du conseil — deadlines clients, pression. Comment vous positionnez-vous ?', hint:'Utilise les exemples Sanofi (GxP = cadre strict) et IFPEN (livrables inter-équipes pluridisciplinaires).', model:'J\'ai déjà travaillé dans des contextes très contraints : Sanofi avec les standards GxP et l\'IFPEN avec des livrables pour des géologues et des ingénieurs. Dans les deux cas j\'ai appris à cadrer mes deliverables, communiquer sur l\'avancement et adapter mon discours selon l\'interlocuteur. Le conseil me correspond : j\'aime les nouveaux contextes et avoir un impact visible.' },
+      { q:'Où vous voyez-vous dans 3 ans ?', hint:'Ambition alignée avec le modèle Accenture : certifications, montée en compétences, progression interne.', model:'Data Scientist confirmée spécialisée GenAI avec des certifications Azure et GCP. Accenture me permettrait d\'acquérir une expertise sur des projets variés — industrie, finance, santé. À terme j\'aimerais évoluer vers un rôle de lead technique ou d\'architecte IA.' },
+      { q:'Parfait Lina, avez-vous des questions pour moi ?', hint:'Toujours finir avec 2 questions — ça montre de l\'intérêt et de la préparation.', model:'Oui ! Comment sont structurées les équipes GenAI chez Accenture Industry X ? Et y a-t-il des formations ou certifications cloud proposées dès l\'arrivée ?' }
+    ]
+  },
+  n1: {
+    meta: { av:'TH', name:'Thomas · Manager Data & AI · Accenture', sub:'Entretien technique · Projets & méthodologie GenAI' },
+    bilan: {
+      bien: ['Expliquer le RAG avec le pipeline complet (chunking → embedding → retrieval → génération)', 'Approche pragmatique : prompt engineering avant fine-tuning', 'Vision cloud-agnostic Azure/GCP adaptée au contexte Accenture'],
+      ameliorer: ['Creuse les agents IA (LangGraph, AutoGen, CrewAI) — c\'est dans l\'offre', 'Prépare un exemple de prompt engineering réel que tu as fait', 'Revoir l\'évaluation des RAG : RAGAS, faithfulness, relevance'],
+      conseil: 'Viens avec un side project GenAI sur GitHub (même petit : un RAG sur des PDFs). C\'est la preuve la plus convaincante que tu pratiques vraiment.'
+    },
+    steps: [
+      { q:'Bonjour Lina. Décrivez-moi un projet que vous avez mené de A à Z — les difficultés et comment vous les avez surmontées.', hint:'Méthode STAR. L\'app Shiny Sanofi est le meilleur exemple — adoption multi-équipes = preuve de livraison réelle.', model:'Chez Sanofi j\'ai développé seule une app R Shiny pour automatiser le backtesting de modèles analytiques R&D. La difficulté : comprendre les calculs GxP que je ne connaissais pas et rendre l\'app adoptable par des pharmacologues non data. Solution : sessions hebdomadaires avec les utilisateurs finaux dès le début. Résultat : adoptée par plusieurs équipes R&D au-delà de l\'équipe commanditaire.' },
+      { q:'Expliquez-moi ce qu\'est un RAG et comment vous l\'implémenteriez pour un assistant qui répond sur des contrats clients.', hint:'Pipeline complet : chunking → embedding → vector store → retrieval → prompt → LLM. Cite des outils réels.', model:'Un RAG combine un moteur de recherche sémantique et un LLM. Pour des contrats : chunking des PDFs en passages de 500 tokens avec overlap, encodage avec text-embedding-ada-002, stockage dans Pinecone ou Azure AI Search. À chaque question : embedding de la query → top-k passages → injection dans le prompt avec instruction de répondre uniquement à partir des sources.' },
+      { q:'Fine-tuning vs prompt engineering — quand choisissez-vous l\'un ou l\'autre ?', hint:'Réponse pragmatique : prompt engineering d\'abord toujours. Fine-tuning = dernier recours.', model:'Prompt engineering d\'abord — c\'est rapide, peu coûteux et suffisant dans 90% des cas. Le fine-tuning modifie les poids du modèle sur nos données — nécessaire seulement pour un style très spécifique, un vocabulaire propriétaire ou des contraintes de latence fortes. Mon approche : prompt engineering + RAG en premier. Fine-tuning en dernier recours car coûteux et difficile à maintenir.' },
+      { q:'Azure OpenAI vs Vertex AI — vous avez les deux dans votre CV. Comment vous les comparez ?', hint:'Ne pas prendre parti. Être cloud-agnostic est exactement ce qu\'Accenture attend.', model:'Azure OpenAI est la plus mature côté enterprise : GPT-4, garanties RGPD, intégration Microsoft. Vertex AI est très fort sur le multimodal (Gemini) et l\'intégration BigQuery pour du RAG sur gros volumes. En pratique le choix est dicté par le cloud du client — mon rôle est d\'être cloud-agnostic et d\'adapter l\'architecture.' },
+      { q:'Comment évaluez-vous la qualité d\'un système RAG en production ?', hint:'RAGAS est le framework standard — cite les 3 métriques clés.', model:'J\'utilise le framework RAGAS qui mesure : la faithfulness (la réponse est-elle fondée sur les sources ?), l\'answer relevance (répond-elle vraiment à la question ?) et le context recall (les bons passages ont-ils été récupérés ?). En pratique je crée aussi un golden dataset de questions-réponses de référence pour détecter les régressions.' }
+    ]
+  },
+  code: {
+    meta: { av:'SA', name:'Sarah · Lead Data Scientist · Accenture', sub:'Entretien technique · Python · GenAI · Live coding' },
+    bilan: {
+      bien: ['Code Python clean et pythonic (compréhensions, gestion d\'erreurs)', 'Architecture RAG complète avec les 4 étapes et les défis de prod', 'Temperature basse pour tâche factuelle — montre la maîtrise des paramètres LLM'],
+      ameliorer: ['Pratique les agents IA avec LangGraph ou AutoGen', 'Révise l\'évaluation des RAG (RAGAS, métriques)', 'Prépare un exemple de prompt avec chain-of-thought'],
+      conseil: 'Parle toujours en termes de trade-offs : "J\'utilise X parce que Y, mais si le contexte était Z je ferais autrement." Ça montre une vraie maturité d\'ingénieur.'
+    },
+    steps: [
+      { q:'Salut Lina ! On va faire du live coding. Première question : en Python, tu filtres une liste de strings pour ne garder que ceux qui font plus de 5 mots. Go.', hint:'Compréhension de liste — pythonic. Ne pas faire une boucle for classique.', model:'texts = ["Bonjour", "Python est vraiment super cool ici", "ok"]\nresult = [t for t in texts if len(t.split()) > 5]\n# → ["Python est vraiment super cool ici"]\n\nVersion robuste avec regex :\nimport re\nresult = [t for t in texts if len(re.findall(r"\\b\\w+\\b", t)) > 5]' },
+      { q:'Bien. Comment tu calcules la similarité sémantique entre deux phrases ? Principe + code.', hint:'La réponse attendue pour GenAI c\'est les embeddings (sentence-transformers), pas TF-IDF.', model:'from sentence_transformers import SentenceTransformer\nimport numpy as np\n\nmodel = SentenceTransformer("all-MiniLM-L6-v2")\n\ndef cosine_sim(t1, t2):\n    a, b = model.encode([t1, t2])\n    return np.dot(a,b) / (np.linalg.norm(a) * np.linalg.norm(b))\n\n# cosine_sim("chat", "félin") → ~0.82' },
+      { q:'Un appel API OpenAI pour résumer un texte. Et comment tu le rendrais robuste pour la prod ?', hint:'Points clés : temperature basse pour tâche factuelle, retry avec backoff exponentiel.', model:'from openai import OpenAI\nimport time\n\nclient = OpenAI()\n\ndef summarize(text, retries=3):\n    for i in range(retries):\n        try:\n            r = client.chat.completions.create(\n                model="gpt-4o-mini",\n                messages=[{"role":"user","content":f"Résume en 3 phrases : {text}"}],\n                temperature=0.2  # faible pour tâche factuelle\n            )\n            return r.choices[0].message.content\n        except:\n            time.sleep(2**i)  # backoff exponentiel' },
+      { q:'Architecture RAG pour 10 000 documents internes — les 3 défis principaux.', hint:'4 étapes (ingestion, embedding, retrieval, génération) + défis prod (chunking, hallucinations, évaluation).', model:'4 étapes : 1) Ingestion — parsing PDF/Word, chunking 512 tokens + overlap. 2) Embedding — text-embedding-3-small → Pinecone ou Azure AI Search. 3) Retrieval — cosine similarity, top-k chunks. 4) Génération — prompt GPT-4o avec instruction "réponds uniquement à partir des sources".\n\n3 défis : qualité du chunking (ne pas couper une clause), hallucinations (instruction explicite), évaluation avec RAGAS.' },
+      { q:'C\'est quoi un agent IA et comment ça marche ?', hint:'LLM + outils + boucle de décision. Cite LangGraph ou AutoGen.', model:'Un agent IA c\'est un LLM qui peut appeler des outils (APIs, fonctions, BDD) de façon autonome pour accomplir une tâche en plusieurs étapes. Le LLM décide quel outil appeler, interprète le résultat et décide de la prochaine action — jusqu\'à l\'objectif. Frameworks : LangGraph pour des workflows structurés, AutoGen pour du multi-agents. Exemple : agent qui cherche dans une BDD, puis sur le web, puis synthétise.' }
+    ]
+  }
+};
+
+// ══════════════════════════════════════════════════
+//  INTERVIEW STATE
+// ══════════════════════════════════════════════════
+let currentItw = 'rh';
+let currentStep = 0;
+let hintOpen = false;
+
+function switchItw(type) {
+  currentItw = type;
+  currentStep = 0;
+  hintOpen = false;
+  document.querySelectorAll('.itw-tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + type).classList.add('active');
+  const meta = SCRIPTS[type].meta;
+  document.getElementById('chat-av').textContent = meta.av;
+  document.getElementById('chat-name').textContent = meta.name;
+  document.getElementById('chat-prog').style.width = '0%';
+  document.getElementById('bilan-box').classList.remove('show');
+  document.getElementById('chat-msgs').innerHTML = '';
+  document.getElementById('hint-content').textContent = '';
+  document.getElementById('hint-content').classList.remove('show');
+  addAiMsg(SCRIPTS[type].steps[0].q);
+  updateHint();
+}
+
+function addAiMsg(text) {
+  const msgs = document.getElementById('chat-msgs');
+  const div = document.createElement('div');
+  div.className = 'msg ai';
+  const who = SCRIPTS[currentItw].meta.name.split('·')[0].trim();
+  div.innerHTML = `<div class="msg-who">${who}</div><div class="bubble">${text.replace(/\n/g,'<br>')}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addUserMsg(text) {
+  const msgs = document.getElementById('chat-msgs');
+  const div = document.createElement('div');
+  div.className = 'msg user';
+  div.innerHTML = `<div class="msg-who">Lina · Vous</div><div class="bubble">${text.replace(/\n/g,'<br>')}</div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function addFeedback(model) {
+  const msgs = document.getElementById('chat-msgs');
+  const div = document.createElement('div');
+  div.className = 'msg feedback';
+  div.innerHTML = `<div class="bubble">✅ <strong>Réponse modèle :</strong><br><span style="opacity:0.8">${model.replace(/\n/g,'<br>')}</span></div>`;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function updateHint() {
+  const step = SCRIPTS[currentItw].steps[currentStep];
+  if (step) document.getElementById('hint-content').textContent = step.hint;
+}
+
+function toggleHint() {
+  hintOpen = !hintOpen;
+  document.getElementById('hint-content').classList.toggle('show', hintOpen);
+}
+
+function sendMsg() {
+  const input = document.getElementById('chat-input');
+  const text = input.value.trim();
+  if (!text) return;
+  input.value = '';
+  input.style.height = 'auto';
+
+  const steps = SCRIPTS[currentItw].steps;
+  if (currentStep >= steps.length) return;
+
+  addUserMsg(text);
+  addFeedback(steps[currentStep].model);
+
+  currentStep++;
+  const progress = (currentStep / steps.length) * 100;
+  document.getElementById('chat-prog').style.width = progress + '%';
+
+  if (currentStep < steps.length) {
+    setTimeout(() => {
+      addAiMsg(steps[currentStep].q);
+      updateHint();
+      hintOpen = false;
+      document.getElementById('hint-content').classList.remove('show');
+    }, 400);
+  } else {
+    setTimeout(() => showBilan(), 500);
+    document.getElementById('tab-' + currentItw).classList.add('done');
+  }
+}
+
+function showBilan() {
+  const bilan = SCRIPTS[currentItw].bilan;
+  const itw = currentItw;
+  const names = { rh:'RH · Sophie', n1:'Manager · Thomas', code:'Live Coding · Sarah' };
+  document.getElementById('bilan-title').textContent = '🎯 Bilan coaching — ' + names[itw];
+  document.getElementById('bilan-content').innerHTML = `
+    <div class="bilan-col">
+      <h4>✅ Ce qui était bien</h4>
+      <ul>${bilan.bien.map(p=>`<li>${p}</li>`).join('')}</ul>
+    </div>
+    <div class="bilan-col">
+      <h4>⚠️ À améliorer</h4>
+      <ul>${bilan.ameliorer.map(p=>`<li>${p}</li>`).join('')}</ul>
+    </div>
+    <div class="bilan-col">
+      <h4>💡 Conseil clé</h4>
+      <ul><li>${bilan.conseil}</li></ul>
+    </div>`;
+  document.getElementById('bilan-box').classList.add('show');
+  document.getElementById('bilan-box').scrollIntoView({behavior:'smooth', block:'nearest'});
+}
+
+// ══════════════════════════════════════════════════
+//  INIT
+// ══════════════════════════════════════════════════
+switchItw('rh');
+</script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+﻿# Dependencies
+node_modules/
+**/node_modules/
+
+# Build outputs
+build/
+dist/
+**/dist/
+.vite/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+*.local
+*.secret
+*.secrets
+
+# Runtime databases and generated local data
+career-web-react/server/postgres-data/
+career-web-react/server/postgres-data*/
+career-web-react/server/postgres-runtime/
+career-web-react/server/pgdata/
+career-web-react/server/pgdata*/
+**/postgres-data/
+**/postgres-data*/
+**/postgres-runtime/
+**/pgdata/
+**/pgdata*/
+*.sqlite
+*.sqlite3
+*.db
+*.dump
+*.sql
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# OS and editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Secrets / credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+*.keystore
+id_rsa*
+id_ed25519*
+
+# Temporary files
+.tmp/
+tmp/
+temp/
+*.tmp

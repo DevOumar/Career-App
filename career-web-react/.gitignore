@@ -1,0 +1,8 @@
+node_modules
+dist
+.vite
+server/pgdata
+server/postgres-data
+server/postgres-data-recovery-*
+server/postgres-data-broken-*
+server/pgdata2

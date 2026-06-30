@@ -1,0 +1,65 @@
+﻿export const SKILL_KEYWORDS = [
+  "python",
+  "sql",
+  "r",
+  "scala",
+  "javascript",
+  "typescript",
+  "react",
+  "node",
+  "java",
+  "c++",
+  "ml",
+  "machine learning",
+  "deep learning",
+  "nlp",
+  "computer vision",
+  "genai",
+  "llm",
+  "rag",
+  "langchain",
+  "langgraph",
+  "autogen",
+  "openai api",
+  "mistral",
+  "hugging face",
+  "pytorch",
+  "tensorflow",
+  "spark",
+  "docker",
+  "kubernetes",
+  "mlflow",
+  "fastapi",
+  "ci/cd",
+  "azure",
+  "azure openai",
+  "gcp",
+  "vertex ai",
+  "aws",
+  "power bi",
+  "tableau",
+  "streamlit",
+  "git",
+  "data engineering"
+];
+
+export const DOMAIN_MAP = {
+  "Python & Data Science": ["python", "sql", "r", "scala", "data engineering"],
+  "Machine Learning & NLP": ["ml", "machine learning", "deep learning", "nlp", "computer vision"],
+  "LLM & IA Générative": ["genai", "llm", "rag", "langchain", "langgraph", "autogen", "openai api"],
+  "Cloud": ["azure", "azure openai", "gcp", "vertex ai", "aws"],
+  "MLOps": ["docker", "kubernetes", "mlflow", "ci/cd", "fastapi"],
+  "Communication client": ["communication", "presentation", "stakeholder", "consulting"]
+};
+
+export const EDUCATION_LEVELS = [
+  "bac",
+  "bac+2",
+  "bac+3",
+  "bac+4",
+  "bac+5",
+  "master",
+  "ingenieur",
+  "doctorat"
+];
+
