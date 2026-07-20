@@ -1,3 +1,4 @@
+import "dotenv/config";
 import cors from "cors";
 import crypto from "crypto";
 import express from "express";
@@ -11,6 +12,8 @@ import { OFFERS } from "../src/data/offers.js";
 const BASE_PORT = Number(process.env.PORT || 8787);
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
 const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 
 const ACCOUNT_TYPES = new Set([
   "candidate",
@@ -256,6 +259,32 @@ await db.exec(`
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
     created_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS offer_status (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    offer_id TEXT NOT NULL,
+    is_favorite INTEGER NOT NULL DEFAULT 0,
+    is_applied INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    UNIQUE(user_id, offer_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS ai_usage_log (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    feature TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS interview_attempts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    track TEXT NOT NULL,
+    average_score INTEGER NOT NULL,
     payload_json TEXT NOT NULL
   );
 
@@ -1326,6 +1355,52 @@ app.get("/api/offers", async (_req, res) => {
   res.json({ items });
 });
 
+app.get("/api/offer-status", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+    const { rows } = await db.query(
+      "SELECT offer_id, is_favorite, is_applied FROM offer_status WHERE user_id = $1",
+      [userId]
+    );
+    return res.json({
+      items: rows.map((row) => ({
+        offerId: row.offer_id,
+        isFavorite: Boolean(Number(row.is_favorite)),
+        isApplied: Boolean(Number(row.is_applied))
+      }))
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/offer-status", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const offerId = coerceString(req.body?.offerId);
+    if (!userId || !offerId) {
+      return res.status(400).json({ error: "userId et offerId requis." });
+    }
+    const isFavorite = req.body?.isFavorite ? 1 : 0;
+    const isApplied = req.body?.isApplied ? 1 : 0;
+
+    await db.query(
+      `INSERT INTO offer_status (id, user_id, offer_id, is_favorite, is_applied, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       ON CONFLICT (user_id, offer_id)
+       DO UPDATE SET is_favorite = $4, is_applied = $5, updated_at = $6`,
+      [`offer-status-${crypto.randomUUID()}`, userId, offerId, isFavorite, isApplied, nowIso()]
+    );
+
+    return res.json({ offerId, isFavorite: Boolean(isFavorite), isApplied: Boolean(isApplied) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.post("/api/matches", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
@@ -1387,6 +1462,391 @@ app.get("/api/matches/latest", async (req, res) => {
     });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/interviews", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const track = coerceString(req.body?.track);
+    const payload = req.body?.payload;
+
+    if (!userId || !track || !payload) {
+      return res.status(400).json({ error: "userId, track et payload requis." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const id = `interview-${crypto.randomUUID()}`;
+    const createdAt = nowIso();
+    const averageScore = Number(payload.averageScore) || 0;
+
+    await db.query(
+      "INSERT INTO interview_attempts (id, user_id, created_at, track, average_score, payload_json) VALUES ($1, $2, $3, $4, $5, $6)",
+      [id, userId, createdAt, track, averageScore, JSON.stringify(payload)]
+    );
+
+    return res.status(201).json({
+      attempt: { id, userId, createdAt, track, averageScore, ...payload }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/interviews", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+
+    const { rows } = await db.query(
+      "SELECT id, user_id, created_at, track, average_score, payload_json FROM interview_attempts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 30",
+      [userId]
+    );
+
+    return res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        createdAt: row.created_at,
+        track: row.track,
+        averageScore: row.average_score,
+        ...parseJsonField(row.payload_json, {})
+      }))
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Analyse approfondie à la demande (bouton "Analyse approfondie IA" côté client).
+// Reste optionnelle : l'évaluation heuristique (interviewEvaluation.js, côté client)
+// s'affiche toujours immédiatement ; ce endpoint n'est appelé que si l'utilisateur
+// clique explicitement, pour maîtriser le coût API (cf. Chapitre 5 du mémoire).
+//
+// Gating d'usage (cohérent avec la stratégie freemium décrite au §1.2.2 du mémoire) :
+// 3 analyses IA gratuites par mois par utilisateur (même chiffre que celui déjà retenu
+// pour les simulations d'entretien freemium dans les supports business), illimité pour
+// les comptes premium. Sans ce garde-fou, une fonctionnalité à coût variable réel
+// (3€/15€ par million de tokens, cf. simulateur de coûts) serait exposée sans limite.
+const FREE_AI_EVALUATIONS_PER_MONTH = 3;
+
+async function countAiUsageThisMonth(userId, feature) {
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const { rows } = await db.query(
+    "SELECT COUNT(*) AS count FROM ai_usage_log WHERE user_id = $1 AND feature = $2 AND created_at >= $3",
+    [userId, feature, monthStart.toISOString()]
+  );
+  return Number(rows[0]?.count || 0);
+}
+
+app.post("/api/interviews/evaluate-ai", async (req, res) => {
+  try {
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(503).json({
+        error: "Analyse IA indisponible : aucune clé ANTHROPIC_API_KEY configurée côté serveur (.env)."
+      });
+    }
+
+    const userId = coerceString(req.body?.userId);
+    const question = coerceString(req.body?.question);
+    const answer = coerceString(req.body?.answer);
+    const personaName = coerceString(req.body?.personaName);
+    const personaSubtitle = coerceString(req.body?.personaSubtitle);
+
+    if (!userId || !question || !answer) {
+      return res.status(400).json({ error: "userId, question et answer requis." });
+    }
+
+    const userRow = await getUserRowById(userId);
+    if (!userRow) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const premium = await computePremiumAccess(userRow);
+    if (!premium.hasAccess) {
+      const usedThisMonth = await countAiUsageThisMonth(userId, "interview-ai-evaluation");
+      if (usedThisMonth >= FREE_AI_EVALUATIONS_PER_MONTH) {
+        return res.status(402).json({
+          error: `Limite atteinte : ${FREE_AI_EVALUATIONS_PER_MONTH} analyses IA gratuites par mois. Passe premium pour un accès illimité.`,
+          code: "AI_QUOTA_EXCEEDED",
+          used: usedThisMonth,
+          limit: FREE_AI_EVALUATIONS_PER_MONTH
+        });
+      }
+    }
+
+    const systemPrompt = [
+      `Tu es ${personaName || "un recruteur"} (${personaSubtitle || "entretien d'embauche"}).`,
+      "Tu évalues la réponse d'un candidat à une question d'entretien, avec bienveillance mais exigence.",
+      "Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après, au format exact :",
+      '{"score": <entier 0-100>, "strengths": ["...", "..."], "improvements": ["...", "..."], "suggestedAnswer": "..."}',
+      "strengths et improvements : 1 à 3 points courts et concrets, en français.",
+      "suggestedAnswer : une reformulation brève (3-4 phrases max) montrant une meilleure réponse possible."
+    ].join(" ");
+
+    const userPrompt = `Question posée : "${question}"\n\nRéponse du candidat : "${answer}"`;
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 500,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }]
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      console.error("Anthropic API error:", response.status, errorBody);
+      return res.status(502).json({ error: "L'API d'évaluation IA a renvoyé une erreur. Réessaie plus tard." });
+    }
+
+    const data = await response.json();
+    const rawText = (data.content || [])
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("");
+
+    let parsed;
+    try {
+      const cleaned = rawText.replace(/```json|```/g, "").trim();
+      parsed = JSON.parse(cleaned);
+    } catch (_parseError) {
+      return res.status(502).json({ error: "Réponse IA illisible, réessaie." });
+    }
+
+    await db.query(
+      "INSERT INTO ai_usage_log (id, user_id, created_at, feature) VALUES ($1, $2, $3, $4)",
+      [`ai-usage-${crypto.randomUUID()}`, userId, nowIso(), "interview-ai-evaluation"]
+    );
+
+    const remaining = premium.hasAccess
+      ? null
+      : Math.max(0, FREE_AI_EVALUATIONS_PER_MONTH - ((await countAiUsageThisMonth(userId, "interview-ai-evaluation"))));
+
+    return res.json({
+      score: Math.max(0, Math.min(100, Number(parsed.score) || 0)),
+      strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 3) : [],
+      improvements: Array.isArray(parsed.improvements) ? parsed.improvements.slice(0, 3) : [],
+      suggestedAnswer: coerceString(parsed.suggestedAnswer),
+      quota: premium.hasAccess ? { unlimited: true } : { unlimited: false, remaining, limit: FREE_AI_EVALUATIONS_PER_MONTH }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur lors de l'analyse IA." });
+  }
+});
+
+// Entretien "live" (mode avatar + audio, cf. mémoire §2.1.2.3 V2.2/V2.3) : génère
+// la prochaine réplique de l'IA-recruteur, en personnage, adaptée à l'offre traitée.
+// Fonctionnalité premium (déjà annoncée au §1.2.2 du mémoire : "simulations
+// d'entretien vocales" fait partie des fonctionnalités premium) — pas de quota
+// gratuit séparé à inventer, on réutilise la logique premium existante.
+const LIVE_TURN_MAX_HISTORY = 12; // limite la fenêtre de contexte envoyée (coût/latence)
+
+app.post("/api/interviews/live-turn", async (req, res) => {
+  try {
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(503).json({
+        error: "Entretien live indisponible : aucune clé ANTHROPIC_API_KEY configurée côté serveur (.env)."
+      });
+    }
+
+    const userId = coerceString(req.body?.userId);
+    const personaName = coerceString(req.body?.personaName);
+    const personaSubtitle = coerceString(req.body?.personaSubtitle);
+    const offerTitle = coerceString(req.body?.offerTitle);
+    const offerCompany = coerceString(req.body?.offerCompany);
+    const offerSkills = Array.isArray(req.body?.offerSkills) ? req.body.offerSkills.slice(0, 12) : [];
+    const history = Array.isArray(req.body?.history) ? req.body.history.slice(-LIVE_TURN_MAX_HISTORY) : [];
+    const userMessage = coerceString(req.body?.userMessage);
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+    const userRow = await getUserRowById(userId);
+    if (!userRow) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const premium = await computePremiumAccess(userRow);
+    if (!premium.hasAccess) {
+      return res.status(402).json({
+        error: "L'entretien live avec avatar IA est une fonctionnalité premium. Complète ton profil pour la débloquer.",
+        code: "PREMIUM_REQUIRED"
+      });
+    }
+
+    const offerLine = offerTitle
+      ? `Le candidat postule pour : ${offerTitle}${offerCompany ? ` chez ${offerCompany}` : ""}.${
+          offerSkills.length ? ` Compétences clés recherchées pour ce poste : ${offerSkills.join(", ")}.` : ""
+        } Adapte tes questions à ce poste précis plutôt qu'à un entretien générique.`
+      : "Aucune offre précise n'a été fournie : mène un entretien généraliste pour le profil du candidat.";
+
+    const turnCount = history.filter((m) => m.role === "assistant").length;
+    const shouldClose = turnCount >= 4;
+
+    const systemPrompt = [
+      `Tu es ${personaName || "un recruteur professionnel"} (${personaSubtitle || "entretien d'embauche"}).`,
+      "Tu mènes un entretien d'embauche oral avec le candidat, question par question, comme un vrai recruteur.",
+      offerLine,
+      "Règles strictes : une seule question ou réaction à la fois. Réponse courte (2 à 4 phrases maximum),",
+      "naturelle à l'oral (elle sera lue par une synthèse vocale). Réagis brièvement à la réponse précédente",
+      "avant d'enchaîner sur la question suivante, comme dans une vraie conversation.",
+      shouldClose
+        ? "C'est le moment de conclure l'entretien : remercie le candidat et donne une impression générale brève, sans nouvelle question."
+        : "Pose une nouvelle question pertinente pour ce poste."
+    ].join(" ");
+
+    const messages = [
+      ...history.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.text })),
+      ...(userMessage ? [{ role: "user", content: userMessage }] : [])
+    ];
+
+    if (!messages.length) {
+      messages.push({ role: "user", content: "Bonjour, je suis prêt(e) à commencer l'entretien." });
+    }
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 220,
+        system: systemPrompt,
+        messages
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      console.error("Anthropic API error (live-turn):", response.status, errorBody);
+      return res.status(502).json({ error: "L'API d'entretien live a renvoyé une erreur. Réessaie." });
+    }
+
+    const data = await response.json();
+    const reply = (data.content || [])
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("")
+      .trim();
+
+    await db.query(
+      "INSERT INTO ai_usage_log (id, user_id, created_at, feature) VALUES ($1, $2, $3, $4)",
+      [`ai-usage-${crypto.randomUUID()}`, userId, nowIso(), "interview-live-turn"]
+    );
+
+    return res.json({ reply, isClosing: shouldClose });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur lors de l'entretien live." });
+  }
+});
+
+// Réécriture du CV par IA (fonctionnalité premium, cf. mémoire §1.2.2 :
+// "recommandations personnalisées" fait partie des fonctionnalités premium).
+// Réutilise la même clé/API que l'évaluation d'entretien et l'entretien live —
+// pas de nouvelle intégration à documenter, juste un nouveau prompt.
+app.post("/api/cv/rewrite-ai", async (req, res) => {
+  try {
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(503).json({
+        error: "Réécriture IA indisponible : aucune clé ANTHROPIC_API_KEY configurée côté serveur (.env)."
+      });
+    }
+
+    const userId = coerceString(req.body?.userId);
+    const cvText = coerceString(req.body?.cvText);
+    const offerTitle = coerceString(req.body?.offerTitle);
+    const offerCompany = coerceString(req.body?.offerCompany);
+    const offerSkills = Array.isArray(req.body?.offerSkills) ? req.body.offerSkills.slice(0, 15) : [];
+    const missingSkills = Array.isArray(req.body?.missingSkills) ? req.body.missingSkills.slice(0, 10) : [];
+
+    if (!userId || !cvText) {
+      return res.status(400).json({ error: "userId et cvText requis." });
+    }
+
+    const userRow = await getUserRowById(userId);
+    if (!userRow) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const premium = await computePremiumAccess(userRow);
+    if (!premium.hasAccess) {
+      return res.status(402).json({
+        error: "La réécriture de CV par IA est une fonctionnalité premium. Complète ton profil pour la débloquer.",
+        code: "PREMIUM_REQUIRED"
+      });
+    }
+
+    const systemPrompt = [
+      "Tu es un coach carrière expert en rédaction de CV en français.",
+      "Réécris le CV fourni pour le rendre plus percutant, sans inventer d'expérience ni de compétence absente du CV original.",
+      "Reformule les descriptions d'expérience avec des verbes d'action et, quand c'est plausible à partir du texte fourni,",
+      "suggère des formulations quantifiées entre crochets (ex: [X%], [délai estimé]) plutôt que d'inventer des chiffres précis.",
+      offerTitle
+        ? `Le CV cible ce poste : ${offerTitle}${offerCompany ? ` chez ${offerCompany}` : ""}. Compétences recherchées : ${offerSkills.join(", ") || "non précisées"}.`
+        : "Aucune offre précise fournie : améliore le CV de façon générale.",
+      missingSkills.length
+        ? `Compétences demandées par l'offre mais absentes du CV : ${missingSkills.join(", ")}. Ne les ajoute pas au CV, mais signale-les en une phrase à la fin sous "Points de vigilance".`
+        : "",
+      "Réponds UNIQUEMENT avec le CV réécrit en texte brut structuré (sections claires), sans commentaire ni préambule,",
+      "suivi d'une section finale \"Points de vigilance\" si pertinent."
+    ].filter(Boolean).join(" ");
+
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01"
+      },
+      body: JSON.stringify({
+        model: ANTHROPIC_MODEL,
+        max_tokens: 1800,
+        system: systemPrompt,
+        messages: [{ role: "user", content: cvText }]
+      })
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => "");
+      console.error("Anthropic API error (cv/rewrite-ai):", response.status, errorBody);
+      return res.status(502).json({ error: "L'API de réécriture IA a renvoyé une erreur. Réessaie." });
+    }
+
+    const data = await response.json();
+    const rewritten = (data.content || [])
+      .filter((block) => block.type === "text")
+      .map((block) => block.text)
+      .join("")
+      .trim();
+
+    await db.query(
+      "INSERT INTO ai_usage_log (id, user_id, created_at, feature) VALUES ($1, $2, $3, $4)",
+      [`ai-usage-${crypto.randomUUID()}`, userId, nowIso(), "cv-rewrite"]
+    );
+
+    return res.json({ rewritten });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur lors de la réécriture IA." });
   }
 });
 

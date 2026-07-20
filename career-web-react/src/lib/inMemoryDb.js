@@ -202,3 +202,51 @@ export async function getLatestMatchRun(userId) {
 export async function getPremiumSnapshot(userId) {
   return request(`/premium?userId=${encodeURIComponent(userId)}`);
 }
+
+export async function saveInterviewAttempt(userId, track, payload) {
+  const data = await request("/interviews", {
+    method: "POST",
+    body: { userId, track, payload }
+  });
+  return data.attempt;
+}
+
+export async function listInterviewAttempts(userId) {
+  if (!userId) return [];
+  const data = await request(`/interviews?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function requestAiEvaluation({ userId, question, answer, personaName, personaSubtitle }) {
+  return request("/interviews/evaluate-ai", {
+    method: "POST",
+    body: { userId, question, answer, personaName, personaSubtitle }
+  });
+}
+
+export async function requestLiveTurn({ userId, personaName, personaSubtitle, offerTitle, offerCompany, offerSkills, history, userMessage }) {
+  return request("/interviews/live-turn", {
+    method: "POST",
+    body: { userId, personaName, personaSubtitle, offerTitle, offerCompany, offerSkills, history, userMessage }
+  });
+}
+
+export async function listOfferStatuses(userId) {
+  if (!userId) return [];
+  const data = await request(`/offer-status?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function updateOfferStatus(userId, offerId, patch) {
+  return request("/offer-status", {
+    method: "POST",
+    body: { userId, offerId, ...patch }
+  });
+}
+
+export async function requestCvRewrite({ userId, cvText, offerTitle, offerCompany, offerSkills, missingSkills }) {
+  return request("/cv/rewrite-ai", {
+    method: "POST",
+    body: { userId, cvText, offerTitle, offerCompany, offerSkills, missingSkills }
+  });
+}

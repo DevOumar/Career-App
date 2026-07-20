@@ -6,3 +6,6 @@ server/postgres-data
 server/postgres-data-recovery-*
 server/postgres-data-broken-*
 server/pgdata2
+.env
+env
+venv/
