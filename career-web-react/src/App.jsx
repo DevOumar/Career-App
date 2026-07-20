@@ -6,19 +6,36 @@ import {
   getLatestMatchRun,
   getPremiumSnapshot,
   getUserFromSession,
+  listInterviewAttempts,
+  listOfferStatuses,
   listOffers,
   listUserCvs,
   loginUser,
   logoutUser,
   registerUser,
+  requestAiEvaluation,
+  requestCvRewrite,
+  requestLiveTurn,
+  saveInterviewAttempt,
   saveMatchRun,
+  updateOfferStatus,
   updateUserAccount,
   updateUserAvatar,
   updateUserProfile
 } from "./lib/inMemoryDb";
-import { createCvRecord, readFileAsText } from "./lib/cvService";
-import { runMatching } from "./lib/matchingService";
+import { buildOptimizedCvText, createCvRecord, downloadOptimizedCvPdf, downloadTextFile, readFileAsText } from "./lib/cvService";
+import { EDUCATION_LEVELS } from "./data/skills";
+import { filterScoredOffers, runMatching } from "./lib/matchingService";
 import { INTERVIEW_SCRIPTS } from "./lib/interviewScripts";
+import {
+  createMicLevelMeter,
+  isSpeechRecognitionSupported,
+  isSpeechSynthesisSupported,
+  listenOnce,
+  speak,
+  stopSpeaking
+} from "./lib/liveInterview";
+import { evaluateAnswer, summarizeSession } from "./lib/interviewEvaluation";
 
 const NAV_ITEMS = [
   { id: "home", label: "Accueil", always: true, icon: "home" },
@@ -286,6 +303,7 @@ export default function App() {
   const [latestCv, setLatestCv] = useState(null);
   const [cvHistory, setCvHistory] = useState([]);
   const [latestMatch, setLatestMatch] = useState(null);
+  const [offerStatuses, setOfferStatuses] = useState({}); // { [offerId]: { isFavorite, isApplied } }
 
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analyseProgress, setAnalyseProgress] = useState(0);
@@ -350,6 +368,22 @@ export default function App() {
     setPremium(snapshot.premium);
     setCvHistory(await listUserCvs(snapshot.user.id));
     setLatestMatch(await getLatestMatchRun(snapshot.user.id));
+    const statuses = await listOfferStatuses(snapshot.user.id);
+    setOfferStatuses(
+      Object.fromEntries(statuses.map((s) => [s.offerId, { isFavorite: s.isFavorite, isApplied: s.isApplied }]))
+    );
+  }
+
+  async function handleToggleOfferStatus(offerId, patch) {
+    if (!user) return;
+    const current = offerStatuses[offerId] || { isFavorite: false, isApplied: false };
+    const next = { ...current, ...patch };
+    setOfferStatuses((prev) => ({ ...prev, [offerId]: next })); // optimiste
+    try {
+      await updateOfferStatus(user.id, offerId, next);
+    } catch (_error) {
+      setOfferStatuses((prev) => ({ ...prev, [offerId]: current })); // rollback si échec
+    }
   }
 
   function clearMessages() {
@@ -453,6 +487,18 @@ export default function App() {
     }
   }
 
+  async function handleCorrectExtraction(correctedFields) {
+    if (!user) return;
+    try {
+      const updated = await updateUserProfile(user.id, correctedFields);
+      setSession({ user: updated.user, premium: updated.premium });
+      setPremium(updated.premium);
+      setPageMessage("Corrections enregistrées dans ton profil.");
+    } catch (error) {
+      setProcessingError(error.message || "Échec de l'enregistrement des corrections.");
+    }
+  }
+
   async function handleProfileSave(profilePayload) {
     if (!user) return;
     try {
@@ -539,7 +585,8 @@ export default function App() {
         cvRecord: latestCv,
         offerText,
         offers,
-        premiumAccess: premiumSnapshot
+        premiumAccess: premiumSnapshot,
+        cvSignals: latestCv?.parsed?.signals
       });
 
       await saveMatchRun(user.id, result);
@@ -682,11 +729,13 @@ export default function App() {
         {activePage === "home" ? (
           <HomePage
             onStart={() => goTo("import")}
+            onNavigate={goTo}
             user={user}
             premium={premium}
             profileCompleteness={profileCompleteness}
             latestMatch={latestMatch}
             cvCount={cvHistory.length}
+            favoriteCount={Object.values(offerStatuses).filter((s) => s.isFavorite).length}
           />
         ) : null}
         {activePage === "import" ? (
@@ -703,6 +752,7 @@ export default function App() {
             canAnalyse={canAnalyse}
             isAnalysing={isAnalysing}
             analyseProgress={analyseProgress}
+            onCorrectExtraction={handleCorrectExtraction}
           />
         ) : null}
 
@@ -720,9 +770,20 @@ export default function App() {
         ) : null}
 
         {activePage === "analyse" ? <AnalysisPage matchData={latestMatch} /> : null}
-        {activePage === "offres" ? <OffersPage matchData={latestMatch} premium={premium} /> : null}
-        {activePage === "cv" ? <CvAdvicePage matchData={latestMatch} /> : null}
-        {activePage === "entretiens" ? <InterviewPage /> : null}
+        {activePage === "offres" ? (
+          <OffersPage
+            matchData={latestMatch}
+            premium={premium}
+            offerStatuses={offerStatuses}
+            onToggleStatus={handleToggleOfferStatus}
+          />
+        ) : null}
+        {activePage === "cv" ? (
+          <CvAdvicePage matchData={latestMatch} latestCv={latestCv} userId={user?.id} premium={premium} />
+        ) : null}
+        {activePage === "entretiens" ? (
+          <InterviewPage userId={user?.id} offer={latestMatch?.bestMatch?.offer} premium={premium} />
+        ) : null}
       </main>
 
       {securityOpen ? (
@@ -1087,7 +1148,7 @@ function AuthScreen({ onLogin, onSignup, error, helper }) {
   );
 }
 
-function HomePage({ onStart, user, premium, profileCompleteness, latestMatch, cvCount }) {
+function HomePage({ onStart, onNavigate, user, premium, profileCompleteness, latestMatch, cvCount, favoriteCount }) {
   const userLabel = `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "Utilisateur";
   const roleLabel = getAccountLabel(user?.roleType);
   const profileLabel =
@@ -1124,6 +1185,41 @@ function HomePage({ onStart, user, premium, profileCompleteness, latestMatch, cv
         L'expérience est fluide : onboarding métier, import du CV, analyse du match, optimisation et entraînement.
       </p>
 
+      <div className="dashboard-cards">
+        <button className="dash-card" onClick={() => onNavigate("analyse")} disabled={!latestMatch}>
+          <span className="dash-card-label">Dernier score</span>
+          <strong className="dash-card-value">
+            {latestMatch ? `${latestMatch.summary.globalScore}/100` : "—"}
+          </strong>
+          <span className="dash-card-sub">
+            {latestMatch ? latestMatch.summary.title : "Lance une analyse"}
+          </span>
+        </button>
+
+        <button className="dash-card" onClick={() => onNavigate("offres")}>
+          <span className="dash-card-label">Offres suivies</span>
+          <strong className="dash-card-value">{favoriteCount || 0}</strong>
+          <span className="dash-card-sub">favoris enregistrés</span>
+        </button>
+
+        <button className="dash-card" onClick={() => onNavigate("import")}>
+          <span className="dash-card-label">CV importés</span>
+          <strong className="dash-card-value">{cvCount}</strong>
+          <span className="dash-card-sub">{cvCount > 0 ? "Importer une nouvelle version" : "Commencer l'import"}</span>
+        </button>
+
+        <button
+          className={`dash-card ${premium?.hasAccess ? "dash-card-premium" : ""}`}
+          onClick={() => onNavigate("profil")}
+        >
+          <span className="dash-card-label">Statut</span>
+          <strong className="dash-card-value">{premium?.hasAccess ? "Premium" : "Free"}</strong>
+          <span className="dash-card-sub">
+            {premium?.hasAccess ? "Accès complet débloqué" : "Complète ton profil pour débloquer"}
+          </span>
+        </button>
+      </div>
+
       <div className="workflow-strip">
         {HOME_WORKFLOW_STEPS.map((item) => (
           <article key={item.number}>
@@ -1154,6 +1250,80 @@ function HomePage({ onStart, user, premium, profileCompleteness, latestMatch, cv
     </section>
   );
 }
+function CvExtractionPreview({ latestCv, onCorrectExtraction }) {
+  const parsed = latestCv?.parsed;
+  const [skillsText, setSkillsText] = useState("");
+  const [experienceYears, setExperienceYears] = useState(0);
+  const [education, setEducation] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (!parsed) return;
+    setSkillsText((parsed.skills || []).join(", "));
+    setExperienceYears(parsed.experienceYears || 0);
+    setEducation(parsed.education || "");
+    setSaved(false);
+  }, [latestCv?.fileName, parsed]);
+
+  if (!parsed) return null;
+
+  const confidence = parsed.signals?.extractionConfidence || "moyenne";
+
+  async function handleSave() {
+    const skills = skillsText
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    await onCorrectExtraction?.({ skills, experienceYears: Number(experienceYears) || 0, education });
+    setSaved(true);
+  }
+
+  return (
+    <div className="card block cv-preview">
+      <div className="cv-preview-head">
+        <h3>Aperçu de l'extraction</h3>
+        <span className={`tag confidence-${confidence === "haute" ? "great" : confidence === "basse" ? "low" : "medium"}`}>
+          Confiance : {confidence}
+        </span>
+      </div>
+      <p className="muted small">
+        Ces informations ont été détectées automatiquement dans ton CV. Corrige-les si besoin avant de lancer une analyse.
+      </p>
+
+      <label className="cv-preview-field">
+        <span>Compétences détectées (séparées par des virgules)</span>
+        <textarea value={skillsText} onChange={(event) => setSkillsText(event.target.value)} rows={2} />
+      </label>
+
+      <div className="cv-preview-row">
+        <label className="cv-preview-field">
+          <span>Années d'expérience</span>
+          <input
+            type="number"
+            min="0"
+            step="0.5"
+            value={experienceYears}
+            onChange={(event) => setExperienceYears(event.target.value)}
+          />
+        </label>
+        <label className="cv-preview-field">
+          <span>Niveau d'études</span>
+          <select value={education} onChange={(event) => setEducation(event.target.value)}>
+            <option value="">Non détecté</option>
+            {EDUCATION_LEVELS.map((level) => (
+              <option key={level} value={level}>{level}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <button type="button" className="btn-secondary" onClick={handleSave}>
+        {saved ? "✓ Corrections enregistrées" : "Enregistrer les corrections"}
+      </button>
+    </div>
+  );
+}
+
 function ImportPage({
   latestCv,
   cvHistory,
@@ -1166,22 +1336,37 @@ function ImportPage({
   onAnalyse,
   canAnalyse,
   isAnalysing,
-  analyseProgress
+  analyseProgress,
+  onCorrectExtraction
 }) {
+  const [isDragging, setIsDragging] = useState(false);
+
+  function handleDrop(event) {
+    event.preventDefault();
+    setIsDragging(false);
+    const file = event.dataTransfer.files?.[0];
+    if (file) onFileUpload(file);
+  }
+
   return (
     <section className="section-grid">
       <div className="card block">
         <h2>Importer ton CV</h2>
         <p className="muted">Import de fichier ou collage manuel pour alimenter automatiquement le profil.</p>
 
-        <label className={`upload-zone ${latestCv ? "done" : ""}`}>
+        <label
+          className={`upload-zone ${latestCv ? "done" : ""} ${isDragging ? "dragging" : ""}`}
+          onDragOver={(event) => { event.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+        >
           <input
             type="file"
             accept=".txt,.md,.pdf,.doc,.docx"
             onChange={(event) => onFileUpload(event.target.files?.[0])}
           />
-          <strong>{latestCv ? latestCv.fileName : "Choisir un fichier CV"}</strong>
-          <span>{latestCv ? "CV détecté et analysé" : "Formats acceptés: txt, pdf, doc, docx"}</span>
+          <strong>{latestCv ? latestCv.fileName : isDragging ? "Dépose ton CV ici" : "Choisir un fichier CV"}</strong>
+          <span>{latestCv ? "CV détecté et analysé" : "Formats acceptés: txt, pdf, doc, docx — ou glisse-dépose le fichier ici"}</span>
         </label>
 
         <div className="divider-small">ou</div>
@@ -1195,6 +1380,8 @@ function ImportPage({
         <button className="btn-secondary" onClick={onDraftImport}>
           Importer le texte CV
         </button>
+
+        <CvExtractionPreview latestCv={latestCv} onCorrectExtraction={onCorrectExtraction} />
 
         <div className="cv-history">
           <h3>Historique CV</h3>
@@ -1611,17 +1798,36 @@ function RoleSpecificFields({ form, updateField }) {
   );
 }
 
+function scoreTier(value) {
+  if (value >= 75) return "great";
+  if (value >= 60) return "good";
+  if (value >= 45) return "medium";
+  return "low";
+}
+
+function confidenceBadge(level) {
+  if (level === "basse") {
+    return { label: "⚠️ Confiance d'extraction basse", tone: "low" };
+  }
+  if (level === "moyenne") {
+    return { label: "Confiance d'extraction moyenne", tone: "medium" };
+  }
+  return { label: "✓ Confiance d'extraction haute", tone: "great" };
+}
+
 function AnalysisPage({ matchData }) {
   if (!matchData) {
     return <Placeholder title="Analyse indisponible" text="Importe un CV et lance le matching depuis l'onglet Importer." />;
   }
 
   const { summary, domainScores, strengths, gaps, bestMatch } = matchData;
+  const tier = scoreTier(summary.globalScore);
+  const badge = confidenceBadge(summary.extractionConfidence);
 
   return (
     <section className="analysis-page">
-      <div className="score-hero card">
-        <div className="score-ring" style={{ "--pct": `${summary.globalScore}%` }}>
+      <div className={`score-hero card tier-${tier}`}>
+        <div className={`score-ring tier-${tier}`} style={{ "--pct": `${summary.globalScore}%` }}>
           <strong>{summary.globalScore}</strong>
           <span>/100</span>
         </div>
@@ -1631,9 +1837,14 @@ function AnalysisPage({ matchData }) {
           </h2>
           <p>{summary.subtitle}</p>
           <div className="tag-row">
-            <span className="tag">Couverture compétences: {bestMatch.skillCoverage}%</span>
-            <span className="tag">Adéquation expérience: {bestMatch.experienceFit}%</span>
-            <span className="tag">Verdict: {summary.verdict}</span>
+            <span className={`tag tier-${scoreTier(bestMatch.skillCoverage)}`}>
+              Couverture compétences: {bestMatch.skillCoverage}%
+            </span>
+            <span className={`tag tier-${scoreTier(bestMatch.experienceFit)}`}>
+              Adéquation expérience: {bestMatch.experienceFit}%
+            </span>
+            <span className={`tag tier-${tier}`}>Verdict: {summary.verdict}</span>
+            <span className={`tag confidence-${badge.tone}`}>{badge.label}</span>
           </div>
         </div>
       </div>
@@ -1648,7 +1859,7 @@ function AnalysisPage({ matchData }) {
                 <span>{item.value}%</span>
               </div>
               <div className="bar-track">
-                <div className="bar-fill" style={{ width: `${item.value}%` }} />
+                <div className={`bar-fill tier-${scoreTier(item.value)}`} style={{ width: `${item.value}%` }} />
               </div>
             </div>
           ))}
@@ -1657,16 +1868,16 @@ function AnalysisPage({ matchData }) {
         <div className="card block">
           <h3>Lecture rapide</h3>
           <div className="point-group">
-            <h4>Points forts</h4>
-            <ul>
+            <h4 className="point-title-good">✓ Points forts</h4>
+            <ul className="point-list-good">
               {strengths.map((point, idx) => (
                 <li key={`${point}-${idx}`}>{point}</li>
               ))}
             </ul>
           </div>
           <div className="point-group">
-            <h4>Points à combler</h4>
-            <ul>
+            <h4 className="point-title-warn">⚠ Points à combler</h4>
+            <ul className="point-list-warn">
               {gaps.map((gap, idx) => (
                 <li key={`${gap}-${idx}`}>{gap}</li>
               ))}
@@ -1678,10 +1889,37 @@ function AnalysisPage({ matchData }) {
   );
 }
 
-function OffersPage({ matchData, premium }) {
+function OffersPage({ matchData, premium, offerStatuses = {}, onToggleStatus }) {
+  const [query, setQuery] = useState("");
+  const [sector, setSector] = useState("");
+  const [location, setLocation] = useState("");
+  const [sortBy, setSortBy] = useState("score"); // score | company | favorites
+
+  const sectorOptions = useMemo(() => {
+    if (!matchData) return [];
+    return unique(matchData.rankedOffers.map((item) => item.offer.sector)).sort();
+  }, [matchData]);
+
+  const locationOptions = useMemo(() => {
+    if (!matchData) return [];
+    return unique(matchData.rankedOffers.map((item) => item.offer.location)).sort();
+  }, [matchData]);
+
   if (!matchData) {
     return <Placeholder title="Offres indisponibles" text="Lance une analyse pour débloquer la comparaison des offres." />;
   }
+
+  const filteredOffers = filterScoredOffers(matchData.rankedOffers, { query, sector, location });
+
+  const sortedOffers = [...filteredOffers].sort((a, b) => {
+    if (sortBy === "company") return a.offer.company.localeCompare(b.offer.company);
+    if (sortBy === "favorites") {
+      const aFav = offerStatuses[a.offer.id]?.isFavorite ? 1 : 0;
+      const bFav = offerStatuses[b.offer.id]?.isFavorite ? 1 : 0;
+      return bFav - aFav || b.score - a.score;
+    }
+    return b.score - a.score; // "score" par défaut
+  });
 
   return (
     <section className="offers-page">
@@ -1695,8 +1933,51 @@ function OffersPage({ matchData, premium }) {
         </p>
       </div>
 
+      <div className="card block offers-filters">
+        <input
+          type="text"
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Rechercher un poste, une entreprise, une compétence..."
+        />
+        <select value={sector} onChange={(event) => setSector(event.target.value)}>
+          <option value="">Tous secteurs</option>
+          {sectorOptions.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+        <select value={location} onChange={(event) => setLocation(event.target.value)}>
+          <option value="">Toutes localisations</option>
+          {locationOptions.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+        <select value={sortBy} onChange={(event) => setSortBy(event.target.value)} className="offers-sort">
+          <option value="score">Trier par score</option>
+          <option value="company">Trier par entreprise (A-Z)</option>
+          <option value="favorites">Favoris d'abord</option>
+        </select>
+        {(query || sector || location) ? (
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={() => { setQuery(""); setSector(""); setLocation(""); }}
+          >
+            Réinitialiser
+          </button>
+        ) : null}
+        <span className="muted offers-filter-count">
+          {filteredOffers.length} / {matchData.rankedOffers.length} offres
+        </span>
+      </div>
+
       <div className="offers-grid">
-        {matchData.rankedOffers.map((item) => (
+        {sortedOffers.length === 0 ? (
+          <p className="muted">Aucune offre ne correspond à ces filtres.</p>
+        ) : null}
+        {sortedOffers.map((item) => {
+          const status = offerStatuses[item.offer.id] || { isFavorite: false, isApplied: false };
+          return (
           <article key={item.offer.id} className={`offer-card ${item.locked ? "locked" : ""}`}>
             <div className="offer-top">
               <div>
@@ -1713,6 +1994,7 @@ function OffersPage({ matchData, premium }) {
               <span className="tag">compétences {item.skillCoverage}%</span>
               {item.offer.premium ? <span className="tag premium">Premium</span> : null}
               {item.locked ? <span className="tag crit">Verrouillé</span> : null}
+              {status.isApplied ? <span className="tag applied">✓ Déjà postulé</span> : null}
             </div>
 
             <div className="offer-body">
@@ -1725,16 +2007,89 @@ function OffersPage({ matchData, premium }) {
                 <p>{item.missingSkills.length ? item.missingSkills.slice(0, 5).join(", ") : "Aucun écart majeur"}</p>
               </div>
             </div>
+
+            <div className="offer-actions">
+              <button
+                type="button"
+                className={`offer-action-btn ${status.isFavorite ? "active-fav" : ""}`}
+                onClick={() => onToggleStatus?.(item.offer.id, { isFavorite: !status.isFavorite })}
+              >
+                {status.isFavorite ? "★ Favori" : "☆ Ajouter aux favoris"}
+              </button>
+              <button
+                type="button"
+                className={`offer-action-btn ${status.isApplied ? "active-applied" : ""}`}
+                onClick={() => onToggleStatus?.(item.offer.id, { isApplied: !status.isApplied })}
+              >
+                {status.isApplied ? "✓ Postulé" : "Marquer comme postulé"}
+              </button>
+            </div>
           </article>
-        ))}
+          );
+        })}
       </div>
     </section>
   );
 }
 
-function CvAdvicePage({ matchData }) {
+function CvAdvicePage({ matchData, latestCv, userId, premium }) {
+  const [exporting, setExporting] = useState(false);
+  const [rewriteStatus, setRewriteStatus] = useState("idle"); // idle | loading | done | error
+  const [rewrittenText, setRewrittenText] = useState("");
+  const [rewriteError, setRewriteError] = useState("");
+
   if (!matchData) {
     return <Placeholder title="Recommandations indisponibles" text="Lance une analyse pour générer les recommandations CV." />;
+  }
+
+  async function handleExportPdf() {
+    setExporting(true);
+    try {
+      await downloadOptimizedCvPdf({
+        cvRecord: latestCv,
+        recommendations: matchData.recommendations,
+        bestMatch: matchData.bestMatch
+      });
+    } catch (error) {
+      window.alert(`Échec de l'export PDF : ${error.message || error}`);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  function handleExportTxt() {
+    const content = buildOptimizedCvText({
+      cvRecord: latestCv,
+      recommendations: matchData.recommendations,
+      bestMatch: matchData.bestMatch
+    });
+    const safeName = (latestCv?.fileName || "cv").replace(/\.[^.]+$/, "");
+    downloadTextFile(`${safeName}-optimise.txt`, content);
+  }
+
+  async function handleAiRewrite() {
+    setRewriteStatus("loading");
+    setRewriteError("");
+    try {
+      const result = await requestCvRewrite({
+        userId,
+        cvText: latestCv?.sourceText || "",
+        offerTitle: matchData.bestMatch?.offer?.title,
+        offerCompany: matchData.bestMatch?.offer?.company,
+        offerSkills: matchData.bestMatch?.offer?.skills,
+        missingSkills: matchData.bestMatch?.missingSkills
+      });
+      setRewrittenText(result.rewritten);
+      setRewriteStatus("done");
+    } catch (error) {
+      setRewriteError(error.message || "Échec de la réécriture IA.");
+      setRewriteStatus("error");
+    }
+  }
+
+  function handleExportRewrittenTxt() {
+    const safeName = (latestCv?.fileName || "cv").replace(/\.[^.]+$/, "");
+    downloadTextFile(`${safeName}-reecrit-ia.txt`, rewrittenText);
   }
 
   return (
@@ -1742,6 +2097,60 @@ function CvAdvicePage({ matchData }) {
       <div className="card block">
         <h2>Plan d'amélioration du CV</h2>
         <p className="muted">Recommandations automatiques basées sur les écarts détectés pendant le matching.</p>
+        <div className="cv-export-row">
+          <button type="button" className="btn-main" onClick={handleExportPdf} disabled={!latestCv || exporting}>
+            {exporting ? "Génération..." : "📄 Exporter le CV optimisé (PDF)"}
+          </button>
+          <button type="button" className="btn-secondary" onClick={handleExportTxt} disabled={!latestCv}>
+            Version texte (.txt)
+          </button>
+        </div>
+        <p className="muted small">
+          Le PDF reprend ton CV d'origine mis en page, précédé des recommandations à appliquer avant envoi.
+          Génération 100% locale (jsPDF), aucun coût ni appel serveur.
+        </p>
+      </div>
+
+      <div className="card block cv-rewrite-block">
+        <h3>✨ Réécriture du CV par IA</h3>
+        {!premium?.hasAccess ? (
+          <p className="muted">
+            🔒 Fonctionnalité premium. Complète ton profil pour débloquer la réécriture automatique de ton CV par IA,
+            adaptée à l'offre analysée.
+          </p>
+        ) : (
+          <>
+            <p className="muted small">
+              L'IA reformule ton CV (verbes d'action, mise en avant des points forts) sans inventer d'expérience,
+              en le ciblant sur l'offre analysée. Coût d'un appel API réel à chaque génération.
+            </p>
+            <button
+              type="button"
+              className="btn-main"
+              onClick={handleAiRewrite}
+              disabled={!latestCv || rewriteStatus === "loading"}
+            >
+              {rewriteStatus === "loading" ? "Réécriture en cours..." : "✨ Réécrire mon CV avec l'IA"}
+            </button>
+            {rewriteStatus === "error" ? <p className="ai-analysis-error">{rewriteError}</p> : null}
+
+            {rewriteStatus === "done" ? (
+              <div className="cv-rewrite-compare">
+                <div className="cv-rewrite-col">
+                  <h4>Avant (original)</h4>
+                  <pre className="cv-rewrite-text">{latestCv?.sourceText}</pre>
+                </div>
+                <div className="cv-rewrite-col">
+                  <h4>Après (réécrit par IA)</h4>
+                  <pre className="cv-rewrite-text highlighted">{rewrittenText}</pre>
+                  <button type="button" className="btn-secondary" onClick={handleExportRewrittenTxt}>
+                    Exporter cette version (.txt)
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
+        )}
       </div>
 
       {matchData.recommendations.map((item, index) => (
@@ -1757,13 +2166,19 @@ function CvAdvicePage({ matchData }) {
   );
 }
 
-function InterviewPage() {
+function InterviewPage({ userId, offer, premium }) {
+  const [mode, setMode] = useState("text"); // "text" | "live"
   const [track, setTrack] = useState("rh");
   const [messages, setMessages] = useState([]);
   const [step, setStep] = useState(0);
   const [input, setInput] = useState("");
   const [hintOpen, setHintOpen] = useState(false);
+  const [modelOpenIdx, setModelOpenIdx] = useState(null);
   const [doneTracks, setDoneTracks] = useState({});
+  const [answerEvaluations, setAnswerEvaluations] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState({}); // { [messageIdx]: { status, data, error } }
 
   const config = INTERVIEW_SCRIPTS[track];
   const currentQuestion = config.steps[step];
@@ -1773,40 +2188,127 @@ function InterviewPage() {
     resetTrack(track);
   }, [track]);
 
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    listInterviewAttempts(userId)
+      .then((items) => {
+        if (!cancelled) setHistory(items);
+      })
+      .finally(() => {
+        if (!cancelled) setHistoryLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
   function resetTrack(trackKey) {
     const first = INTERVIEW_SCRIPTS[trackKey].steps[0];
     setMessages([{ type: "ai", text: first.question }]);
     setStep(0);
     setInput("");
     setHintOpen(false);
+    setModelOpenIdx(null);
+    setAnswerEvaluations([]);
+    setAiAnalysis({});
   }
 
-  function submitReply() {
+  async function handleAiAnalysis(messageIdx, message) {
+    setAiAnalysis((prev) => ({ ...prev, [messageIdx]: { status: "loading" } }));
+    try {
+      const result = await requestAiEvaluation({
+        userId,
+        question: message.question,
+        answer: message.answer,
+        personaName: config.meta.name,
+        personaSubtitle: config.meta.subtitle
+      });
+      setAiAnalysis((prev) => ({ ...prev, [messageIdx]: { status: "done", data: result } }));
+    } catch (error) {
+      setAiAnalysis((prev) => ({
+        ...prev,
+        [messageIdx]: { status: "error", error: error.message || "Analyse IA indisponible." }
+      }));
+    }
+  }
+
+  async function submitReply() {
     const text = input.trim();
     if (!text || step >= config.steps.length) return;
 
     const reply = config.steps[step];
+    const evaluation = evaluateAnswer({ answer: text, step: reply });
+
     const nextMessages = [
       ...messages,
       { type: "user", text },
-      { type: "feedback", text: `Réponse modèle: ${reply.model}` }
+      {
+        type: "evaluation",
+        text: `Score : ${evaluation.score}/100`,
+        details: evaluation.feedback,
+        modelAnswer: reply.model,
+        question: reply.question,
+        answer: text
+      }
     ];
 
+    const nextEvaluations = [...answerEvaluations, evaluation];
     const nextStep = step + 1;
-    if (nextStep < config.steps.length) {
+    const isLastStep = nextStep >= config.steps.length;
+
+    if (!isLastStep) {
       nextMessages.push({ type: "ai", text: config.steps[nextStep].question });
     } else {
       setDoneTracks((prev) => ({ ...prev, [track]: true }));
+      const sessionSummary = summarizeSession(nextEvaluations);
+      if (userId) {
+        try {
+          const saved = await saveInterviewAttempt(userId, track, {
+            averageScore: sessionSummary.averageScore,
+            label: sessionSummary.label,
+            answerCount: nextEvaluations.length
+          });
+          setHistory((prev) => [saved, ...prev]);
+        } catch (_error) {
+          // La progression reste visible dans la session même si la sauvegarde échoue.
+        }
+      }
     }
 
     setMessages(nextMessages);
+    setAnswerEvaluations(nextEvaluations);
     setStep(nextStep);
     setInput("");
     setHintOpen(false);
   }
 
+  const sessionSummary = summarizeSession(answerEvaluations);
+  const trackHistory = history.filter((item) => item.track === track).slice(0, 5);
+
   return (
     <section className="interview-page">
+      <div className="mode-toggle">
+        <button
+          type="button"
+          className={`mode-btn ${mode === "text" ? "active" : ""}`}
+          onClick={() => setMode("text")}
+        >
+          💬 Mode texte
+        </button>
+        <button
+          type="button"
+          className={`mode-btn ${mode === "live" ? "active" : ""}`}
+          onClick={() => setMode("live")}
+        >
+          🎙️ Mode live (avatar IA)
+        </button>
+      </div>
+
+      {mode === "live" ? (
+        <LiveInterviewPanel userId={userId} track={track} setTrack={setTrack} offer={offer} premium={premium} />
+      ) : (
+        <>
       <div className="tabs">
         {Object.entries(INTERVIEW_SCRIPTS).map(([key, value]) => (
           <button
@@ -1819,6 +2321,19 @@ function InterviewPage() {
           </button>
         ))}
       </div>
+
+      {historyLoaded && trackHistory.length > 0 ? (
+        <div className="card block interview-progress">
+          <h4>Ta progression sur ce persona</h4>
+          <div className="progress-history-row">
+            {trackHistory.slice().reverse().map((attempt) => (
+              <span key={attempt.id} className="progress-pill" title={formatDate(attempt.createdAt)}>
+                {attempt.averageScore}/100
+              </span>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="chat card">
         <div className="chat-top">
@@ -1834,6 +2349,75 @@ function InterviewPage() {
           {messages.map((msg, idx) => (
             <div key={`${msg.type}-${idx}`} className={`msg ${msg.type}`}>
               <p>{msg.text}</p>
+              {msg.type === "evaluation" ? (
+                <>
+                  <ul className="eval-feedback">
+                    {msg.details.map((point, pointIdx) => (
+                      <li key={pointIdx}>{point}</li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    className="hint"
+                    onClick={() => setModelOpenIdx(modelOpenIdx === idx ? null : idx)}
+                  >
+                    {modelOpenIdx === idx ? "Masquer un exemple de réponse" : "Voir un exemple de réponse"}
+                  </button>
+                  {modelOpenIdx === idx ? <p className="hint-body">{msg.modelAnswer}</p> : null}
+
+                  {!aiAnalysis[idx] || aiAnalysis[idx].status === "error" ? (
+                    <button
+                      type="button"
+                      className="hint ai-analysis-btn"
+                      onClick={() => handleAiAnalysis(idx, msg)}
+                    >
+                      🔍 Analyse approfondie IA
+                    </button>
+                  ) : null}
+                  {aiAnalysis[idx]?.status === "error" ? (
+                    <p className="ai-analysis-error">{aiAnalysis[idx].error}</p>
+                  ) : null}
+                  {aiAnalysis[idx]?.status === "loading" ? (
+                    <p className="ai-analysis-loading">Analyse IA en cours...</p>
+                  ) : null}
+                  {aiAnalysis[idx]?.status === "done" ? (
+                    <div className="ai-analysis-result">
+                      <div className="ai-analysis-score">Score IA : {aiAnalysis[idx].data.score}/100</div>
+                      {aiAnalysis[idx].data.strengths.length ? (
+                        <>
+                          <h5>Points forts</h5>
+                          <ul>
+                            {aiAnalysis[idx].data.strengths.map((point, i) => (
+                              <li key={i}>{point}</li>
+                            ))}
+                          </ul>
+                        </>
+                      ) : null}
+                      {aiAnalysis[idx].data.improvements.length ? (
+                        <>
+                          <h5>À améliorer</h5>
+                          <ul>
+                            {aiAnalysis[idx].data.improvements.map((point, i) => (
+                              <li key={i}>{point}</li>
+                            ))}
+                          </ul>
+                        </>
+                      ) : null}
+                      {aiAnalysis[idx].data.suggestedAnswer ? (
+                        <>
+                          <h5>Suggestion de réponse</h5>
+                          <p>{aiAnalysis[idx].data.suggestedAnswer}</p>
+                        </>
+                      ) : null}
+                      {aiAnalysis[idx].data.quota && !aiAnalysis[idx].data.quota.unlimited ? (
+                        <p className="ai-quota-note">
+                          {aiAnalysis[idx].data.quota.remaining} analyse(s) IA gratuite(s) restante(s) ce mois-ci.
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
             </div>
           ))}
         </div>
@@ -1859,7 +2443,7 @@ function InterviewPage() {
           </>
         ) : (
           <div className="coaching-bilan">
-            <h4>Bilan coaching</h4>
+            <h4>Bilan coaching — score de session : {sessionSummary.averageScore}/100 ({sessionSummary.label})</h4>
             <div className="three-cols">
               <div>
                 <h5>Ce qui est bien</h5>
@@ -1882,10 +2466,220 @@ function InterviewPage() {
                 <p>{config.feedback.key}</p>
               </div>
             </div>
+            <button className="btn-secondary" onClick={() => resetTrack(track)}>
+              Rejouer cette session
+            </button>
           </div>
         )}
       </div>
+        </>
+      )}
     </section>
+  );
+}
+
+function LiveInterviewPanel({ userId, track, setTrack, offer, premium }) {
+  const [phase, setPhase] = useState("idle"); // idle | listening | thinking | speaking | closed
+  const [conversation, setConversation] = useState([]);
+  const [error, setError] = useState(null);
+  const [micLevel, setMicLevel] = useState(0);
+  const meterRef = useRef(null);
+  const rafRef = useRef(null);
+
+  const config = INTERVIEW_SCRIPTS[track];
+  const supported = isSpeechRecognitionSupported() && isSpeechSynthesisSupported();
+
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      meterRef.current?.cleanup?.();
+    };
+  }, []);
+
+  function stopMicMeter() {
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    meterRef.current?.cleanup?.();
+    meterRef.current = null;
+    setMicLevel(0);
+  }
+
+  async function startMicMeter() {
+    try {
+      const meter = await createMicLevelMeter();
+      meterRef.current = meter;
+      const loop = () => {
+        setMicLevel(meter.getLevel());
+        rafRef.current = requestAnimationFrame(loop);
+      };
+      loop();
+    } catch (_error) {
+      // Visualisation audio optionnelle : si le micro n'est pas accessible pour
+      // l'AnalyserNode, la reconnaissance vocale (listenOnce) peut tout de même
+      // fonctionner de son côté ; on n'affiche pas d'erreur bloquante ici.
+    }
+  }
+
+  async function playAiTurn(nextUserMessage) {
+    setPhase("thinking");
+    setError(null);
+    try {
+      const result = await requestLiveTurn({
+        userId,
+        personaName: config.meta.name,
+        personaSubtitle: config.meta.subtitle,
+        offerTitle: offer?.title,
+        offerCompany: offer?.company,
+        offerSkills: offer?.skills,
+        history: conversation,
+        userMessage: nextUserMessage
+      });
+
+      const updatedConversation = [
+        ...conversation,
+        ...(nextUserMessage ? [{ role: "user", text: nextUserMessage }] : []),
+        { role: "assistant", text: result.reply }
+      ];
+      setConversation(updatedConversation);
+
+      setPhase("speaking");
+      await speak(result.reply, {
+        onStart: () => setPhase("speaking"),
+        onEnd: () => setPhase(result.isClosing ? "closed" : "idle")
+      });
+    } catch (err) {
+      setError(err.message || "Erreur pendant l'entretien live.");
+      setPhase("idle");
+    }
+  }
+
+  async function handleTalk() {
+    setPhase("listening");
+    setError(null);
+    await startMicMeter();
+    try {
+      const transcript = await listenOnce({ onEnd: stopMicMeter });
+      stopMicMeter();
+      if (!transcript) {
+        setPhase("idle");
+        return;
+      }
+      await playAiTurn(transcript);
+    } catch (err) {
+      stopMicMeter();
+      setError(err.message || "Erreur de reconnaissance vocale.");
+      setPhase("idle");
+    }
+  }
+
+  function handleRestart() {
+    stopSpeaking();
+    stopMicMeter();
+    setConversation([]);
+    setError(null);
+    setPhase("idle");
+  }
+
+  if (!premium?.hasAccess) {
+    return (
+      <div className="card block live-locked">
+        <h3>🔒 Entretien live avec avatar IA — fonctionnalité premium</h3>
+        <p className="muted">
+          La simulation d'entretien vocale fait partie des fonctionnalités premium (cf. plan d'abonnement).
+          Complète ton profil pour débloquer l'accès premium et essayer ce mode.
+        </p>
+      </div>
+    );
+  }
+
+  if (!supported) {
+    return (
+      <div className="card block live-locked">
+        <h3>Navigateur non compatible</h3>
+        <p className="muted">
+          La reconnaissance et la synthèse vocales ne sont pas prises en charge par ce navigateur.
+          Utilise Chrome ou Edge pour le mode live, ou reviens au mode texte.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="live-panel">
+      <div className="tabs">
+        {Object.entries(INTERVIEW_SCRIPTS).map(([key, value]) => (
+          <button
+            key={key}
+            className={`tab-btn ${track === key ? "active" : ""}`}
+            onClick={() => {
+              handleRestart();
+              setTrack(key);
+            }}
+          >
+            <small>{value.label}</small>
+            <strong>{value.meta.name}</strong>
+          </button>
+        ))}
+      </div>
+
+      {offer?.title ? (
+        <p className="live-offer-context">
+          🎯 Entretien adapté à : <strong>{offer.title}</strong>
+          {offer.company ? ` — ${offer.company}` : ""}
+        </p>
+      ) : (
+        <p className="live-offer-context muted">
+          Aucune offre ciblée détectée : entretien généraliste. Colle une offre dans l'onglet Importer pour un entretien personnalisé.
+        </p>
+      )}
+
+      <div className="card block live-stage">
+        <div className={`avatar-live phase-${phase}`} style={{ "--mic-level": micLevel }}>
+          <div className="avatar-live-ring" />
+          <div className="avatar-live-core">{config.meta.avatar}</div>
+          <div className="avatar-live-bars">
+            <span /><span /><span /><span /><span />
+          </div>
+        </div>
+        <p className="avatar-live-status">
+          {phase === "idle" && "Prêt(e) — appuie sur Parler pour répondre."}
+          {phase === "listening" && "🎙️ Je t'écoute..."}
+          {phase === "thinking" && "Réflexion..."}
+          {phase === "speaking" && "🗣️ En train de parler..."}
+          {phase === "closed" && "Entretien terminé."}
+        </p>
+
+        {error ? <p className="ai-analysis-error">{error}</p> : null}
+
+        <div className="live-conversation">
+          {conversation.map((turn, idx) => (
+            <div key={idx} className={`msg ${turn.role === "assistant" ? "ai" : "user"}`}>
+              <p>{turn.text}</p>
+            </div>
+          ))}
+        </div>
+
+        <div className="live-controls">
+          {conversation.length === 0 ? (
+            <button className="btn-main" onClick={() => playAiTurn(null)} disabled={phase !== "idle"}>
+              Démarrer l'entretien
+            </button>
+          ) : phase === "closed" ? (
+            <button className="btn-secondary" onClick={handleRestart}>
+              Recommencer
+            </button>
+          ) : (
+            <button
+              className={`btn-main talk-btn ${phase === "listening" ? "recording" : ""}`}
+              onClick={handleTalk}
+              disabled={phase === "listening" || phase === "thinking" || phase === "speaking"}
+            >
+              🎙️ Parler
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
