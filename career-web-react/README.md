@@ -49,7 +49,12 @@ Plateforme d'accompagnement à la recherche d'emploi : import et analyse de CV, 
 - Offres marquées "Premium" débloquées
 - Analyses IA illimitées (au-delà de 3/mois gratuites)
 
-L'éligibilité premium est calculée automatiquement selon la complétude du profil (aucune intégration de paiement à ce stade — voir Limites connues).
+Deux mécanismes d'accès premium coexistent volontairement :
+
+1. **Activation gratuite par éligibilité** : calculée automatiquement selon la complétude du profil (aucun paiement). Bouton "Activer l'offre premium (gratuit, selon score de profil)".
+2. **Abonnement payant réel via Stripe** : paiement récurrent, indépendant du score d'éligibilité. Bouton "S'abonner premium (paiement réel via Stripe)". Voir [Paiements (Stripe)](#paiements-stripe) ci-dessous.
+
+Les deux boutons sont visibles côte à côte dans l'onglet Profil.
 
 ## Prérequis
 
@@ -80,6 +85,26 @@ ANTHROPIC_API_KEY=sk-ant-ta-cle
 
 Clé à récupérer sur [platform.claude.com](https://platform.claude.com) (Billing → penser à fixer un plafond de dépense, puis API Keys → Create Key).
 
+## Configuration (paiements Stripe — optionnel)
+
+Sans ces variables, l'app fonctionne normalement : le bouton "S'abonner premium (paiement réel via Stripe)" affiche un message d'indisponibilité clair au lieu de planter (l'activation gratuite par score reste utilisable dans tous les cas).
+
+```
+STRIPE_SECRET_KEY=sk_test_...
+STRIPE_PUBLISHABLE_KEY=pk_test_...
+STRIPE_WEBHOOK_SECRET=whsec_...
+STRIPE_PRICE_ID_INDIVIDUAL=price_...   # BtoC mensuel, 4,99 €/mois
+STRIPE_PRICE_ID_SCHOOL=price_...       # BtoB annuel, 990 €/an
+
+CLIENT_URL=http://127.0.0.1:5174       # URL du front, pour les redirections post-paiement
+```
+
+Toutes ces valeurs se trouvent dans le [Dashboard Stripe](https://dashboard.stripe.com/test) (mode test) :
+
+- `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` : Developers → API keys
+- `STRIPE_PRICE_ID_INDIVIDUAL` / `STRIPE_PRICE_ID_SCHOOL` : Product catalog → créer un produit avec un prix récurrent (mensuel pour l'un, annuel pour l'autre) → copier l'ID du prix (`price_...`)
+- `STRIPE_WEBHOOK_SECRET` : voir la section suivante, il n'existe qu'une fois un endpoint webhook créé.
+
 ## Lancer en développement
 
 ```bash
@@ -94,6 +119,61 @@ Services lancés :
 
 Les dossiers de données locales sont ignorés par Git (données utilisateur, fichiers volumineux générés au runtime).
 
+## Paiements (Stripe)
+
+### Installer le CLI Stripe (une seule fois)
+
+Nécessaire pour recevoir les webhooks en local (Stripe ne peut pas appeler `localhost` directement).
+
+```bash
+scoop bucket add extras
+scoop install stripe-cli
+```
+
+(macOS : `brew install stripe/stripe-cli/stripe`. Sans scoop/brew : télécharger le binaire sur la [page de releases GitHub](https://github.com/stripe/stripe-cli/releases/latest).)
+
+Puis connecter le CLI au compte Stripe :
+
+```bash
+stripe login
+```
+
+### Lancer le forwarding des webhooks
+
+Dans un terminal séparé, à laisser ouvert pendant les tests de paiement :
+
+```bash
+stripe listen --forward-to localhost:8787/api/stripe/webhook
+```
+
+Affiche un secret `whsec_...` — à copier dans `.env` (`STRIPE_WEBHOOK_SECRET`). **Ce secret change à chaque relance de la commande** : il faut le remettre à jour dans `.env` si le terminal a été fermé puis rouvert.
+
+### Tester un paiement de bout en bout
+
+1. `npm run dev` (API + front)
+2. `stripe listen --forward-to localhost:8787/api/stripe/webhook` (terminal séparé)
+3. Se connecter dans l'app → onglet Profil → "S'abonner premium (paiement réel via Stripe)"
+4. Sur la page Stripe Checkout, utiliser une carte de test : `4242 4242 4242 4242`, n'importe quelle date d'expiration future, n'importe quel CVC
+5. Après paiement, redirection vers l'app (`?checkout=success` dans l'URL, nettoyé automatiquement) et statut premium mis à jour après réception du webhook (l'app retente la lecture du statut pendant quelques secondes si besoin)
+
+### Tarification
+
+Deux prix Stripe distincts, sélectionnés automatiquement selon le type de compte (`role_type`) :
+
+| Type de compte | Tarif | Fréquence | Variable `.env` |
+|---|---|---|---|
+| `school` | 990 € | Annuel (BtoB) | `STRIPE_PRICE_ID_SCHOOL` |
+| Tous les autres (`candidate`, `student`, `recruiter_firm`, `recruiter_internal`, `company`, `coach`, `other`) | 4,99 € | Mensuel (BtoC) | `STRIPE_PRICE_ID_INDIVIDUAL` |
+
+La date de renouvellement affichée dans l'app est lue directement depuis Stripe (`current_period_end`) au moment du webhook, plutôt que recalculée côté app — nécessaire pour distinguer correctement un renouvellement mensuel d'un renouvellement annuel.
+
+### Endpoints
+
+- `POST /api/stripe/create-checkout-session` : crée une session Stripe Checkout pour l'utilisateur, redirige vers la page de paiement Stripe.
+- `POST /api/stripe/webhook` : reçoit les événements Stripe (`checkout.session.completed`, `customer.subscription.updated`, `customer.subscription.deleted`), signature vérifiée via `STRIPE_WEBHOOK_SECRET`, met à jour `subscription_json` en base.
+
+La logique métier (sélection du prix, construction des paramètres Checkout, traitement des événements webhook) est isolée dans `server/stripeService.js`, testée unitairement sans avoir besoin d'un vrai serveur ni d'une vraie connexion Stripe (voir [Tests](#scripts-npm)).
+
 ## Scripts npm
 
 - `npm run dev` : lance l'API locale et le frontend en parallèle.
@@ -101,6 +181,9 @@ Les dossiers de données locales sont ignorés par Git (données utilisateur, fi
 - `npm run dev:client` : lance seulement Vite.
 - `npm run build` : génère le build frontend.
 - `npm run preview` : sert le build localement.
+- `npm test` : lance la suite de tests (vitest, une fois, sans watch).
+- `npm run test:watch` : lance vitest en mode watch.
+- `npm run test:coverage` : lance les tests avec rapport de couverture.
 
 ## Build de production
 
@@ -115,7 +198,10 @@ Le build est généré dans `dist/` (non versionné). Pour tester localement : `
 ```text
 .
 |-- server/
-|   `-- index.js          # API Express + PGlite + endpoints IA (Claude)
+|   |-- index.js          # API Express + PGlite + endpoints IA (Claude) + Stripe
+|   |-- stripeService.js  # Logique métier Stripe (Checkout, webhook) — testable en isolation
+|   `-- __tests__/
+|       `-- stripeService.test.js
 |-- src/
 |   |-- App.jsx            # Composant racine et toutes les pages
 |   |-- data/
@@ -129,7 +215,7 @@ Le build est généré dans `dist/` (non versionné). Pour tester localement : `
 |   |   |-- liveInterview.js     # Reconnaissance/synthèse vocale, niveau micro
 |   |   `-- inMemoryDb.js        # Client API (malgré son nom, appelle le serveur)
 |   `-- styles.css
-`-- .env.example           # Modèle de configuration (clé API)
+`-- .env.example           # Modèle de configuration (clés API, Stripe)
 ```
 
 Le frontend ne parle qu'à l'API locale (`inMemoryDb.js`), qui elle-même persiste dans PGlite et, pour les fonctionnalités IA, appelle l'API Claude côté serveur (la clé n'est jamais exposée au navigateur).
@@ -153,7 +239,7 @@ Assumées comme trajectoire de MVP plutôt que dissimulées :
 - **Extraction et matching heuristiques** : dictionnaire de mots-clés + regex, pas de NER ni d'embeddings sémantiques. Un CV ou une offre avec un vocabulaire non couvert peut être mal évalué.
 - **Extraction PDF/DOCX** : fonctionne pour du texte natif ; un PDF scanné (image) ne donnera rien d'exploitable.
 - **Mode entretien live** : reconnaissance et synthèse vocales fiables sur Chrome/Edge uniquement (support partiel/absent sur Firefox/Safari selon versions).
-- **Pas d'intégration de paiement** : le statut premium est calculé par règle métier (complétude du profil), pas par un abonnement payant réel.
+- **Paiement Stripe : deux tarifs seulement** : distinction école (annuel, BtoB) vs tout le reste (mensuel, BtoC). Les 3 formules particulier évoquées pour une segmentation plus fine restent une évolution future non implémentée.
 - **Fonctionnalités IA à coût réel** : chaque appel (analyse approfondie, mode live, réécriture CV) consomme l'API Claude ; sans clé configurée, ces boutons restent inactifs avec un message explicite plutôt que de planter.
 
 ## Données et fichiers sensibles
@@ -161,7 +247,7 @@ Assumées comme trajectoire de MVP plutôt que dissimulées :
 Ne pas versionner :
 
 - `node_modules/`, `dist/`
-- `.env` (contient la clé API)
+- `.env` (contient les clés API : Anthropic, Stripe)
 - logs, caches
 - bases locales PGlite : `postgres-data*`, `pgdata`, `postgres-runtime`
 - fichiers de secrets (certificats, clés privées, dumps de base de données)

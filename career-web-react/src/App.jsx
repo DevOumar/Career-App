@@ -3,6 +3,7 @@ import {
   activatePremiumSubscription,
   addCvRecord,
   changeUserPassword,
+  createPremiumCheckoutSession,
   deleteUserAccount,
   getLatestMatchRun,
   getPremiumSnapshot,
@@ -16,6 +17,7 @@ import {
   registerUser,
   requestAiEvaluation,
   requestCvRewrite,
+  requestSemanticScore,
   requestLiveTurn,
   saveInterviewAttempt,
   saveMatchRun,
@@ -320,6 +322,7 @@ export default function App() {
   });
 
   const userMenuRef = useRef(null);
+  const checkoutHandledRef = useRef(false);
 
   const analysisUnlocked = Boolean(latestMatch);
   const user = session?.user;
@@ -355,6 +358,45 @@ export default function App() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  // Retour de Stripe Checkout. Pas de routing URL dans l'app (state activePage
+  // uniquement) : Stripe redirige donc vers "/" avec ?checkout=success|cancel
+  // plutôt que vers une vraie route dédiée (cf. success_url/cancel_url côté serveur).
+  useEffect(() => {
+    if (!user || checkoutHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const checkout = params.get("checkout");
+    if (!checkout) return;
+    checkoutHandledRef.current = true;
+
+    // Nettoyage immédiat de l'URL pour ne pas retraiter ce paramètre au prochain rendu/refresh.
+    window.history.replaceState({}, "", window.location.pathname);
+
+    if (checkout === "cancel") {
+      setPageMessage("Paiement annulé : aucun montant n'a été prélevé.");
+      return;
+    }
+
+    if (checkout === "success") {
+      (async () => {
+        // Le webhook Stripe (qui active réellement le premium en base) peut arriver
+        // quelques centaines de ms à quelques secondes après cette redirection navigateur.
+        // On retente la lecture du statut plutôt que d'afficher un "Free" périmé.
+        for (let attempt = 0; attempt < 5; attempt += 1) {
+          const snapshot = await getPremiumSnapshot(user.id);
+          if (snapshot?.source === "subscription") {
+            setPremium(snapshot);
+            setPageMessage("Paiement confirmé : abonnement premium actif.");
+            return;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 1200));
+        }
+        setPageMessage(
+          "Paiement reçu, activation en cours de traitement côté serveur — actualise la page dans quelques instants si le statut premium n'apparaît pas encore."
+        );
+      })();
+    }
+  }, [user]);
 
   async function syncSession(nextToken) {
     const snapshot = await getUserFromSession(nextToken);
@@ -581,6 +623,22 @@ export default function App() {
     }
   }
 
+  // Distincte de handlePremiumActivation ci-dessus : ici on crée une session de
+  // paiement Stripe réelle et on redirige le navigateur vers Stripe Checkout.
+  // L'activation effective en base se fait via le webhook (/api/stripe/webhook),
+  // pas dans cette fonction — d'où la relecture du statut premium au retour
+  // (cf. useEffect de détection ?checkout=success plus haut).
+  async function handleStripeCheckout() {
+    if (!user) return;
+    try {
+      clearMessages();
+      const { url } = await createPremiumCheckoutSession(user.id);
+      window.location.href = url;
+    } catch (error) {
+      setProcessingError(error.message);
+    }
+  }
+
   async function handleAnalyse() {
     if (!user || !latestCv || !canAnalyse) return;
 
@@ -785,11 +843,14 @@ export default function App() {
             onAvatarUpload={handleAvatarUpload}
             avatarUploading={avatarUploading}
             onActivatePremium={handlePremiumActivation}
+            onStripeCheckout={handleStripeCheckout}
             onDeleteAccount={handleDeleteAccount}
           />
         ) : null}
 
-        {activePage === "analyse" ? <AnalysisPage matchData={latestMatch} /> : null}
+        {activePage === "analyse" ? (
+          <AnalysisPage matchData={latestMatch} cvText={latestCv?.sourceText} offerText={offerText} />
+        ) : null}
         {activePage === "offres" ? (
           <OffersPage
             matchData={latestMatch}
@@ -1457,6 +1518,7 @@ function ProfilePage({
   onAvatarUpload,
   avatarUploading,
   onActivatePremium,
+  onStripeCheckout,
   onDeleteAccount
 }) {
   const [profileForm, setProfileForm] = useState(() => profileToForm(user.profile));
@@ -1666,9 +1728,19 @@ function ProfilePage({
             <span>Renouvellement: {formatDate(user.subscription?.renewalAt)}</span>
           </div>
 
-          <button className="btn-secondary" onClick={onActivatePremium}>
-            Activer l'offre premium
-          </button>
+          <div className="premium-actions">
+            <button className="btn-secondary" onClick={onActivatePremium}>
+              Activer l'offre premium (gratuit, selon score de profil)
+            </button>
+            <button className="btn-main" onClick={onStripeCheckout}>
+              S'abonner premium (paiement réel via Stripe)
+            </button>
+          </div>
+          <p className="muted small">
+            Deux mécanismes distincts coexistent volontairement : l'activation gratuite ci-dessus déverrouille le
+            premium dès que ton profil est jugé éligible (aucun paiement) ; l'abonnement Stripe est un vrai paiement
+            récurrent, indépendant du score d'éligibilité.
+          </p>
         </div>
       </div>
 
@@ -1894,9 +1966,26 @@ function confidenceBadge(level) {
   return { label: "✓ Confiance d'extraction haute", tone: "great" };
 }
 
-function AnalysisPage({ matchData }) {
+function AnalysisPage({ matchData, cvText, offerText }) {
+  const [semanticStatus, setSemanticStatus] = useState("idle"); // idle | loading | done | error
+  const [semanticScore, setSemanticScore] = useState(null);
+  const [semanticError, setSemanticError] = useState("");
+
   if (!matchData) {
     return <Placeholder title="Analyse indisponible" text="Importe un CV et lance le matching depuis l'onglet Importer." />;
+  }
+
+  async function handleSemanticMatch() {
+    setSemanticStatus("loading");
+    setSemanticError("");
+    try {
+      const result = await requestSemanticScore({ cvText, offerText: offerText || matchData.bestMatch?.offer?.title || "" });
+      setSemanticScore(result.score);
+      setSemanticStatus("done");
+    } catch (error) {
+      setSemanticError(error.message || "Calcul de similarité sémantique indisponible.");
+      setSemanticStatus("error");
+    }
   }
 
   const { summary, domainScores, strengths, gaps, bestMatch } = matchData;
@@ -1963,6 +2052,30 @@ function AnalysisPage({ matchData }) {
             </ul>
           </div>
         </div>
+      </div>
+
+      <div className="card block semantic-block">
+        <h3>🧪 Similarité sémantique (expérimental)</h3>
+        <p className="muted small">
+          Score complémentaire calculé par un modèle d'embeddings (Sentence-BERT multilingue, local, aucun coût API),
+          en plus du scoring par règles ci-dessus. Fonctionnalité récente : à vérifier avant de s'y fier pleinement.
+        </p>
+        {semanticStatus === "idle" || semanticStatus === "error" ? (
+          <button type="button" className="btn-secondary" onClick={handleSemanticMatch} disabled={!cvText}>
+            Calculer la similarité sémantique
+          </button>
+        ) : null}
+        {semanticStatus === "loading" ? (
+          <p className="muted small">
+            Calcul en cours (premier appel plus lent : chargement du modèle)...
+          </p>
+        ) : null}
+        {semanticStatus === "error" ? <p className="ai-analysis-error">{semanticError}</p> : null}
+        {semanticStatus === "done" ? (
+          <div className={`tag tier-${scoreTier(semanticScore)}`} style={{ display: "inline-block", marginTop: "0.4rem" }}>
+            Similarité sémantique : {semanticScore}/100
+          </div>
+        ) : null}
       </div>
     </section>
   );
