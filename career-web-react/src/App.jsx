@@ -1730,12 +1730,25 @@ function ProfilePage({
                 ? "abonnement Stripe"
                 : premium?.source === "free_activation"
                   ? "activation gratuite"
-                  : premium?.source === "profile_unlock"
-                    ? "déverrouillé par score de profil"
-                    : "verrouillé"}
+                  : premium?.source === "free_activation_exhausted"
+                    ? "essai gratuit épuisé — abonnement requis"
+                    : premium?.source === "profile_unlock"
+                      ? "déverrouillé par score de profil"
+                      : premium?.source === "profile_unlock_exhausted"
+                        ? "essai gratuit épuisé — abonnement requis"
+                        : "verrouillé"}
             </span>
             <span>Renouvellement: {formatDate(user.subscription?.renewalAt)}</span>
           </div>
+
+          {premium?.freeTrial ? (
+            <p className="muted small">
+              Essai gratuit (analyses IA) : {premium.freeTrial.used}/{premium.freeTrial.limit} utilisées ce mois-ci
+              {premium.freeTrial.exhausted
+                ? " — épuisé, réécriture de CV, mode live et offres Premium sont verrouillés jusqu'à l'abonnement Stripe (ou le mois prochain)."
+                : `, ${premium.freeTrial.remaining} restante(s) avant que l'accès gratuit ne se verrouille.`}
+            </p>
+          ) : null}
 
           <div className="premium-actions">
             <button className="btn-secondary" onClick={onActivatePremium}>

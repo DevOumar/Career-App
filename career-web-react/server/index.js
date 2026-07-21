@@ -986,22 +986,39 @@ async function computePremiumAccess(userRow) {
   const activePlan = subscription.plan === "premium" && subscription.status === "active";
   // Un vrai abonnement Stripe porte un stripeSubscriptionId ; l'activation gratuite
   // (/api/premium/activate) écrit la même forme {plan, status} sans cet identifiant.
-  // Sans cette distinction, un clic sur le bouton gratuit se faisait passer pour un
-  // abonnement Stripe payant (même libellé "subscription"), et bloquait à tort le
-  // bouton "S'abonner premium" (la route Checkout refusait de créer une session
-  // tant qu'un "abonnement actif" existait, gratuit ou non).
   const hasRealStripeSubscription = activePlan && Boolean(subscription.stripeSubscriptionId);
   const hasFreeActivation = activePlan && !subscription.stripeSubscriptionId;
+  const isFreeEligible = hasFreeActivation || eligibility.score >= 70;
+
+  // Règle produit : l'accès gratuit (activation ou score) n'est qu'un essai, plafonné
+  // aux mêmes 3 analyses IA gratuites/mois que la version non-éligible. Une fois ce
+  // quota épuisé, TOUT l'accès premium (réécriture CV, mode live, offres Premium,
+  // analyses supplémentaires) redevient verrouillé tant qu'aucun abonnement Stripe
+  // réel n'est actif — le score de profil ou le bouton gratuit ne rouvrent pas l'accès
+  // indéfiniment, contrairement à un abonnement payant qui reste illimité.
+  let freeTrialUsed = null;
+  let freeTrialRemaining = null;
+  let freeTrialExhausted = false;
+  if (!hasRealStripeSubscription && isFreeEligible) {
+    freeTrialUsed = await countAiUsageThisMonth(userRow.id, "interview-ai-evaluation");
+    freeTrialRemaining = Math.max(0, FREE_AI_EVALUATIONS_PER_MONTH - freeTrialUsed);
+    freeTrialExhausted = freeTrialUsed >= FREE_AI_EVALUATIONS_PER_MONTH;
+  }
+
+  const hasAccess = hasRealStripeSubscription || (isFreeEligible && !freeTrialExhausted);
 
   return {
     eligibility,
-    hasAccess: hasRealStripeSubscription || hasFreeActivation || eligibility.score >= 70,
+    hasAccess,
+    freeTrial: hasRealStripeSubscription
+      ? null
+      : { used: freeTrialUsed || 0, remaining: freeTrialRemaining || 0, limit: FREE_AI_EVALUATIONS_PER_MONTH, exhausted: freeTrialExhausted },
     source: hasRealStripeSubscription
       ? "subscription"
       : hasFreeActivation
-        ? "free_activation"
+        ? (freeTrialExhausted ? "free_activation_exhausted" : "free_activation")
         : eligibility.score >= 70
-          ? "profile_unlock"
+          ? (freeTrialExhausted ? "profile_unlock_exhausted" : "profile_unlock")
           : "locked"
   };
 }
