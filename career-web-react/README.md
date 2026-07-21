@@ -38,7 +38,7 @@ Plateforme d'accompagnement à la recherche d'emploi : import et analyse de CV, 
 - **Réécriture du CV par IA** (premium) : reformulation ciblée sur l'offre analysée, via l'API Claude.
 
 **Entretiens**
-- Mode texte : simulation par persona (RH, Manager technique, Live coding), évaluation heuristique instantanée de chaque réponse (mots-clés, longueur, structure STAR) + bouton d'analyse approfondie par IA à la demande (3 gratuites/mois, illimité en premium).
+- Mode texte : simulation par persona (RH, Manager technique, Live coding), évaluation heuristique instantanée de chaque réponse (mots-clés, longueur, structure STAR) + bouton d'analyse approfondie par IA à la demande (3 gratuites/mois, illimité en premium — ce même compteur conditionne aussi tout l'accès premium gratuit, voir [Fonctionnalités premium](#fonctionnalités-premium)).
 - **Mode live (premium)** : conversation orale avec avatar animé — reconnaissance vocale et synthèse vocale du navigateur, questions générées par IA adaptées à l'offre ciblée, avatar réactif au niveau sonore réel du micro.
 - Historique complet des sessions et rapport PDF téléchargeable par entretien.
 
@@ -49,12 +49,14 @@ Plateforme d'accompagnement à la recherche d'emploi : import et analyse de CV, 
 - Offres marquées "Premium" débloquées
 - Analyses IA illimitées (au-delà de 3/mois gratuites)
 
-Deux mécanismes d'accès premium coexistent volontairement :
+Deux mécanismes d'accès premium coexistent volontairement, avec une portée différente :
 
-1. **Activation gratuite par éligibilité** : calculée automatiquement selon la complétude du profil (aucun paiement). Bouton "Activer l'offre premium (gratuit, selon score de profil)".
-2. **Abonnement payant réel via Stripe** : paiement récurrent, indépendant du score d'éligibilité. Bouton "S'abonner premium (paiement réel via Stripe)". Voir [Paiements (Stripe)](#paiements-stripe) ci-dessous.
+1. **Activation gratuite par éligibilité** : calculée automatiquement selon la complétude du profil (aucun paiement). Bouton "Activer l'offre premium (gratuit, selon score de profil)". **Ce n'est qu'un essai plafonné** : l'accès (réécriture CV, mode live, offres Premium, analyses illimitées) reste ouvert seulement tant que les 3 analyses IA gratuites du mois ne sont pas consommées. Une fois ce quota épuisé, tout l'accès premium se reverrouille automatiquement — y compris la réécriture de CV et le mode live, pas seulement les analyses supplémentaires — jusqu'au mois suivant ou jusqu'à un abonnement Stripe réel.
+2. **Abonnement payant réel via Stripe** : paiement récurrent, indépendant du score d'éligibilité et du quota d'analyses. Toujours illimité. Bouton "S'abonner premium (paiement réel via Stripe)". Voir [Paiements (Stripe)](#paiements-stripe) ci-dessous.
 
-Les deux boutons sont visibles côte à côte dans l'onglet Profil.
+Les deux boutons sont visibles côte à côte dans l'onglet Profil, avec l'état du quota affiché ("X/3 utilisées ce mois-ci").
+
+Le statut d'accès (`source`) distingue quatre cas, utilisés à la fois pour l'affichage et pour bloquer/débloquer les fonctionnalités côté serveur : `subscription` (abonnement Stripe réel, identifié par la présence d'un `stripeSubscriptionId` — condition ajoutée après un bug où l'activation gratuite, qui écrit la même forme de données `{plan, status}` sans cet identifiant, se faisait passer pour un abonnement payant et bloquait à tort le bouton Stripe), `free_activation` / `profile_unlock` (essai gratuit en cours), et leurs variantes `_exhausted` une fois le quota consommé.
 
 ## Prérequis
 
@@ -240,6 +242,7 @@ Assumées comme trajectoire de MVP plutôt que dissimulées :
 - **Extraction PDF/DOCX** : fonctionne pour du texte natif ; un PDF scanné (image) ne donnera rien d'exploitable.
 - **Mode entretien live** : reconnaissance et synthèse vocales fiables sur Chrome/Edge uniquement (support partiel/absent sur Firefox/Safari selon versions).
 - **Paiement Stripe : deux tarifs seulement** : distinction école (annuel, BtoB) vs tout le reste (mensuel, BtoC). Les 3 formules particulier évoquées pour une segmentation plus fine restent une évolution future non implémentée.
+- **Quota gratuit aligné sur le mois calendaire, pas sur la date d'activation** : les 3 analyses gratuites (et donc l'accès premium gratuit qui en dépend) se réinitialisent au 1er de chaque mois, pas 30 jours après le clic sur "Activer l'offre premium" — un utilisateur qui active tardivement dans le mois peut voir son quota se réinitialiser plus vite qu'attendu.
 - **Fonctionnalités IA à coût réel** : chaque appel (analyse approfondie, mode live, réécriture CV) consomme l'API Claude ; sans clé configurée, ces boutons restent inactifs avec un message explicite plutôt que de planter.
 
 ## Données et fichiers sensibles

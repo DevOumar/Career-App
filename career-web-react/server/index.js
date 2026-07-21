@@ -983,12 +983,43 @@ async function scorePremiumEligibility(userRow) {
 async function computePremiumAccess(userRow) {
   const eligibility = await scorePremiumEligibility(userRow);
   const subscription = parseJsonField(userRow.subscription_json, {});
-  const activeSubscription = subscription.plan === "premium" && subscription.status === "active";
+  const activePlan = subscription.plan === "premium" && subscription.status === "active";
+  // Un vrai abonnement Stripe porte un stripeSubscriptionId ; l'activation gratuite
+  // (/api/premium/activate) écrit la même forme {plan, status} sans cet identifiant.
+  const hasRealStripeSubscription = activePlan && Boolean(subscription.stripeSubscriptionId);
+  const hasFreeActivation = activePlan && !subscription.stripeSubscriptionId;
+  const isFreeEligible = hasFreeActivation || eligibility.score >= 70;
+
+  // Règle produit : l'accès gratuit (activation ou score) n'est qu'un essai, plafonné
+  // aux mêmes 3 analyses IA gratuites/mois que la version non-éligible. Une fois ce
+  // quota épuisé, TOUT l'accès premium (réécriture CV, mode live, offres Premium,
+  // analyses supplémentaires) redevient verrouillé tant qu'aucun abonnement Stripe
+  // réel n'est actif — le score de profil ou le bouton gratuit ne rouvrent pas l'accès
+  // indéfiniment, contrairement à un abonnement payant qui reste illimité.
+  let freeTrialUsed = null;
+  let freeTrialRemaining = null;
+  let freeTrialExhausted = false;
+  if (!hasRealStripeSubscription && isFreeEligible) {
+    freeTrialUsed = await countAiUsageThisMonth(userRow.id, "interview-ai-evaluation");
+    freeTrialRemaining = Math.max(0, FREE_AI_EVALUATIONS_PER_MONTH - freeTrialUsed);
+    freeTrialExhausted = freeTrialUsed >= FREE_AI_EVALUATIONS_PER_MONTH;
+  }
+
+  const hasAccess = hasRealStripeSubscription || (isFreeEligible && !freeTrialExhausted);
 
   return {
     eligibility,
-    hasAccess: activeSubscription || eligibility.score >= 70,
-    source: activeSubscription ? "subscription" : eligibility.score >= 70 ? "profile_unlock" : "locked"
+    hasAccess,
+    freeTrial: hasRealStripeSubscription
+      ? null
+      : { used: freeTrialUsed || 0, remaining: freeTrialRemaining || 0, limit: FREE_AI_EVALUATIONS_PER_MONTH, exhausted: freeTrialExhausted },
+    source: hasRealStripeSubscription
+      ? "subscription"
+      : hasFreeActivation
+        ? (freeTrialExhausted ? "free_activation_exhausted" : "free_activation")
+        : eligibility.score >= 70
+          ? (freeTrialExhausted ? "profile_unlock_exhausted" : "profile_unlock")
+          : "locked"
   };
 }
 
@@ -1369,8 +1400,10 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     }
 
     const subscription = parseJsonField(userRow.subscription_json, {});
-    if (subscription.plan === "premium" && subscription.status === "active") {
-      return res.status(400).json({ error: "Un abonnement premium est déjà actif pour ce compte." });
+    const hasRealStripeSubscription =
+      subscription.plan === "premium" && subscription.status === "active" && Boolean(subscription.stripeSubscriptionId);
+    if (hasRealStripeSubscription) {
+      return res.status(400).json({ error: "Un abonnement Stripe est déjà actif pour ce compte." });
     }
 
     // Tarification différenciée : compte "school" -> BtoB annuel (990 €/an),
