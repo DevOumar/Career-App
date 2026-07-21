@@ -1724,7 +1724,16 @@ function ProfilePage({
           </div>
 
           <div className="premium-meta">
-            <span>Source d'accès: {premium?.source || "locked"}</span>
+            <span>
+              Source d'accès :{" "}
+              {premium?.source === "subscription"
+                ? "abonnement Stripe"
+                : premium?.source === "free_activation"
+                  ? "activation gratuite"
+                  : premium?.source === "profile_unlock"
+                    ? "déverrouillé par score de profil"
+                    : "verrouillé"}
+            </span>
             <span>Renouvellement: {formatDate(user.subscription?.renewalAt)}</span>
           </div>
 

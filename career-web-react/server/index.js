@@ -983,12 +983,26 @@ async function scorePremiumEligibility(userRow) {
 async function computePremiumAccess(userRow) {
   const eligibility = await scorePremiumEligibility(userRow);
   const subscription = parseJsonField(userRow.subscription_json, {});
-  const activeSubscription = subscription.plan === "premium" && subscription.status === "active";
+  const activePlan = subscription.plan === "premium" && subscription.status === "active";
+  // Un vrai abonnement Stripe porte un stripeSubscriptionId ; l'activation gratuite
+  // (/api/premium/activate) écrit la même forme {plan, status} sans cet identifiant.
+  // Sans cette distinction, un clic sur le bouton gratuit se faisait passer pour un
+  // abonnement Stripe payant (même libellé "subscription"), et bloquait à tort le
+  // bouton "S'abonner premium" (la route Checkout refusait de créer une session
+  // tant qu'un "abonnement actif" existait, gratuit ou non).
+  const hasRealStripeSubscription = activePlan && Boolean(subscription.stripeSubscriptionId);
+  const hasFreeActivation = activePlan && !subscription.stripeSubscriptionId;
 
   return {
     eligibility,
-    hasAccess: activeSubscription || eligibility.score >= 70,
-    source: activeSubscription ? "subscription" : eligibility.score >= 70 ? "profile_unlock" : "locked"
+    hasAccess: hasRealStripeSubscription || hasFreeActivation || eligibility.score >= 70,
+    source: hasRealStripeSubscription
+      ? "subscription"
+      : hasFreeActivation
+        ? "free_activation"
+        : eligibility.score >= 70
+          ? "profile_unlock"
+          : "locked"
   };
 }
 
@@ -1369,8 +1383,10 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     }
 
     const subscription = parseJsonField(userRow.subscription_json, {});
-    if (subscription.plan === "premium" && subscription.status === "active") {
-      return res.status(400).json({ error: "Un abonnement premium est déjà actif pour ce compte." });
+    const hasRealStripeSubscription =
+      subscription.plan === "premium" && subscription.status === "active" && Boolean(subscription.stripeSubscriptionId);
+    if (hasRealStripeSubscription) {
+      return res.status(400).json({ error: "Un abonnement Stripe est déjà actif pour ce compte." });
     }
 
     // Tarification différenciée : compte "school" -> BtoB annuel (990 €/an),
