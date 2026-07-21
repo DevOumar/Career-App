@@ -19,6 +19,7 @@ Career App est une application de gestion de carrière et de recrutement. Le pro
 .
 |-- app.py                         # Prototype Python principal
 |-- dashboard.py                   # Prototype/tableau de bord Python
+|-- requirements.txt               # Dépendances Python des prototypes
 |-- app.html, app2.html, front.html# Prototypes HTML
 |-- dataprocess.ipynb              # Notebook de traitement de données
 |-- data/                          # Données d'exemple versionnées
@@ -92,11 +93,22 @@ Depuis `career-web-react` :
 Les fichiers Python à la racine peuvent être lancés séparément selon le besoin :
 
 ```bash
-python app.py
-python dashboard.py
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-Si des dépendances Python sont ajoutées plus tard, créez un environnement virtuel et documentez-les dans `requirements.txt`.
+Lancer l'application Streamlit principale :
+
+```bash
+streamlit run app.py
+```
+
+Lancer le tableau de bord :
+
+```bash
+streamlit run dashboard.py
+```
 
 ## Données et fichiers sensibles
 
