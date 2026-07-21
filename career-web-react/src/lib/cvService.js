@@ -413,6 +413,26 @@ export function downloadTextFile(filename, content) {
   URL.revokeObjectURL(url);
 }
 
+// La police standard de jsPDF (Helvetica) encode en WinAnsi (proche de Latin-1) :
+// les caractères hors de cette plage (flèches, puces typographiques, etc., souvent
+// présents dans un CV copié-collé depuis Word/LinkedIn) ne s'affichent pas et
+// peuvent corrompre le rendu du texte qui suit. On les remplace par un équivalent
+// ASCII sûr avant tout envoi à jsPDF, plutôt que de risquer un PDF illisible.
+function sanitizeForPdf(text) {
+  return String(text || "")
+    .replace(/[\u2192\u21D2\u279C\u27A4]/g, "->")
+    .replace(/[\u2190\u21D0]/g, "<-")
+    .replace(/[\u2022\u25CF\u25E6\u2023]/g, "-")
+    .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/[\u2713\u2714]/g, "OK")
+    // Filet de sécurité générique : tout caractère encore hors Latin-1 (WinAnsi)
+    // est retiré plutôt que laissé corrompre le rendu.
+    .replace(/[^\u0000-\u00FF]/g, "");
+}
+
 const LEVEL_COLORS = {
   critique: [220, 38, 38],
   important: [217, 119, 6],
@@ -447,7 +467,7 @@ export async function downloadOptimizedCvPdf({ cvRecord, recommendations = [], b
     doc.setFont("helvetica", bold ? "bold" : "normal");
     doc.setFontSize(size);
     doc.setTextColor(...color);
-    const lines = doc.splitTextToSize(text, contentWidth);
+    const lines = doc.splitTextToSize(sanitizeForPdf(text), contentWidth);
     lines.forEach((line) => {
       ensureSpace(gap);
       doc.text(line, margin, y);

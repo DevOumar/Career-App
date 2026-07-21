@@ -2173,3 +2173,35 @@ select:focus {
   .cv-rewrite-compare { grid-template-columns: 1fr; }
   .cv-preview-row { grid-template-columns: 1fr; }
 }
+
+/* --- Ajouts : historique complet des entretiens --- */
+
+.interview-history { margin-top: 0; }
+
+.history-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin: 0.6rem 0 1rem;
+}
+.history-stats > div { display: flex; flex-direction: column; }
+.history-stats strong { font-size: 1.3rem; }
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.history-table th {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  color: var(--text-3);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+.history-table td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+}
+.small-btn { padding: 0.3rem 0.6rem; font-size: 0.76rem; }

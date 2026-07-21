@@ -15,6 +15,35 @@ const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
 
+// Traduit une erreur de l'API Anthropic en message actionnable, plutôt que le
+// message générique "a renvoyé une erreur" qui obligeait à checker les logs
+// serveur pour comprendre la cause réelle (clé invalide, crédit épuisé, etc.).
+function describeAnthropicError(status, errorBody) {
+  let parsedType = "";
+  let parsedMessage = "";
+  try {
+    const parsed = JSON.parse(errorBody);
+    parsedType = parsed?.error?.type || "";
+    parsedMessage = parsed?.error?.message || "";
+  } catch (_e) {
+    // corps non-JSON, on se rabat sur le code HTTP
+  }
+
+  if (status === 401 || parsedType === "authentication_error") {
+    return "Clé API invalide ou expirée. Vérifie ANTHROPIC_API_KEY dans ton fichier .env (elle doit commencer par sk-ant-).";
+  }
+  if (status === 400 && /credit balance/i.test(parsedMessage)) {
+    return "Crédit insuffisant sur ton compte Anthropic. Ajoute un moyen de paiement ou du crédit sur platform.claude.com (Billing).";
+  }
+  if (status === 429) {
+    return "Limite de requêtes atteinte sur l'API Anthropic (rate limit). Réessaie dans quelques instants.";
+  }
+  if (status === 404 && /model/i.test(parsedMessage)) {
+    return `Modèle "${ANTHROPIC_MODEL}" introuvable ou non accessible avec cette clé. Vérifie ANTHROPIC_MODEL dans .env.`;
+  }
+  return `Erreur API Anthropic (HTTP ${status})${parsedMessage ? ` : ${parsedMessage}` : ""}. Réessaie, ou vérifie ta configuration sur platform.claude.com.`;
+}
+
 const ACCOUNT_TYPES = new Set([
   "candidate",
   "student",
@@ -1613,7 +1642,7 @@ app.post("/api/interviews/evaluate-ai", async (req, res) => {
     if (!response.ok) {
       const errorBody = await response.text().catch(() => "");
       console.error("Anthropic API error:", response.status, errorBody);
-      return res.status(502).json({ error: "L'API d'évaluation IA a renvoyé une erreur. Réessaie plus tard." });
+      return res.status(502).json({ error: describeAnthropicError(response.status, errorBody) });
     }
 
     const data = await response.json();
@@ -1739,7 +1768,7 @@ app.post("/api/interviews/live-turn", async (req, res) => {
     if (!response.ok) {
       const errorBody = await response.text().catch(() => "");
       console.error("Anthropic API error (live-turn):", response.status, errorBody);
-      return res.status(502).json({ error: "L'API d'entretien live a renvoyé une erreur. Réessaie." });
+      return res.status(502).json({ error: describeAnthropicError(response.status, errorBody) });
     }
 
     const data = await response.json();
@@ -1829,7 +1858,7 @@ app.post("/api/cv/rewrite-ai", async (req, res) => {
     if (!response.ok) {
       const errorBody = await response.text().catch(() => "");
       console.error("Anthropic API error (cv/rewrite-ai):", response.status, errorBody);
-      return res.status(502).json({ error: "L'API de réécriture IA a renvoyé une erreur. Réessaie." });
+      return res.status(502).json({ error: describeAnthropicError(response.status, errorBody) });
     }
 
     const data = await response.json();
@@ -1860,4 +1889,3 @@ if (serverStart.status === "existing") {
   console.log(`Career API (PostgreSQL embarque) sur http://127.0.0.1:${serverStart.port}`);
   console.log(`Donnees PostgreSQL: ${dataDirectory}`);
 }
-
