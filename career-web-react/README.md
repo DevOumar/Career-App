@@ -19,6 +19,7 @@ Plateforme d'accompagnement à la recherche d'emploi : import et analyse de CV, 
 - Authentification (inscription, connexion, déconnexion, sessions).
 - Profils multi-rôles : étudiant, candidat, cabinet de recrutement, entreprise, coach, autres.
 - Photo de profil, sécurité du mot de passe (PBKDF2-SHA512).
+- Suppression de compte (droit à l'effacement, Article 17 RGPD) : confirmation par mot de passe requise, suppression physique en cascade de toutes les données associées (profil, CV, matching, favoris, historique d'entretiens, usage IA), action immédiate et irréversible.
 
 **Analyse**
 - Score de compatibilité CV/offre, couleurs par niveau (rouge/orange/bleu/vert).
@@ -132,6 +133,18 @@ Le build est généré dans `dist/` (non versionné). Pour tester localement : `
 ```
 
 Le frontend ne parle qu'à l'API locale (`inMemoryDb.js`), qui elle-même persiste dans PGlite et, pour les fonctionnalités IA, appelle l'API Claude côté serveur (la clé n'est jamais exposée au navigateur).
+
+### Suppression de compte (droit à l'effacement)
+
+`POST /api/account/delete` (ré-authentification par mot de passe requise) supprime physiquement les lignes de l'utilisateur dans toutes les tables qui le concernent, avant de supprimer la ligne `users` elle-même :
+
+```text
+ai_usage_log → interview_attempts → offer_status → match_runs → cvs
+→ sessions → user_org_profiles → user_recruiter_profiles
+→ user_candidate_profiles → user_accounts → users
+```
+
+Aucune contrainte de clé étrangère n'étant appliquée par PGlite, la suppression est faite explicitement table par table côté serveur plutôt que par une cascade SQL automatique.
 
 ## Limites connues
 
