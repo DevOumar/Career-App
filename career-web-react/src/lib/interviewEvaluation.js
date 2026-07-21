@@ -120,3 +120,97 @@ export function summarizeSession(answerEvaluations) {
     averageScore >= 75 ? "Excellent" : averageScore >= 55 ? "Bon" : averageScore >= 35 ? "À travailler" : "Insuffisant";
   return { averageScore, label };
 }
+
+// Voir cvService.js pour le détail : la police standard de jsPDF n'encode
+// qu'en WinAnsi (proche Latin-1), donc les flèches/puces/guillemets typographiques
+// corrompent le rendu si on ne les remplace pas avant l'envoi à jsPDF.
+function sanitizeForPdf(text) {
+  return String(text || "")
+    .replace(/[\u2192\u21D2\u279C\u27A4]/g, "->")
+    .replace(/[\u2190\u21D0]/g, "<-")
+    .replace(/[\u2022\u25CF\u25E6\u2023]/g, "-")
+    .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/[\u2713\u2714]/g, "OK")
+    .replace(/[^\u0000-\u00FF]/g, "");
+}
+
+/**
+ * Génère un rapport PDF détaillé d'une session d'entretien (transcript complet
+ * question/réponse/score/feedback), et une synthèse de l'historique des sessions
+ * précédentes si fourni. Même approche que l'export CV (jsPDF, 100% local,
+ * aucun coût), chargé en dynamic import.
+ */
+export async function downloadInterviewReportPdf({ personaName, personaSubtitle, transcript = [], history = [] }) {
+  const { jsPDF } = await import("jspdf");
+  const doc = new jsPDF({ unit: "pt", format: "a4" });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 48;
+  const contentWidth = pageWidth - margin * 2;
+  let y = margin;
+
+  function ensureSpace(lineHeight) {
+    if (y + lineHeight > pageHeight - margin) {
+      doc.addPage();
+      y = margin;
+    }
+  }
+
+  function writeParagraph(text, { size = 10, color = [30, 30, 30], bold = false, gap = 14 } = {}) {
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setFontSize(size);
+    doc.setTextColor(...color);
+    const lines = doc.splitTextToSize(sanitizeForPdf(text), contentWidth);
+    lines.forEach((line) => {
+      ensureSpace(gap);
+      doc.text(line, margin, y);
+      y += gap;
+    });
+  }
+
+  const summary = summarizeSession(transcript.map((t) => ({ score: t.score })));
+
+  writeParagraph("Rapport de simulation d'entretien", { size: 16, bold: true, gap: 20 });
+  writeParagraph(`Généré par Career_App le ${new Date().toLocaleDateString("fr-FR")}`, {
+    size: 9,
+    color: [110, 110, 110],
+    gap: 13
+  });
+  writeParagraph(`Persona : ${personaName || "—"} — ${personaSubtitle || ""}`, { size: 10, color: [80, 80, 80], gap: 16 });
+  writeParagraph(`Score de session : ${summary.averageScore}/100 (${summary.label})`, { size: 12, bold: true, gap: 20 });
+
+  writeParagraph("DÉTAIL DES ÉCHANGES", { size: 11, bold: true, gap: 16 });
+  transcript.forEach((entry, idx) => {
+    ensureSpace(16);
+    writeParagraph(`Question ${idx + 1} : ${entry.question}`, { size: 10, bold: true, gap: 13 });
+    writeParagraph(`Réponse : ${entry.answer}`, { size: 9.5, color: [60, 60, 60], gap: 12 });
+    writeParagraph(`Score : ${entry.score}/100`, { size: 9.5, color: [79, 70, 229], bold: true, gap: 12 });
+    (entry.feedback || []).forEach((point) => {
+      writeParagraph(`• ${point}`, { size: 9, color: [100, 100, 100], gap: 11.5 });
+    });
+    y += 6;
+  });
+
+  if (history.length) {
+    y += 6;
+    ensureSpace(20);
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, y, pageWidth - margin, y);
+    y += 18;
+
+    writeParagraph("HISTORIQUE DES SESSIONS PRÉCÉDENTES", { size: 11, bold: true, gap: 16 });
+    history.slice(0, 15).forEach((attempt) => {
+      const date = new Date(attempt.createdAt).toLocaleDateString("fr-FR");
+      writeParagraph(
+        `${date} — ${attempt.personaName || attempt.track} — ${attempt.averageScore}/100 (${attempt.label || ""})`,
+        { size: 9.5, color: [60, 60, 60], gap: 13 }
+      );
+    });
+  }
+
+  doc.save(`rapport-entretien-${(personaName || "session").toLowerCase().replace(/\s+/g, "-")}.pdf`);
+}

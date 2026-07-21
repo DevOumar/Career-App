@@ -2173,3 +2173,76 @@ select:focus {
   .cv-rewrite-compare { grid-template-columns: 1fr; }
   .cv-preview-row { grid-template-columns: 1fr; }
 }
+
+/* --- Ajouts : historique complet des entretiens --- */
+
+.interview-history { margin-top: 0; }
+
+.history-stats {
+  display: flex;
+  gap: 1.5rem;
+  margin: 0.6rem 0 1rem;
+}
+.history-stats > div { display: flex; flex-direction: column; }
+.history-stats strong { font-size: 1.3rem; }
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.history-table th {
+  text-align: left;
+  padding: 0.5rem 0.6rem;
+  color: var(--text-3);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+.history-table td {
+  padding: 0.55rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-2);
+}
+.small-btn { padding: 0.3rem 0.6rem; font-size: 0.76rem; }
+
+/* --- Ajouts : zone de danger, suppression de compte --- */
+
+.danger-zone {
+  border: 1px solid #fecaca;
+  background: #fff5f5;
+}
+.danger-zone h3 { color: #991b1b; }
+
+.btn-danger {
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  padding: 0.55rem 1rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-danger:hover:not(:disabled) { background: #b91c1c; }
+.btn-danger:disabled { opacity: 0.5; cursor: default; }
+
+.delete-confirm {
+  margin-top: 0.8rem;
+  padding: 0.9rem;
+  border: 1px dashed #fca5a5;
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+.delete-confirm label { display: block; font-size: 0.85rem; margin-bottom: 0.5rem; }
+.delete-confirm input {
+  width: 100%;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  margin-top: 0.3rem;
+}
+.delete-confirm-actions {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+}

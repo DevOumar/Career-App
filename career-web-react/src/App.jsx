@@ -3,6 +3,7 @@ import {
   activatePremiumSubscription,
   addCvRecord,
   changeUserPassword,
+  deleteUserAccount,
   getLatestMatchRun,
   getPremiumSnapshot,
   getUserFromSession,
@@ -35,7 +36,7 @@ import {
   speak,
   stopSpeaking
 } from "./lib/liveInterview";
-import { evaluateAnswer, summarizeSession } from "./lib/interviewEvaluation";
+import { downloadInterviewReportPdf, evaluateAnswer, summarizeSession } from "./lib/interviewEvaluation";
 
 const NAV_ITEMS = [
   { id: "home", label: "Accueil", always: true, icon: "home" },
@@ -440,6 +441,24 @@ export default function App() {
     clearMessages();
   }
 
+  async function handleDeleteAccount(password) {
+    await deleteUserAccount(user.id, password); // laisse l'erreur remonter au composant (mot de passe incorrect, etc.)
+    setToken("");
+    setSession(null);
+    setPremium(null);
+    setLatestCv(null);
+    setLatestMatch(null);
+    setOfferText("");
+    setCvDraft("");
+    setCvHistory([]);
+    setOfferStatuses({});
+    setActivePage("home");
+    setSecurityOpen(false);
+    setUserMenuOpen(false);
+    clearMessages();
+    setPageMessage("Ton compte et toutes tes données ont été définitivement supprimés.");
+  }
+
   async function saveCvToDb({ fileName, text }) {
     if (!user) return;
 
@@ -766,6 +785,7 @@ export default function App() {
             onAvatarUpload={handleAvatarUpload}
             avatarUploading={avatarUploading}
             onActivatePremium={handlePremiumActivation}
+            onDeleteAccount={handleDeleteAccount}
           />
         ) : null}
 
@@ -1436,10 +1456,15 @@ function ProfilePage({
   onSaveAccount,
   onAvatarUpload,
   avatarUploading,
-  onActivatePremium
+  onActivatePremium,
+  onDeleteAccount
 }) {
   const [profileForm, setProfileForm] = useState(() => profileToForm(user.profile));
   const [accountForm, setAccountForm] = useState(() => accountToForm(user));
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setProfileForm(profileToForm(user.profile));
@@ -1645,6 +1670,60 @@ function ProfilePage({
             Activer l'offre premium
           </button>
         </div>
+      </div>
+
+      <div className="card block danger-zone">
+        <h3>Zone de danger</h3>
+        <p className="muted small">
+          La suppression de ton compte est immédiate et irréversible : profil, CV importés, historique de matching,
+          sessions d'entretien et statut premium sont définitivement effacés (droit à l'effacement, Article 17 RGPD).
+        </p>
+
+        {!deleteOpen ? (
+          <button type="button" className="btn-danger" onClick={() => setDeleteOpen(true)}>
+            Supprimer mon compte
+          </button>
+        ) : (
+          <div className="delete-confirm">
+            <label>
+              <span>Confirme avec ton mot de passe pour supprimer définitivement le compte :</span>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(event) => setDeletePassword(event.target.value)}
+                placeholder="Mot de passe"
+              />
+            </label>
+            {deleteError ? <p className="ai-analysis-error">{deleteError}</p> : null}
+            <div className="delete-confirm-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => { setDeleteOpen(false); setDeletePassword(""); setDeleteError(""); }}
+                disabled={deleting}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={!deletePassword || deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  setDeleteError("");
+                  try {
+                    await onDeleteAccount(deletePassword);
+                  } catch (error) {
+                    setDeleteError(error.message || "Échec de la suppression.");
+                    setDeleting(false);
+                  }
+                }}
+              >
+                {deleting ? "Suppression..." : "Confirmer la suppression définitive"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
@@ -2176,6 +2255,7 @@ function InterviewPage({ userId, offer, premium }) {
   const [modelOpenIdx, setModelOpenIdx] = useState(null);
   const [doneTracks, setDoneTracks] = useState({});
   const [answerEvaluations, setAnswerEvaluations] = useState([]);
+  const [transcript, setTranscript] = useState([]);
   const [history, setHistory] = useState([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
   const [aiAnalysis, setAiAnalysis] = useState({}); // { [messageIdx]: { status, data, error } }
@@ -2211,6 +2291,7 @@ function InterviewPage({ userId, offer, premium }) {
     setHintOpen(false);
     setModelOpenIdx(null);
     setAnswerEvaluations([]);
+    setTranscript([]);
     setAiAnalysis({});
   }
 
@@ -2254,6 +2335,10 @@ function InterviewPage({ userId, offer, premium }) {
     ];
 
     const nextEvaluations = [...answerEvaluations, evaluation];
+    const nextTranscript = [
+      ...transcript,
+      { question: reply.question, answer: text, score: evaluation.score, feedback: evaluation.feedback }
+    ];
     const nextStep = step + 1;
     const isLastStep = nextStep >= config.steps.length;
 
@@ -2267,7 +2352,9 @@ function InterviewPage({ userId, offer, premium }) {
           const saved = await saveInterviewAttempt(userId, track, {
             averageScore: sessionSummary.averageScore,
             label: sessionSummary.label,
-            answerCount: nextEvaluations.length
+            answerCount: nextEvaluations.length,
+            personaName: config.meta.name,
+            transcript: nextTranscript
           });
           setHistory((prev) => [saved, ...prev]);
         } catch (_error) {
@@ -2278,6 +2365,7 @@ function InterviewPage({ userId, offer, premium }) {
 
     setMessages(nextMessages);
     setAnswerEvaluations(nextEvaluations);
+    setTranscript(nextTranscript);
     setStep(nextStep);
     setInput("");
     setHintOpen(false);
@@ -2303,9 +2391,18 @@ function InterviewPage({ userId, offer, premium }) {
         >
           🎙️ Mode live (avatar IA)
         </button>
+        <button
+          type="button"
+          className={`mode-btn ${mode === "history" ? "active" : ""}`}
+          onClick={() => setMode("history")}
+        >
+          📊 Historique
+        </button>
       </div>
 
-      {mode === "live" ? (
+      {mode === "history" ? (
+        <InterviewHistoryPanel history={history} historyLoaded={historyLoaded} />
+      ) : mode === "live" ? (
         <LiveInterviewPanel userId={userId} track={track} setTrack={setTrack} offer={offer} premium={premium} />
       ) : (
         <>
@@ -2466,9 +2563,24 @@ function InterviewPage({ userId, offer, premium }) {
                 <p>{config.feedback.key}</p>
               </div>
             </div>
-            <button className="btn-secondary" onClick={() => resetTrack(track)}>
-              Rejouer cette session
-            </button>
+            <div className="bilan-actions">
+              <button className="btn-secondary" onClick={() => resetTrack(track)}>
+                Rejouer cette session
+              </button>
+              <button
+                className="btn-main"
+                onClick={() =>
+                  downloadInterviewReportPdf({
+                    personaName: config.meta.name,
+                    personaSubtitle: config.meta.subtitle,
+                    transcript,
+                    history
+                  })
+                }
+              >
+                📄 Télécharger le rapport (PDF)
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -2679,6 +2791,86 @@ function LiveInterviewPanel({ userId, track, setTrack, offer, premium }) {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+function InterviewHistoryPanel({ history, historyLoaded }) {
+  if (!historyLoaded) {
+    return <div className="card block"><p className="muted">Chargement de l'historique...</p></div>;
+  }
+
+  if (!history.length) {
+    return (
+      <div className="card block">
+        <h3>Historique des entretiens</h3>
+        <p className="muted">Aucune session enregistrée pour l'instant. Termine une simulation en mode texte ou live pour la voir apparaître ici.</p>
+      </div>
+    );
+  }
+
+  const averageOverall = Math.round(history.reduce((acc, item) => acc + item.averageScore, 0) / history.length);
+  const bestScore = Math.max(...history.map((item) => item.averageScore));
+
+  return (
+    <div className="card block interview-history">
+      <h3>Historique des entretiens ({history.length} session{history.length > 1 ? "s" : ""})</h3>
+      <div className="history-stats">
+        <div>
+          <span className="dash-card-label">Score moyen</span>
+          <strong>{averageOverall}/100</strong>
+        </div>
+        <div>
+          <span className="dash-card-label">Meilleur score</span>
+          <strong>{bestScore}/100</strong>
+        </div>
+      </div>
+
+      <table className="history-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Persona</th>
+            <th>Score</th>
+            <th>Niveau</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {history.map((attempt) => (
+            <tr key={attempt.id}>
+              <td>{formatDate(attempt.createdAt)}</td>
+              <td>{attempt.personaName || attempt.track}</td>
+              <td>
+                <span className={`tag tier-${attempt.averageScore >= 75 ? "great" : attempt.averageScore >= 55 ? "good" : attempt.averageScore >= 35 ? "medium" : "low"}`}>
+                  {attempt.averageScore}/100
+                </span>
+              </td>
+              <td>{attempt.label}</td>
+              <td>
+                {attempt.transcript?.length ? (
+                  <button
+                    type="button"
+                    className="btn-secondary small-btn"
+                    onClick={() =>
+                      downloadInterviewReportPdf({
+                        personaName: attempt.personaName || attempt.track,
+                        personaSubtitle: "",
+                        transcript: attempt.transcript,
+                        history: []
+                      })
+                    }
+                  >
+                    📄 Rapport
+                  </button>
+                ) : (
+                  <span className="muted small">Détail non disponible</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -75,12 +75,43 @@ function extractExperienceMinFromText(text) {
   return simpleMatch ? Number(simpleMatch[1]) : 1;
 }
 
+const TITLE_CUE_PATTERNS = [
+  /[Rr]echerch\w*\s+(?:actuellement\s+)?(?:un\.?\(?e?\)?|des?)\s+([A-ZÀ-Ÿ][\w'\-À-ÿ]*(?:\s+[A-ZÀ-Ÿ][\w'\-À-ÿ]*)*)/,
+  /[Rr]ecrut\w*\s+(?:un\.?\(?e?\)?|des?)\s+([A-ZÀ-Ÿ][\w'\-À-ÿ]*(?:\s+[A-ZÀ-Ÿ][\w'\-À-ÿ]*)*)/,
+  /[Pp]oste\s+d[e']\s+([A-ZÀ-Ÿ][\w'\-À-ÿ]*(?:\s+[A-ZÀ-Ÿ][\w'\-À-ÿ]*)*)/,
+  /(?:^|\n)\s*[Oo]ffre\s*:\s*([A-ZÀ-Ÿ][\w'\-À-ÿ]*(?:\s+[A-ZÀ-Ÿ][\w'\-À-ÿ]*)*)/
+];
+
+// Une "vraie" ligne de titre est courte, ne se termine pas par un point (donc
+// n'est probablement pas une phrase d'accroche), et contient plusieurs mots.
+function looksLikeTitleLine(line) {
+  const trimmed = line.trim();
+  if (trimmed.length < 4 || trimmed.length > 70) return false;
+  if (/[.!?]$/.test(trimmed)) return false;
+  const wordCount = trimmed.split(/\s+/).length;
+  return wordCount >= 1 && wordCount <= 8;
+}
+
 function extractTitleFromText(text) {
-  const firstLine = String(text || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .find(Boolean);
-  return firstLine ? firstLine.slice(0, 80) : "Poste personnalisé";
+  const raw = String(text || "");
+
+  // 1) Cherche un motif explicite ("recherchons un(e) Data Engineer", "poste de ...")
+  for (const pattern of TITLE_CUE_PATTERNS) {
+    const match = raw.match(pattern);
+    if (match?.[1]) {
+      return match[1].trim().slice(0, 70);
+    }
+  }
+
+  // 2) Sinon, cherche parmi les premières lignes celle qui ressemble le plus
+  // à un titre de poste plutôt qu'à une phrase d'accroche d'entreprise.
+  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const candidate = lines.slice(0, 6).find(looksLikeTitleLine);
+  if (candidate) return candidate.slice(0, 70);
+
+  // 3) Filet de sécurité : pas de titre identifiable, on l'assume plutôt que
+  // d'afficher une phrase entière comme "titre de poste" dans toute l'app.
+  return "Poste (offre importée)";
 }
 
 const MUST_HAVE_CUES = [
