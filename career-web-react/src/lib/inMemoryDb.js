@@ -173,6 +173,17 @@ export async function activatePremiumSubscription(userId) {
   });
 }
 
+// Distinct de activatePremiumSubscription ci-dessus : celle-ci active gratuitement
+// selon le score d'éligibilité (aucun paiement). Celle-ci crée une session de
+// paiement Stripe réelle — l'activation effective se fait ensuite côté serveur
+// via le webhook (/api/stripe/webhook), pas directement en réponse à cet appel.
+export async function createPremiumCheckoutSession(userId) {
+  return request("/stripe/create-checkout-session", {
+    method: "POST",
+    body: { userId }
+  });
+}
+
 export async function addCvRecord(userId, cvRecord) {
   const data = await request("/cv", {
     method: "POST",
@@ -255,5 +266,14 @@ export async function requestCvRewrite({ userId, cvText, offerTitle, offerCompan
   return request("/cv/rewrite-ai", {
     method: "POST",
     body: { userId, cvText, offerTitle, offerCompany, offerSkills, missingSkills }
+  });
+}
+
+// Pas de userId requis ici : calcul 100% local côté serveur (aucun coût API),
+// contrairement aux fonctionnalités du bloc ci-dessus qui appellent Claude.
+export async function requestSemanticScore({ cvText, offerText }) {
+  return request("/match/semantic-score", {
+    method: "POST",
+    body: { cvText, offerText }
   });
 }

@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout du code
+        uses: actions/checkout@v4
+
+      - name: Installation de Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Installation des dépendances
+        run: npm ci
+
+      - name: Lancer la suite de tests
+        run: npm run test:coverage
+
+      - name: Build de production (vérifie que le frontend compile)
+        run: npm run build
+
+      - name: Vérifier que le serveur démarre (fumée rapide)
+        run: |
+          node server/index.js &
+          SERVER_PID=$!
+          sleep 3
+          curl --fail http://127.0.0.1:8787/api/health || (kill $SERVER_PID; exit 1)
+          kill $SERVER_PID
+        env:
+          # Aucune clé API IA n'est nécessaire pour ce test de fumée : les routes
+          # concernées répondent normalement par un message d'indisponibilité
+          # explicite (503) plutôt que de planter, cf. README §Limites connues.
+          PGLITE_DATA_DIR: ./ci-runtime-data
