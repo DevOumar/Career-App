@@ -1063,6 +1063,55 @@ app.post("/api/auth/password", async (req, res) => {
   }
 });
 
+// Droit à l'effacement (Article 17 RGPD, cf. mémoire §3.3.3) : jusqu'ici documenté
+// comme une lacune assumée, cette route la comble. Suppression physique en cascade
+// de toutes les tables rattachées à l'utilisateur (pas de FK CASCADE dans PGlite,
+// donc suppression explicite table par table), après re-authentification par mot
+// de passe — action irréversible, on ne se contente pas d'un simple userId dans le body.
+app.post("/api/account/delete", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const password = String(req.body?.password || "");
+
+    if (!userId || !password) {
+      return res.status(400).json({ error: "userId et mot de passe requis pour confirmer la suppression." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    if (!verifyPassword(password, user.password_salt, user.password_hash)) {
+      return res.status(401).json({ error: "Mot de passe incorrect. Suppression annulée." });
+    }
+
+    // Ordre sans importance ici (pas de contraintes FK strictes dans PGlite),
+    // mais on part des tables les plus dépendantes vers la table users elle-même.
+    const userScopedTables = [
+      "ai_usage_log",
+      "interview_attempts",
+      "offer_status",
+      "match_runs",
+      "cvs",
+      "sessions",
+      "user_org_profiles",
+      "user_recruiter_profiles",
+      "user_candidate_profiles",
+      "user_accounts"
+    ];
+
+    for (const table of userScopedTables) {
+      await db.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
+    }
+    await db.query("DELETE FROM users WHERE id = $1", [userId]);
+
+    return res.json({ ok: true, deletedUserId: userId });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur lors de la suppression du compte." });
+  }
+});
+
 app.get("/api/auth/session", async (req, res) => {
   try {
     const authHeader = String(req.headers.authorization || "");
@@ -1889,3 +1938,4 @@ if (serverStart.status === "existing") {
   console.log(`Career API (PostgreSQL embarque) sur http://127.0.0.1:${serverStart.port}`);
   console.log(`Donnees PostgreSQL: ${dataDirectory}`);
 }
+

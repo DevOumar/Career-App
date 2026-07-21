@@ -138,6 +138,13 @@ export async function changeUserPassword(userId, currentPassword, newPassword) {
   });
 }
 
+export async function deleteUserAccount(userId, password) {
+  return request("/account/delete", {
+    method: "POST",
+    body: { userId, password }
+  });
+}
+
 export async function updateUserProfile(userId, patch) {
   return request("/profile", {
     method: "PATCH",
