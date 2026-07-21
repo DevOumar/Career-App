@@ -3,6 +3,7 @@ import {
   activatePremiumSubscription,
   addCvRecord,
   changeUserPassword,
+  deleteUserAccount,
   getLatestMatchRun,
   getPremiumSnapshot,
   getUserFromSession,
@@ -440,6 +441,24 @@ export default function App() {
     clearMessages();
   }
 
+  async function handleDeleteAccount(password) {
+    await deleteUserAccount(user.id, password); // laisse l'erreur remonter au composant (mot de passe incorrect, etc.)
+    setToken("");
+    setSession(null);
+    setPremium(null);
+    setLatestCv(null);
+    setLatestMatch(null);
+    setOfferText("");
+    setCvDraft("");
+    setCvHistory([]);
+    setOfferStatuses({});
+    setActivePage("home");
+    setSecurityOpen(false);
+    setUserMenuOpen(false);
+    clearMessages();
+    setPageMessage("Ton compte et toutes tes données ont été définitivement supprimés.");
+  }
+
   async function saveCvToDb({ fileName, text }) {
     if (!user) return;
 
@@ -766,6 +785,7 @@ export default function App() {
             onAvatarUpload={handleAvatarUpload}
             avatarUploading={avatarUploading}
             onActivatePremium={handlePremiumActivation}
+            onDeleteAccount={handleDeleteAccount}
           />
         ) : null}
 
@@ -1436,10 +1456,15 @@ function ProfilePage({
   onSaveAccount,
   onAvatarUpload,
   avatarUploading,
-  onActivatePremium
+  onActivatePremium,
+  onDeleteAccount
 }) {
   const [profileForm, setProfileForm] = useState(() => profileToForm(user.profile));
   const [accountForm, setAccountForm] = useState(() => accountToForm(user));
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     setProfileForm(profileToForm(user.profile));
@@ -1645,6 +1670,60 @@ function ProfilePage({
             Activer l'offre premium
           </button>
         </div>
+      </div>
+
+      <div className="card block danger-zone">
+        <h3>Zone de danger</h3>
+        <p className="muted small">
+          La suppression de ton compte est immédiate et irréversible : profil, CV importés, historique de matching,
+          sessions d'entretien et statut premium sont définitivement effacés (droit à l'effacement, Article 17 RGPD).
+        </p>
+
+        {!deleteOpen ? (
+          <button type="button" className="btn-danger" onClick={() => setDeleteOpen(true)}>
+            Supprimer mon compte
+          </button>
+        ) : (
+          <div className="delete-confirm">
+            <label>
+              <span>Confirme avec ton mot de passe pour supprimer définitivement le compte :</span>
+              <input
+                type="password"
+                value={deletePassword}
+                onChange={(event) => setDeletePassword(event.target.value)}
+                placeholder="Mot de passe"
+              />
+            </label>
+            {deleteError ? <p className="ai-analysis-error">{deleteError}</p> : null}
+            <div className="delete-confirm-actions">
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => { setDeleteOpen(false); setDeletePassword(""); setDeleteError(""); }}
+                disabled={deleting}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={!deletePassword || deleting}
+                onClick={async () => {
+                  setDeleting(true);
+                  setDeleteError("");
+                  try {
+                    await onDeleteAccount(deletePassword);
+                  } catch (error) {
+                    setDeleteError(error.message || "Échec de la suppression.");
+                    setDeleting(false);
+                  }
+                }}
+              >
+                {deleting ? "Suppression..." : "Confirmer la suppression définitive"}
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
