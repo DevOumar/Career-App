@@ -8,12 +8,24 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { PGlite } from "@electric-sql/pglite";
 import { OFFERS } from "../src/data/offers.js";
+import Stripe from "stripe";
+import {
+  applyStripeWebhookEvent,
+  buildCheckoutSessionParams,
+  resolvePriceIdForUser
+} from "./stripeService.js";
 
 const BASE_PORT = Number(process.env.PORT || 8787);
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
 const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
+const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
+const STRIPE_PRICE_ID_INDIVIDUAL = process.env.STRIPE_PRICE_ID_INDIVIDUAL || "";
+const STRIPE_PRICE_ID_SCHOOL = process.env.STRIPE_PRICE_ID_SCHOOL || "";
+const CLIENT_URL = process.env.CLIENT_URL || "http://127.0.0.1:5174";
+const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
 // Traduit une erreur de l'API Anthropic en message actionnable, plutôt que le
 // message générique "a renvoyé une erreur" qui obligeait à checker les logs
@@ -201,6 +213,54 @@ app.use(
     }
   })
 );
+// --- Webhook Stripe ---
+// IMPORTANT : cette route doit être déclarée AVANT app.use(express.json(...))
+// ci-dessous. Stripe signe le corps BRUT (non parsé) de la requête ; si
+// express.json() s'exécute avant, req.body devient un objet JS et la
+// vérification de signature (stripe.webhooks.constructEvent) échoue toujours
+// avec "No signatures found matching the expected signature".
+// D'où express.raw() ici, appliqué seulement à cette route.
+app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+    console.error("Webhook Stripe reçu mais STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET absent(s) du .env.");
+    return res.status(503).send("Stripe non configuré côté serveur.");
+  }
+
+  const signature = req.headers["stripe-signature"];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, signature, STRIPE_WEBHOOK_SECRET);
+  } catch (error) {
+    console.error("Signature webhook Stripe invalide:", error.message);
+    return res.status(400).send(`Webhook Error: ${error.message}`);
+  }
+
+  try {
+    const result = await applyStripeWebhookEvent(event, {
+      db,
+      parseJsonField,
+      // Va chercher la vraie date de fin de période auprès de Stripe plutôt que
+      // de supposer +30 jours : nécessaire depuis l'introduction du plan école
+      // annuel (990 €/an) à côté du plan particulier mensuel (4,99 €/mois).
+      resolveRenewalAt: async (session) => {
+        if (!session.subscription) return null;
+        const subscriptionObject = await stripe.subscriptions.retrieve(session.subscription);
+        return new Date(subscriptionObject.current_period_end * 1000).toISOString();
+      }
+    });
+    if (!result.handled && result.reason === "missing_user_id") {
+      console.warn("checkout.session.completed reçu sans client_reference_id/metadata.userId — activation ignorée.");
+    }
+    // Réponse 200 y compris pour les événements non gérés (result.handled === false) :
+    // sinon Stripe retenterait indéfiniment un événement qu'on ignore volontairement.
+    return res.json({ received: true });
+  } catch (error) {
+    console.error("Erreur traitement webhook Stripe:", error);
+    // 500 ici est volontaire : Stripe retentera automatiquement l'envoi.
+    return res.status(500).json({ error: "Erreur serveur lors du traitement du webhook." });
+  }
+});
+
 app.use(express.json({ limit: "10mb" }));
 
 await db.exec(`
@@ -1280,6 +1340,71 @@ app.patch("/api/profile/avatar", async (req, res) => {
   }
 });
 
+// Crée une session Stripe Checkout pour l'abonnement premium.
+// client_reference_id: userId -> c'est CE champ que le webhook (/api/stripe/webhook,
+// event checkout.session.completed) relit pour savoir quel utilisateur activer.
+// Sans lui, le webhook ne peut pas relier le paiement à un compte (cf. warning
+// "activation ignorée" côté webhook).
+app.post("/api/stripe/create-checkout-session", async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(503).json({
+        error: "Paiement indisponible : STRIPE_SECRET_KEY absente côté serveur (.env)."
+      });
+    }
+
+    const userId = coerceString(req.body?.userId);
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+
+    const userRow = await getUserRowById(userId);
+    if (!userRow) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const access = await computePremiumAccess(userRow);
+    if (!access.eligibility.eligible) {
+      return res.status(400).json({ error: "Profil non éligible à l'activation premium." });
+    }
+
+    const subscription = parseJsonField(userRow.subscription_json, {});
+    if (subscription.plan === "premium" && subscription.status === "active") {
+      return res.status(400).json({ error: "Un abonnement premium est déjà actif pour ce compte." });
+    }
+
+    // Tarification différenciée : compte "school" -> BtoB annuel (990 €/an),
+    // tout autre type de compte -> BtoC mensuel (4,99 €/mois).
+    let priceId;
+    try {
+      priceId = resolvePriceIdForUser(userRow.role_type, {
+        individual: STRIPE_PRICE_ID_INDIVIDUAL,
+        school: STRIPE_PRICE_ID_SCHOOL
+      });
+    } catch (priceError) {
+      return res.status(503).json({ error: `Paiement indisponible : ${priceError.message}` });
+    }
+
+    const sessionParams = buildCheckoutSessionParams({
+      userId,
+      userEmail: userRow.email,
+      subscription,
+      priceId
+    });
+
+    const session = await stripe.checkout.sessions.create({
+      ...sessionParams,
+      success_url: `${CLIENT_URL}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${CLIENT_URL}/?checkout=cancel`
+    });
+
+    return res.json({ url: session.url });
+  } catch (error) {
+    console.error("Erreur création session Stripe Checkout:", error);
+    return res.status(500).json({ error: error.message || "Erreur serveur lors de la création du paiement." });
+  }
+});
+
 app.get("/api/premium", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
@@ -1925,6 +2050,73 @@ app.post("/api/cv/rewrite-ai", async (req, res) => {
     return res.json({ rewritten });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur lors de la réécriture IA." });
+  }
+});
+
+// --- Matching sémantique (Phase 2, cf. mémoire §2.6) ---
+// Contrairement aux fonctionnalités IA du §2.4.6, ceci ne fait AUCUN appel API
+// payant : le modèle d'embeddings tourne localement (transformers.js / ONNX),
+// téléchargé une seule fois puis mis en cache sur disque. Coût nul par requête,
+// mais latence de démarrage au premier appel (téléchargement ~470 Mo) et usage
+// CPU/mémoire plus élevé qu'un scoring par règles.
+//
+// ⚠️ Bloc non vérifié en conditions réelles au moment de l'écriture : l'accès à
+// huggingface.co était bloqué dans l'environnement de développement utilisé pour
+// ce commit. La syntaxe suit la documentation officielle de @xenova/transformers,
+// mais le téléchargement et l'inférence du modèle doivent être testés avant
+// d'être considérés comme fiables en production.
+let semanticExtractorPromise = null;
+
+async function getSemanticExtractor() {
+  if (!semanticExtractorPromise) {
+    const { pipeline } = await import("@xenova/transformers");
+    semanticExtractorPromise = pipeline(
+      "feature-extraction",
+      "Xenova/paraphrase-multilingual-MiniLM-L12-v2"
+    );
+  }
+  return semanticExtractorPromise;
+}
+
+async function embedText(text) {
+  const extractor = await getSemanticExtractor();
+  // pooling: "mean" + normalize: true -> le produit scalaire de deux vecteurs
+  // normalisés équivaut directement à leur similarité cosinus (pas besoin de
+  // diviser par les normes séparément).
+  const output = await extractor(text, { pooling: "mean", normalize: true });
+  return Array.from(output.data);
+}
+
+function dotProduct(a, b) {
+  let sum = 0;
+  for (let i = 0; i < a.length; i += 1) sum += a[i] * b[i];
+  return sum;
+}
+
+app.post("/api/match/semantic-score", async (req, res) => {
+  try {
+    const cvText = coerceString(req.body?.cvText);
+    const offerText = coerceString(req.body?.offerText);
+
+    if (!cvText || !offerText) {
+      return res.status(400).json({ error: "cvText et offerText requis." });
+    }
+    if (cvText.length > 8000 || offerText.length > 8000) {
+      return res.status(400).json({ error: "Texte trop long pour le calcul de similarité sémantique (max 8000 caractères)." });
+    }
+
+    const [cvVector, offerVector] = await Promise.all([embedText(cvText), embedText(offerText)]);
+    const similarity = dotProduct(cvVector, offerVector); // dans [-1, 1], proche de [0, 1] en pratique
+    const score = Math.max(0, Math.min(100, Math.round(similarity * 100)));
+
+    return res.json({ score, raw: similarity });
+  } catch (error) {
+    console.error("Semantic matching error:", error);
+    return res.status(500).json({
+      error: "Calcul de similarité sémantique indisponible (modèle non chargé ou erreur d'inférence). " +
+        "Le scoring par règles (§2.4.4) reste utilisable indépendamment de cette fonctionnalité.",
+      detail: error.message
+    });
   }
 });
 
