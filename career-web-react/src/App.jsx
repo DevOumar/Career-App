@@ -9,6 +9,7 @@ import {
   getPremiumSnapshot,
   getUserFromSession,
   listInterviewAttempts,
+  listLiveOffers,
   listOfferStatuses,
   listOffers,
   listUserCvs,
@@ -655,7 +656,14 @@ export default function App() {
     try {
       await wait(1250);
 
-      const offers = await listOffers();
+      const demoOffers = await listOffers();
+      // Mots-clés dérivés de l'analyse du CV/profil : rôle visé en priorité, sinon
+      // les compétences détectées dans le CV. Recherche silencieuse (pas de mots-clés
+      // exploitables -> pas d'appel, pas d'erreur affichée).
+      const cvSkills = Array.isArray(latestCv?.parsed?.skills) ? latestCv.parsed.skills : [];
+      const motsCles = String(user?.profile?.targetRole || cvSkills.slice(0, 3).join(" ") || "").trim();
+      const liveOffers = motsCles ? await listLiveOffers({ motsCles }) : [];
+      const offers = [...demoOffers, ...liveOffers];
       const premiumSnapshot = await getPremiumSnapshot(user.id);
       const result = runMatching({
         user,
@@ -2200,16 +2208,27 @@ function OffersPage({ matchData, premium, offerStatuses = {}, onToggleStatus }) 
                   {item.offer.company} · {item.offer.location} · {item.offer.contract}
                 </p>
               </div>
-              <div className="score-pill">{item.score}</div>
+              <div className={`score-pill tier-${scoreTier(item.score)}`}>{item.score}</div>
             </div>
 
             <div className="tag-row">
-              <span className="tag">{ratingLabel(item.score)}</span>
+              <span className={`tag tier-${scoreTier(item.score)}`}>{ratingLabel(item.score)}</span>
               <span className="tag">compétences {item.skillCoverage}%</span>
               {item.offer.premium ? <span className="tag premium">Premium</span> : null}
               {item.locked ? <span className="tag crit">Verrouillé</span> : null}
               {status.isApplied ? <span className="tag applied">✓ Déjà postulé</span> : null}
+              {item.offer.source === "france-travail" ? (
+                <span className="tag live">📡 Offre réelle · France Travail</span>
+              ) : null}
             </div>
+
+            {item.offer.source === "france-travail" && item.offer.externalUrl ? (
+              <p className="muted small" style={{ marginTop: "0.3rem" }}>
+                <a href={item.offer.externalUrl} target="_blank" rel="noreferrer">
+                  Voir et postuler sur l'annonce d'origine ↗
+                </a>
+              </p>
+            ) : null}
 
             <div className="offer-body">
               <div>
