@@ -14,6 +14,7 @@ import {
   buildCheckoutSessionParams,
   resolvePriceIdForUser
 } from "./stripeService.js";
+import { createFranceTravailClient } from "./franceTravailService.js";
 
 const BASE_PORT = Number(process.env.PORT || 8787);
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
@@ -26,6 +27,20 @@ const STRIPE_PRICE_ID_INDIVIDUAL = process.env.STRIPE_PRICE_ID_INDIVIDUAL || "";
 const STRIPE_PRICE_ID_SCHOOL = process.env.STRIPE_PRICE_ID_SCHOOL || "";
 const CLIENT_URL = process.env.CLIENT_URL || "http://127.0.0.1:5174";
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+
+const FRANCE_TRAVAIL_CLIENT_ID = process.env.FRANCE_TRAVAIL_CLIENT_ID || "";
+const FRANCE_TRAVAIL_CLIENT_SECRET = process.env.FRANCE_TRAVAIL_CLIENT_SECRET || "";
+const franceTravailClient =
+  FRANCE_TRAVAIL_CLIENT_ID && FRANCE_TRAVAIL_CLIENT_SECRET
+    ? createFranceTravailClient({ clientId: FRANCE_TRAVAIL_CLIENT_ID, clientSecret: FRANCE_TRAVAIL_CLIENT_SECRET })
+    : null;
+
+// Cache en mémoire des recherches d'offres réelles (clé = critères de recherche).
+// Nécessaire pour respecter la limite de débit de l'API France Travail (3 req/s)
+// et éviter un appel réseau à chaque re-render côté front — les offres réelles
+// n'ont pas besoin d'être millisecondes-fraîches pour un usage de matching CV.
+const FRANCE_TRAVAIL_CACHE_TTL_MS = 10 * 60 * 1000;
+const franceTravailCache = new Map();
 
 // Traduit une erreur de l'API Anthropic en message actionnable, plutôt que le
 // message générique "a renvoyé une erreur" qui obligeait à checker les logs
@@ -1427,6 +1442,14 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
 
     const session = await stripe.checkout.sessions.create({
       ...sessionParams,
+      // Stripe Tax : calcule automatiquement la TVA due selon le pays du client,
+      // MAIS ne collecte réellement que sur les juridictions où une inscription
+      // fiscale active est enregistrée (Dashboard Stripe > Tax > Registrations).
+      // Tant que l'inscription OSS réelle n'est pas faite auprès de l'administration
+      // fiscale (cf. mémoire §5.3/§3.4.3), ce paramètre n'a aucun effet pratique —
+      // il prépare seulement le terrain pour l'activer sans reprendre le code plus tard.
+      automatic_tax: { enabled: true },
+      billing_address_collection: "required",
       success_url: `${CLIENT_URL}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${CLIENT_URL}/?checkout=cancel`
     });
@@ -1565,6 +1588,42 @@ app.get("/api/cv", async (req, res) => {
     return res.json({ items });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Offres réelles via l'API France Travail (cf. server/franceTravailService.js).
+// Contrairement à /api/offers (jeu de démonstration seedé dans PGlite), rien
+// n'est stocké en base ici : les résultats sont récupérés en direct (avec cache
+// en mémoire) et fusionnés côté front avec les offres de démonstration.
+app.get("/api/offers/live", async (req, res) => {
+  if (!franceTravailClient) {
+    // Comportement volontairement cohérent avec les autres intégrations externes
+    // optionnelles (Anthropic, Stripe) : message explicite plutôt que 500, le
+    // reste de l'app (offres de démonstration) continue de fonctionner normalement.
+    return res.status(503).json({
+      error: "Offres en direct indisponibles : FRANCE_TRAVAIL_CLIENT_ID/SECRET absents du .env.",
+      items: []
+    });
+  }
+
+  try {
+    const motsCles = coerceString(req.query.motsCles);
+    const commune = coerceString(req.query.commune);
+    const cacheKey = `${motsCles}|${commune}`;
+    const cached = franceTravailCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) {
+      return res.json({ items: cached.items, cached: true });
+    }
+
+    const items = await franceTravailClient.searchOffers({ motsCles, commune, range: "0-19" });
+    franceTravailCache.set(cacheKey, { items, expiresAt: Date.now() + FRANCE_TRAVAIL_CACHE_TTL_MS });
+    return res.json({ items, cached: false });
+  } catch (error) {
+    console.error("Erreur recherche France Travail:", error);
+    // On répond 200 avec une liste vide plutôt qu'une erreur bloquante : une
+    // panne de l'API externe ne doit pas empêcher l'utilisateur de voir au
+    // moins les offres de démonstration côté front.
+    return res.json({ items: [], error: error.message || "Erreur lors de la recherche d'offres réelles." });
   }
 });
 

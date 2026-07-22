@@ -107,6 +107,21 @@ Toutes ces valeurs se trouvent dans le [Dashboard Stripe](https://dashboard.stri
 - `STRIPE_PRICE_ID_INDIVIDUAL` / `STRIPE_PRICE_ID_SCHOOL` : Product catalog → créer un produit avec un prix récurrent (mensuel pour l'un, annuel pour l'autre) → copier l'ID du prix (`price_...`)
 - `STRIPE_WEBHOOK_SECRET` : voir la section suivante, il n'existe qu'une fois un endpoint webhook créé.
 
+## Configuration (offres réelles France Travail — optionnel)
+
+Sans ces variables, l'app fonctionne normalement avec uniquement les offres de démonstration (`src/data/offers.js`) — la page Offres affiche juste une liste plus courte, aucune erreur.
+
+```
+FRANCE_TRAVAIL_CLIENT_ID=ton-identifiant
+FRANCE_TRAVAIL_CLIENT_SECRET=ta-cle-secrete
+```
+
+1. Crée un compte sur [francetravail.io](https://francetravail.io) (gratuit)
+2. Dans le tableau de bord, crée une application → récupère l'**Identifiant** et la **Clé secrète**
+3. Dans le catalogue, abonne ton application à **"API Offres d'emploi v2"** (étape distincte de la simple création de compte)
+
+**Pourquoi France Travail et pas LinkedIn/Indeed/Welcome to the Jungle ?** Ces plateformes interdisent explicitement le scraping dans leurs CGU (contentieux documentés, ex. LinkedIn c. hiQ Labs) — les utiliser exposerait le projet à un vrai risque juridique. France Travail (ex-Pôle Emploi) propose au contraire une API officielle, gratuite et conçue pour cet usage : données publiques administratives, ~300 000 offres en temps réel, zéro souci RGPD.
+
 ## Lancer en développement
 
 ```bash
@@ -176,6 +191,32 @@ La date de renouvellement affichée dans l'app est lue directement depuis Stripe
 
 La logique métier (sélection du prix, construction des paramètres Checkout, traitement des événements webhook) est isolée dans `server/stripeService.js`, testée unitairement sans avoir besoin d'un vrai serveur ni d'une vraie connexion Stripe (voir [Tests](#scripts-npm)).
 
+### Fiscalité (TVA OSS)
+
+`automatic_tax: { enabled: true }` est activé sur la session Checkout, ce qui prépare le calcul automatique de la TVA due selon le pays du client (particulier UE en B2C ; les écoles en B2B relèvent normalement de l'autoliquidation, hors OSS). **Ce paramètre reste sans effet tant qu'aucune inscription fiscale réelle n'est ajoutée dans le Dashboard Stripe (Tax → Registrations)** — Stripe ne collecte la taxe que sur les juridictions où une inscription active existe. L'inscription au guichet unique OSS auprès de l'administration fiscale française (via impots.gouv.fr) est un préalable administratif réel, non technique, volontairement non engagé tant que l'app reste en mode test sans client facturé.
+
+## Offres réelles (France Travail)
+
+En complément des offres de démonstration (`src/data/offers.js`), la page Analyse interroge l'[API Offres d'emploi v2 de France Travail](https://francetravail.io) (ex-Pôle Emploi) pour proposer de vraies offres, filtrées par mots-clés dérivés du rôle visé ou des compétences détectées dans le CV.
+
+### Endpoint
+
+`GET /api/offers/live?motsCles=...&commune=...` — authentification OAuth2 (client_credentials) auprès de France Travail, résultats mis en cache 10 minutes côté serveur (la recherche n'a pas besoin d'être seconde-fraîche, et ça évite de dépasser la limite de débit de l'API : 3 requêtes/seconde). Si `FRANCE_TRAVAIL_CLIENT_ID`/`SECRET` sont absents ou que l'appel échoue, retourne une liste vide plutôt qu'une erreur bloquante — le front se rabat silencieusement sur les offres de démonstration.
+
+### Mapping des données
+
+Les offres renvoyées par l'API n'ont pas la même forme que notre schéma interne (`skills` comme dictionnaire de mots-clés comparables, pas les phrases longues renvoyées par le champ `competences` de l'API). `server/franceTravailService.js` retraite chaque offre :
+
+- **Compétences** : ré-extraites du texte libre (intitulé + description) avec le même dictionnaire `SKILL_KEYWORDS`/`SKILL_SYNONYMS` que le parsing de CV, pour rester comparables par `matchingService`.
+- **Expérience minimale** et **niveau d'études** : estimation heuristique depuis les champs libres de l'API (`experienceLibelle`, `formations`) — best-effort assumé, moins fin que le parsing de CV (pas d'analyse de plages de dates).
+- **Missions** : découpées depuis la description libre (l'API ne renvoie pas de liste structurée).
+
+Chaque offre réelle porte un tag "📡 Offre réelle · France Travail" et, si disponible, un lien vers l'annonce d'origine pour postuler.
+
+### Pourquoi pas LinkedIn/Indeed/Welcome to the Jungle ?
+
+Ces plateformes interdisent explicitement la collecte automatisée dans leurs CGU — contentieux documentés (LinkedIn c. hiQ Labs), rupture de contrat, bannissement possible même sur des données publiques. France Travail propose à l'inverse une API officielle et gratuite, conçue pour ce cas d'usage précis, sans les risques juridiques du scraping.
+
 ## Scripts npm
 
 - `npm run dev` : lance l'API locale et le frontend en parallèle.
@@ -216,6 +257,7 @@ Le build est généré dans `dist/` (non versionné). Pour tester localement : `
 |-- server/
 |   |-- index.js          # API Express + PGlite + endpoints IA (Claude) + Stripe
 |   |-- stripeService.js  # Logique métier Stripe (Checkout, webhook) — testable en isolation
+|   |-- franceTravailService.js  # Client France Travail (auth, recherche, mapping) — testable en isolation
 |   `-- __tests__/
 |       `-- stripeService.test.js
 |-- src/
@@ -258,8 +300,9 @@ Assumées comme trajectoire de MVP plutôt que dissimulées :
 - **Paiement Stripe : deux tarifs seulement** : distinction école (annuel, BtoB) vs tout le reste (mensuel, BtoC). Les 3 formules particulier évoquées pour une segmentation plus fine restent une évolution future non implémentée.
 - **Quota gratuit aligné sur le mois calendaire, pas sur la date d'activation** : les 3 analyses gratuites (et donc l'accès premium gratuit qui en dépend) se réinitialisent au 1er de chaque mois, pas 30 jours après le clic sur "Activer l'offre premium" — un utilisateur qui active tardivement dans le mois peut voir son quota se réinitialiser plus vite qu'attendu.
 - **Fonctionnalités IA à coût réel** : chaque appel (analyse approfondie, mode live, réécriture CV) consomme l'API Claude ; sans clé configurée, ces boutons restent inactifs avec un message explicite plutôt que de planter.
-- **Conformité fiscale (TVA MOSS) et DPA Stripe non formalisés** : mis de côté volontairement tant que l'intégration Stripe reste en mode test sans client facturé réellement. À traiter avant toute sortie du mode test.
-- **CI/CD limité aux tests + build** : le pipeline (voir [CI/CD](#cicd)) vérifie que les tests passent et que le build fonctionne, mais ne déploie rien automatiquement (pas de CD à proprement parler) et ne couvre que la logique métier déjà testée (`server/stripeService.js` + `src/lib/`), pas l'ensemble de l'application.
+- **Conformité fiscale (TVA OSS) non traitée** : le calcul automatique est prêt côté code (`automatic_tax: { enabled: true }` sur la session Checkout, cf. [Paiements (Stripe)](#paiements-stripe)), mais reste sans effet tant que l'inscription réelle au guichet unique OSS n'est pas faite auprès de l'administration fiscale (Stripe ne collecte la taxe que sur les juridictions où une inscription active est enregistrée dans son dashboard). Mis de côté volontairement tant qu'aucun client n'est facturé réellement — à traiter avant toute sortie du mode test. (Le DPA Stripe, vérifié en parallèle, s'est avéré déjà couvert par défaut : il fait partie intégrante du Stripe Services Agreement accepté à la création du compte, aucune signature séparée n'est nécessaire — cf. [stripe.com/legal/dpa/faqs](https://stripe.com/legal/dpa/faqs).)
+- **CI/CD limité aux tests + build** : le pipeline (voir [CI/CD](#cicd)) vérifie que les tests passent et que le build fonctionne, mais ne déploie rien automatiquement (pas de CD à proprement parler) et ne couvre que la logique métier déjà testée (`server/stripeService.js`, `server/franceTravailService.js` + `src/lib/`), pas l'ensemble de l'application.
+- **Mapping France Travail best-effort** : expérience minimale et niveau d'études des offres réelles sont estimés heuristiquement depuis des champs texte libre, moins fiable que le parsing de CV (pas d'analyse de plages de dates). Les compétences sont ré-extraites du texte libre avec le même dictionnaire que le CV plutôt qu'utilisées telles quelles (le format natif de l'API n'est pas comparable).
 
 ## Données et fichiers sensibles
 

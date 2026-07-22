@@ -203,6 +203,22 @@ export async function listOffers() {
   return data.items;
 }
 
+// Offres réelles (France Travail). Contrairement aux autres fonctions de ce
+// fichier, ne lève jamais : si l'intégration n'est pas configurée ou indisponible,
+// on retourne un tableau vide pour se rabattre silencieusement sur les offres
+// de démonstration côté appelant plutôt que de casser l'écran d'analyse.
+export async function listLiveOffers({ motsCles, commune } = {}) {
+  try {
+    const params = new URLSearchParams();
+    if (motsCles) params.set("motsCles", motsCles);
+    if (commune) params.set("commune", commune);
+    const data = await request(`/offers/live?${params.toString()}`);
+    return data.items || [];
+  } catch (_error) {
+    return [];
+  }
+}
+
 export async function saveMatchRun(userId, payload) {
   const data = await request("/matches", {
     method: "POST",
