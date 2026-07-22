@@ -187,6 +187,17 @@ La logique métier (sélection du prix, construction des paramètres Checkout, t
 - `npm run test:watch` : lance vitest en mode watch.
 - `npm run test:coverage` : lance les tests avec rapport de couverture.
 
+## CI/CD
+
+Un workflow GitHub Actions (`.github/workflows/tests.yml`) s'exécute automatiquement à chaque `push` et chaque `pull request` vers `main`/`master` :
+
+1. Installation des dépendances (`npm ci`)
+2. Suite de tests (`npm test`) — le workflow échoue si un test échoue
+3. Rapport de couverture (`npm run test:coverage`), publié comme artefact téléchargeable depuis l'onglet Actions (non bloquant, aucun seuil minimal configuré pour l'instant)
+4. Vérification que le build frontend passe (`npm run build`)
+
+Point d'attention si tu déplaces les fichiers : le workflow suppose que `package.json` est dans `career-web-react/` (pas à la racine du dépôt GitHub) via `defaults.run.working-directory`. Si tu changes cette arborescence, adapte aussi `cache-dependency-path` et le `path` de l'étape de publication de couverture dans le workflow, qui ne suivent pas ce défaut automatiquement (il ne s'applique qu'aux étapes `run:`, pas aux étapes `uses:`).
+
 ## Build de production
 
 ```bash
@@ -199,6 +210,9 @@ Le build est généré dans `dist/` (non versionné). Pour tester localement : `
 
 ```text
 .
+|-- .github/
+|   `-- workflows/
+|       `-- tests.yml      # CI/CD : tests + build à chaque push/PR
 |-- server/
 |   |-- index.js          # API Express + PGlite + endpoints IA (Claude) + Stripe
 |   |-- stripeService.js  # Logique métier Stripe (Checkout, webhook) — testable en isolation
@@ -244,6 +258,8 @@ Assumées comme trajectoire de MVP plutôt que dissimulées :
 - **Paiement Stripe : deux tarifs seulement** : distinction école (annuel, BtoB) vs tout le reste (mensuel, BtoC). Les 3 formules particulier évoquées pour une segmentation plus fine restent une évolution future non implémentée.
 - **Quota gratuit aligné sur le mois calendaire, pas sur la date d'activation** : les 3 analyses gratuites (et donc l'accès premium gratuit qui en dépend) se réinitialisent au 1er de chaque mois, pas 30 jours après le clic sur "Activer l'offre premium" — un utilisateur qui active tardivement dans le mois peut voir son quota se réinitialiser plus vite qu'attendu.
 - **Fonctionnalités IA à coût réel** : chaque appel (analyse approfondie, mode live, réécriture CV) consomme l'API Claude ; sans clé configurée, ces boutons restent inactifs avec un message explicite plutôt que de planter.
+- **Conformité fiscale (TVA MOSS) et DPA Stripe non formalisés** : mis de côté volontairement tant que l'intégration Stripe reste en mode test sans client facturé réellement. À traiter avant toute sortie du mode test.
+- **CI/CD limité aux tests + build** : le pipeline (voir [CI/CD](#cicd)) vérifie que les tests passent et que le build fonctionne, mais ne déploie rien automatiquement (pas de CD à proprement parler) et ne couvre que la logique métier déjà testée (`server/stripeService.js` + `src/lib/`), pas l'ensemble de l'application.
 
 ## Données et fichiers sensibles
 
