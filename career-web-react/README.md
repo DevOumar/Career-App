@@ -28,6 +28,7 @@ Plateforme d'accompagnement à la recherche d'emploi : import et analyse de CV, 
 
 **Offres**
 - Matching pondéré (compétences avec distinction obligatoire/atout, expérience, niveau d'études, localisation, rôle/secteur visé).
+- 12 offres de démonstration multi-secteurs (tech/data/IA, marketing, finance, vente, RH, design, juridique) + offres réelles France Travail fusionnées selon le profil/CV (voir [Offres réelles](#offres-réelles-france-travail)).
 - Recherche et filtres (compétence, secteur, localisation), tri (score / entreprise / favoris).
 - Favoris et suivi "déjà postulé", persistés par utilisateur.
 - Gating premium sur certaines offres.
@@ -259,11 +260,12 @@ Le build est généré dans `dist/` (non versionné). Pour tester localement : `
 |   |-- stripeService.js  # Logique métier Stripe (Checkout, webhook) — testable en isolation
 |   |-- franceTravailService.js  # Client France Travail (auth, recherche, mapping) — testable en isolation
 |   `-- __tests__/
-|       `-- stripeService.test.js
+|       |-- stripeService.test.js
+|       `-- franceTravailService.test.js
 |-- src/
 |   |-- App.jsx            # Composant racine et toutes les pages
 |   |-- data/
-|   |   |-- offers.js       # Offres de démonstration
+|   |   |-- offers.js       # Offres de démonstration (12, multi-secteurs : tech/data/IA, marketing, finance, vente, RH, design, juridique)
 |   |   `-- skills.js       # Vocabulaire de compétences multi-secteurs, domaines, synonymes
 |   |-- lib/
 |   |   |-- cvService.js         # Extraction CV (PDF/DOCX/texte), export PDF/txt
@@ -299,6 +301,7 @@ Assumées comme trajectoire de MVP plutôt que dissimulées :
 - **Mode entretien live** : reconnaissance et synthèse vocales fiables sur Chrome/Edge uniquement (support partiel/absent sur Firefox/Safari selon versions).
 - **Paiement Stripe : deux tarifs seulement** : distinction école (annuel, BtoB) vs tout le reste (mensuel, BtoC). Les 3 formules particulier évoquées pour une segmentation plus fine restent une évolution future non implémentée.
 - **Quota gratuit aligné sur le mois calendaire, pas sur la date d'activation** : les 3 analyses gratuites (et donc l'accès premium gratuit qui en dépend) se réinitialisent au 1er de chaque mois, pas 30 jours après le clic sur "Activer l'offre premium" — un utilisateur qui active tardivement dans le mois peut voir son quota se réinitialiser plus vite qu'attendu.
+- **Offres de démonstration seedées une seule fois** : `src/data/offers.js` n'est chargé dans PGlite qu'au tout premier démarrage (table vide). Modifier ce fichier sur une installation déjà lancée n'a aucun effet tant que `server/postgres-data/` (ou `postgres-runtime/`) n'est pas supprimé pour forcer un nouveau seed.
 - **Fonctionnalités IA à coût réel** : chaque appel (analyse approfondie, mode live, réécriture CV) consomme l'API Claude ; sans clé configurée, ces boutons restent inactifs avec un message explicite plutôt que de planter.
 - **Conformité fiscale (TVA OSS) non traitée** : le calcul automatique est prêt côté code (`automatic_tax: { enabled: true }` sur la session Checkout, cf. [Paiements (Stripe)](#paiements-stripe)), mais reste sans effet tant que l'inscription réelle au guichet unique OSS n'est pas faite auprès de l'administration fiscale (Stripe ne collecte la taxe que sur les juridictions où une inscription active est enregistrée dans son dashboard). Mis de côté volontairement tant qu'aucun client n'est facturé réellement — à traiter avant toute sortie du mode test. (Le DPA Stripe, vérifié en parallèle, s'est avéré déjà couvert par défaut : il fait partie intégrante du Stripe Services Agreement accepté à la création du compte, aucune signature séparée n'est nécessaire — cf. [stripe.com/legal/dpa/faqs](https://stripe.com/legal/dpa/faqs).)
 - **CI/CD limité aux tests + build** : le pipeline (voir [CI/CD](#cicd)) vérifie que les tests passent et que le build fonctionne, mais ne déploie rien automatiquement (pas de CD à proprement parler) et ne couvre que la logique métier déjà testée (`server/stripeService.js`, `server/franceTravailService.js` + `src/lib/`), pas l'ensemble de l'application.
