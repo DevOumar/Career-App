@@ -106,14 +106,34 @@ async function request(path, options = {}) {
 }
 
 export async function registerUser(payload) {
-  const data = await request("/auth/register", { method: "POST", body: payload });
-  return data.user;
+  return request("/auth/register", { method: "POST", body: payload });
 }
 
-export async function loginUser({ email, password }) {
+export async function loginUser({ email, identifier, password }) {
   return request("/auth/login", {
     method: "POST",
-    body: { email, password }
+    body: { email, identifier, password }
+  });
+}
+
+export async function requestLoginCode({ email, identifier, purpose }) {
+  return request("/auth/request-code", {
+    method: "POST",
+    body: { email, identifier, purpose }
+  });
+}
+
+export async function verifyLoginCode({ email, identifier, code, purpose }) {
+  return request("/auth/verify-code", {
+    method: "POST",
+    body: { email, identifier, code, purpose }
+  });
+}
+
+export async function loginWithGoogle(credential) {
+  return request("/auth/google", {
+    method: "POST",
+    body: { credential }
   });
 }
 
@@ -131,10 +151,11 @@ export async function logoutUser(token) {
   await request("/auth/logout", { method: "POST", token });
 }
 
-export async function changeUserPassword(userId, currentPassword, newPassword) {
+export async function changeUserPassword(userId, currentPassword, newPassword, options = {}) {
   return request("/auth/password", {
     method: "POST",
-    body: { userId, currentPassword, newPassword }
+    token: options.token,
+    body: { userId, currentPassword, newPassword, logoutOtherSessions: Boolean(options.logoutOtherSessions) }
   });
 }
 
@@ -152,6 +173,55 @@ export async function updateUserAccount(userId, patch) {
   });
 }
 
+export async function requestSecondaryEmailCode(userId, email) {
+  return request("/account/emails/request", {
+    method: "POST",
+    body: { userId, email }
+  });
+}
+
+export async function verifySecondaryEmail(userId, email, code) {
+  return request("/account/emails/verify", {
+    method: "POST",
+    body: { userId, email, code }
+  });
+}
+
+export async function setPrimaryEmail(userId, emailId) {
+  return request("/account/emails/primary", {
+    method: "PATCH",
+    body: { userId, emailId }
+  });
+}
+
+export async function removeSecondaryEmail(userId, emailId) {
+  return request("/account/emails", {
+    method: "DELETE",
+    body: { userId, emailId }
+  });
+}
+
+export async function deleteUserAccount(userId, confirmation) {
+  return request("/account", {
+    method: "DELETE",
+    body: { userId, confirmation }
+  });
+}
+
+export async function removeConnectedAccount(userId, provider = "google") {
+  return request("/account/connected-accounts/remove", {
+    method: "POST",
+    body: { userId, provider }
+  });
+}
+
+export async function linkGoogleAccount(userId, credential) {
+  return request("/account/connected-accounts/link-google", {
+    method: "POST",
+    body: { userId, credential }
+  });
+}
+
 export async function updateUserAvatar(userId, avatarDataUrl) {
   return request("/profile/avatar", {
     method: "PATCH",
@@ -166,12 +236,54 @@ export async function activatePremiumSubscription(userId) {
   });
 }
 
+export async function activatePlan({ userId, planId, billingCycle }) {
+  return request("/plans/activate", {
+    method: "POST",
+    body: { userId, planId, billingCycle }
+  });
+}
+
+export async function redeemLicenseCode({ userId, code }) {
+  return request("/plans/redeem", {
+    method: "POST",
+    body: { userId, code }
+  });
+}
+
+export async function consumeTokens({ userId, amount = 1 }) {
+  return request("/tokens/consume", {
+    method: "POST",
+    body: { userId, amount }
+  });
+}
+
 export async function addCvRecord(userId, cvRecord) {
   const data = await request("/cv", {
     method: "POST",
     body: { userId, cvRecord }
   });
   return data.cv;
+}
+
+export async function extractCvFile({ fileName, mimeType, base64 }) {
+  return request("/cv/extract", {
+    method: "POST",
+    body: { fileName, mimeType, base64 }
+  });
+}
+
+export async function extractJobOffer({ text }) {
+  return request("/jobs/extract", {
+    method: "POST",
+    body: { text }
+  });
+}
+
+export async function analyzeMatch({ candidate, offer }) {
+  return request("/match/analyze", {
+    method: "POST",
+    body: { candidate, offer }
+  });
 }
 
 export async function listUserCvs(userId) {
@@ -197,6 +309,34 @@ export async function getLatestMatchRun(userId) {
   if (!userId) return null;
   const data = await request(`/matches/latest?userId=${encodeURIComponent(userId)}`);
   return data.run;
+}
+
+export async function submitMatchFeedback({ userId, matchRunId, useful }) {
+  const data = await request("/matches/feedback", {
+    method: "POST",
+    body: { userId, matchRunId, useful }
+  });
+  return data.feedback;
+}
+
+export async function getMatchFeedback({ userId, matchRunId }) {
+  if (!userId || !matchRunId) return null;
+  const data = await request(`/matches/feedback?userId=${encodeURIComponent(userId)}&matchRunId=${encodeURIComponent(matchRunId)}`);
+  return data.feedback;
+}
+
+export async function generateCoverLetter({ candidate, offer, tone, language }) {
+  return request("/coverletter/generate", {
+    method: "POST",
+    body: { candidate, offer, tone, language }
+  });
+}
+
+export async function negotiationReply({ candidate, offer, history, targetSalary, finish, currencyLabel }) {
+  return request("/negotiation/reply", {
+    method: "POST",
+    body: { candidate, offer, history, targetSalary, finish, currencyLabel }
+  });
 }
 
 export async function getPremiumSnapshot(userId) {

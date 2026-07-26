@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules/
 **/node_modules/
 
@@ -40,6 +40,7 @@ career-web-react/server/pgdata*/
 *.db
 *.dump
 *.sql
+!career-web-react/database/schema.sql
 
 # Python
 __pycache__/

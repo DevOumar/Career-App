@@ -1,4 +1,4 @@
-﻿import { DOMAIN_MAP, EDUCATION_LEVELS, SKILL_KEYWORDS } from "../data/skills";
+﻿import { DOMAIN_MAP, EDUCATION_LEVELS, SKILL_KEYWORDS } from "../data/skills.js";
 
 function normalize(value) {
   return String(value || "")
@@ -12,6 +12,27 @@ function unique(list) {
   return [...new Set(list.filter(Boolean))];
 }
 
+const SOFT_SKILL_KEYWORDS = [
+  "communication",
+  "collaboration",
+  "curiosite",
+  "curiosité",
+  "autonomie",
+  "rigueur",
+  "leadership",
+  "presentation",
+  "présentation",
+  "stakeholder",
+  "problem solving",
+  "resolution de problemes",
+  "résolution de problèmes",
+  "pensee strategique",
+  "pensée stratégique",
+  "analyse",
+  "esprit critique",
+  "organisation"
+];
+
 function intersect(sourceA, sourceB) {
   const a = new Set(sourceA);
   return sourceB.filter((item) => a.has(item));
@@ -22,17 +43,48 @@ function educationRank(level) {
   return idx === -1 ? 0 : idx;
 }
 
-function extractOfferFromText(text) {
+function firstUsefulLine(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.length >= 8 && line.length <= 100 && !/@/.test(line)) || "";
+}
+
+function inferCompany(text) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const companyLine = lines.find((line) => /chez\s+|entreprise\s*:|company\s*:/i.test(line));
+  if (companyLine) {
+    return companyLine.replace(/.*(?:chez|entreprise\s*:|company\s*:)\s*/i, "").split(/[,.]/)[0].trim() || "Offre importée";
+  }
+  return lines[1]?.length <= 60 ? lines[1] : "Offre importée";
+}
+
+function inferJobDescription(text) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const longLines = lines.filter((line) => line.length > 60);
+  return longLines.slice(0, 5).join(" ") || String(text || "").slice(0, 520).trim();
+}
+
+export function extractOfferSummary(text) {
   const normalized = normalize(text);
   const skills = SKILL_KEYWORDS.filter((skill) => normalized.includes(skill));
+  const softSkills = SOFT_SKILL_KEYWORDS.filter((skill) => normalized.includes(normalize(skill)));
   const yearsMatch = normalized.match(/(\d+)\s*(ans|an|years|year)/);
   const experienceMin = yearsMatch ? Number(yearsMatch[1]) : 1;
   const education = EDUCATION_LEVELS.find((level) => normalized.includes(level)) || "bac+5";
+  const title = firstUsefulLine(text) || "Poste personnalisé";
+  const company = inferCompany(text);
 
   return {
     id: "custom-offer",
-    company: "Offre importée",
-    title: "Poste personnalisé",
+    company,
+    title,
     location: "Non précisé",
     contract: "À définir",
     premium: false,
@@ -40,6 +92,8 @@ function extractOfferFromText(text) {
     experienceMin,
     education,
     skills: skills.length ? unique(skills) : ["python", "ml", "communication"],
+    softSkills: unique(softSkills).slice(0, 8),
+    description: inferJobDescription(text),
     missions: []
   };
 }
@@ -185,8 +239,29 @@ function buildRecommendations(bestMatch, premiumAccess) {
   return recos;
 }
 
+export function buildLocalMatchInsights({ candidate, offer }) {
+  const premiumAccess = { hasAccess: true };
+  const match = scoreOffer({ candidate, offer, premiumAccess });
+  const { strengths, gaps } = pickStrengthsAndGaps(match);
+  const recommendations = buildRecommendations(match, premiumAccess).map((item) => ({
+    level: item.level === "premium" ? "bonus" : item.level,
+    title: item.title,
+    detail: item.detail
+  }));
+
+  return {
+    score: match.score,
+    verdict: match.verdict,
+    strengths,
+    missingKeywords: unique(match.missingSkills),
+    culturalFit:
+      "Analyse locale : aligne ton discours et tes exemples concrets sur les valeurs et le mode de fonctionnement affichés dans l'offre pour renforcer le fit culturel perçu.",
+    recommendations
+  };
+}
+
 export function runMatching({ user, cvRecord, offerText, offers, premiumAccess }) {
-  const customOffer = extractOfferFromText(offerText);
+  const customOffer = extractOfferSummary(offerText);
   const candidateSkills = unique([
     ...(user.profile?.skills || []),
     ...(cvRecord?.parsed?.skills || [])
