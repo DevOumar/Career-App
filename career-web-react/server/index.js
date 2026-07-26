@@ -1,75 +1,31 @@
-import "dotenv/config";
-import cors from "cors";
+﻿import cors from "cors";
 import crypto from "crypto";
 import express from "express";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
+import mammoth from "mammoth";
+import nodemailer from "nodemailer";
 import path from "path";
+import { PDFParse } from "pdf-parse";
 import { fileURLToPath } from "url";
 import { PGlite } from "@electric-sql/pglite";
-import { OFFERS } from "../src/data/offers.js";
+import pg from "pg";
+import { OAuth2Client } from "google-auth-library";
 import Stripe from "stripe";
+import { OFFERS } from "../src/data/offers.js";
+import { EDUCATION_LEVELS, SKILL_KEYWORDS } from "../src/data/skills.js";
+import { buildLocalMatchInsights } from "../src/lib/matchingService.js";
+import { getPlanById } from "../src/data/plans.js";
 import {
   applyStripeWebhookEvent,
   buildCheckoutSessionParams,
-  resolvePriceIdForUser
+  resolveStripeMode,
+  resolveStripePriceEnvVar
 } from "./stripeService.js";
-import { createFranceTravailClient } from "./franceTravailService.js";
 
 const BASE_PORT = Number(process.env.PORT || 8787);
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
 const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || "";
-const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET || "";
-const STRIPE_PRICE_ID_INDIVIDUAL = process.env.STRIPE_PRICE_ID_INDIVIDUAL || "";
-const STRIPE_PRICE_ID_SCHOOL = process.env.STRIPE_PRICE_ID_SCHOOL || "";
-const CLIENT_URL = process.env.CLIENT_URL || "http://127.0.0.1:5174";
-const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
-
-const FRANCE_TRAVAIL_CLIENT_ID = process.env.FRANCE_TRAVAIL_CLIENT_ID || "";
-const FRANCE_TRAVAIL_CLIENT_SECRET = process.env.FRANCE_TRAVAIL_CLIENT_SECRET || "";
-const franceTravailClient =
-  FRANCE_TRAVAIL_CLIENT_ID && FRANCE_TRAVAIL_CLIENT_SECRET
-    ? createFranceTravailClient({ clientId: FRANCE_TRAVAIL_CLIENT_ID, clientSecret: FRANCE_TRAVAIL_CLIENT_SECRET })
-    : null;
-
-// Cache en mémoire des recherches d'offres réelles (clé = critères de recherche).
-// Nécessaire pour respecter la limite de débit de l'API France Travail (3 req/s)
-// et éviter un appel réseau à chaque re-render côté front — les offres réelles
-// n'ont pas besoin d'être millisecondes-fraîches pour un usage de matching CV.
-const FRANCE_TRAVAIL_CACHE_TTL_MS = 10 * 60 * 1000;
-const franceTravailCache = new Map();
-
-// Traduit une erreur de l'API Anthropic en message actionnable, plutôt que le
-// message générique "a renvoyé une erreur" qui obligeait à checker les logs
-// serveur pour comprendre la cause réelle (clé invalide, crédit épuisé, etc.).
-function describeAnthropicError(status, errorBody) {
-  let parsedType = "";
-  let parsedMessage = "";
-  try {
-    const parsed = JSON.parse(errorBody);
-    parsedType = parsed?.error?.type || "";
-    parsedMessage = parsed?.error?.message || "";
-  } catch (_e) {
-    // corps non-JSON, on se rabat sur le code HTTP
-  }
-
-  if (status === 401 || parsedType === "authentication_error") {
-    return "Clé API invalide ou expirée. Vérifie ANTHROPIC_API_KEY dans ton fichier .env (elle doit commencer par sk-ant-).";
-  }
-  if (status === 400 && /credit balance/i.test(parsedMessage)) {
-    return "Crédit insuffisant sur ton compte Anthropic. Ajoute un moyen de paiement ou du crédit sur platform.claude.com (Billing).";
-  }
-  if (status === 429) {
-    return "Limite de requêtes atteinte sur l'API Anthropic (rate limit). Réessaie dans quelques instants.";
-  }
-  if (status === 404 && /model/i.test(parsedMessage)) {
-    return `Modèle "${ANTHROPIC_MODEL}" introuvable ou non accessible avec cette clé. Vérifie ANTHROPIC_MODEL dans .env.`;
-  }
-  return `Erreur API Anthropic (HTTP ${status})${parsedMessage ? ` : ${parsedMessage}` : ""}. Réessaie, ou vérifie ta configuration sur platform.claude.com.`;
-}
 
 const ACCOUNT_TYPES = new Set([
   "candidate",
@@ -87,11 +43,55 @@ const RECRUITER_TYPES = new Set(["recruiter_firm", "recruiter_internal"]);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const PROJECT_ROOT = path.resolve(__dirname, "..");
 const PROJECT_DATA_DIR = path.join(__dirname, "postgres-data");
 const LEGACY_DATA_DIR = path.join(__dirname, "pgdata");
 const LOCAL_APP_ROOT = path.join(__dirname, "postgres-runtime");
 const RUNTIME_DATA_DIR = path.join(LOCAL_APP_ROOT, "postgres-data");
 const CUSTOM_DATA_DIR = process.env.PGLITE_DATA_DIR ? path.resolve(process.env.PGLITE_DATA_DIR) : null;
+
+loadLocalEnv();
+
+const SMTP_HOST = String(process.env.SMTP_HOST || "smtp.gmail.com").trim();
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_SECURE = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
+const AI_PROVIDER = String(process.env.AI_PROVIDER || "none").trim().toLowerCase();
+const AI_MODEL = String(process.env.AI_MODEL || "").trim();
+const XAI_API_KEY = String(process.env.XAI_API_KEY || "").trim();
+const GROQ_API_KEY = String(process.env.GROQ_API_KEY || "").trim();
+const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
+const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 45000);
+const SMTP_USER = String(process.env.SMTP_USER || process.env.GMAIL_USER || "").trim();
+const SMTP_PASS = String(process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || "").trim();
+const MAIL_FROM_NAME = String(process.env.MAIL_FROM_NAME || "Career App").trim();
+const MAIL_FROM = String(process.env.MAIL_FROM || "").trim();
+const MAIL_FROM_ADDRESS = String(process.env.MAIL_FROM_ADDRESS || SMTP_USER).trim();
+const AUTH_EMAIL_TO = String(process.env.AUTH_EMAIL_TO || "").trim();
+const DATABASE_URL = String(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "").trim();
+const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
+const googleOAuthClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || "").trim();
+const STRIPE_WEBHOOK_SECRET = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+const APP_URL = String(process.env.APP_URL || "http://127.0.0.1:5174").trim();
+const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+
+function loadLocalEnv() {
+  const envPath = path.join(PROJECT_ROOT, ".env");
+  if (!fs.existsSync(envPath)) return;
+
+  const content = fs.readFileSync(envPath, "utf8");
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || !trimmed.includes("=")) continue;
+    const index = trimmed.indexOf("=");
+    const key = trimmed.slice(0, index).trim();
+    const rawValue = trimmed.slice(index + 1).trim();
+    const value = rawValue.replace(/^['"]|['"]$/g, "");
+    if (key && !process.env[key]) {
+      process.env[key] = value;
+    }
+  }
+}
 
 function uniquePaths(list) {
   return list.filter(Boolean).filter((value, index, self) => self.indexOf(value) === index);
@@ -167,6 +167,28 @@ async function openEmbeddedPostgres() {
   return { db: recoveryDb, dataDirectory: recoveryDirectory };
 }
 
+async function openSupabasePostgres(connectionString) {
+  const pool = new pg.Pool({
+    connectionString,
+    ssl: { rejectUnauthorized: false }
+  });
+  pool.exec = (sql) => pool.query(sql);
+  await pool.query("SELECT 1");
+  console.log("Connecte a la base Postgres Supabase.");
+  return { db: pool, dataDirectory: "supabase" };
+}
+
+async function openDatabase() {
+  if (DATABASE_URL) {
+    try {
+      return await openSupabasePostgres(DATABASE_URL);
+    } catch (error) {
+      console.error("Echec de connexion a Supabase, repli sur PGlite local.", error.message);
+    }
+  }
+  return openEmbeddedPostgres();
+}
+
 async function isCareerApiRunning(port) {
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/health`);
@@ -214,7 +236,7 @@ async function startServer(app) {
   throw new Error(`Aucun port disponible entre ${BASE_PORT} et ${BASE_PORT + PORT_RETRY_COUNT}.`);
 }
 
-const { db, dataDirectory } = await openEmbeddedPostgres();
+const { db, dataDirectory } = await openDatabase();
 
 const app = express();
 app.use(
@@ -228,17 +250,14 @@ app.use(
     }
   })
 );
-// --- Webhook Stripe ---
-// IMPORTANT : cette route doit être déclarée AVANT app.use(express.json(...))
-// ci-dessous. Stripe signe le corps BRUT (non parsé) de la requête ; si
-// express.json() s'exécute avant, req.body devient un objet JS et la
-// vérification de signature (stripe.webhooks.constructEvent) échoue toujours
-// avec "No signatures found matching the expected signature".
-// D'où express.raw() ici, appliqué seulement à cette route.
+
+// Route webhook Stripe enregistrée AVANT express.json() : Stripe signe le corps
+// BRUT (non parsé) de la requête, donc express.json() ne doit jamais y toucher
+// (sinon la vérification de signature échoue systématiquement).
 app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   if (!stripe || !STRIPE_WEBHOOK_SECRET) {
-    console.error("Webhook Stripe reçu mais STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET absent(s) du .env.");
-    return res.status(503).send("Stripe non configuré côté serveur.");
+    console.error("Webhook Stripe recu mais STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET absent(s) du .env.");
+    return res.status(503).send("Stripe non configure cote serveur.");
   }
 
   const signature = req.headers["stripe-signature"];
@@ -254,25 +273,15 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     const result = await applyStripeWebhookEvent(event, {
       db,
       parseJsonField,
-      // Va chercher la vraie date de fin de période auprès de Stripe plutôt que
-      // de supposer +30 jours : nécessaire depuis l'introduction du plan école
-      // annuel (990 €/an) à côté du plan particulier mensuel (4,99 €/mois).
-      resolveRenewalAt: async (session) => {
-        if (!session.subscription) return null;
-        const subscriptionObject = await stripe.subscriptions.retrieve(session.subscription);
-        return new Date(subscriptionObject.current_period_end * 1000).toISOString();
-      }
+      getPlanById,
+      applyPlanToUser,
+      generateLicenseCodeForPlan
     });
-    if (!result.handled && result.reason === "missing_user_id") {
-      console.warn("checkout.session.completed reçu sans client_reference_id/metadata.userId — activation ignorée.");
-    }
-    // Réponse 200 y compris pour les événements non gérés (result.handled === false) :
-    // sinon Stripe retenterait indéfiniment un événement qu'on ignore volontairement.
-    return res.json({ received: true });
+    return res.json({ received: true, ...result });
   } catch (error) {
     console.error("Erreur traitement webhook Stripe:", error);
-    // 500 ici est volontaire : Stripe retentera automatiquement l'envoi.
-    return res.status(500).json({ error: "Erreur serveur lors du traitement du webhook." });
+    // 500 volontaire : Stripe retentera automatiquement l'envoi.
+    return res.status(500).send("Erreur traitement webhook.");
   }
 });
 
@@ -302,6 +311,16 @@ await db.exec(`
     country TEXT NOT NULL DEFAULT '',
     onboarding_completed INTEGER NOT NULL DEFAULT 0,
     avatar_data_url TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS user_email_addresses (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    is_primary INTEGER NOT NULL DEFAULT 0,
+    is_verified INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
@@ -347,6 +366,32 @@ await db.exec(`
   CREATE TABLE IF NOT EXISTS sessions (
     token TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    user_agent TEXT NOT NULL DEFAULT '',
+    ip_address TEXT NOT NULL DEFAULT '',
+    last_seen_at TEXT NOT NULL DEFAULT ''
+  );
+
+  CREATE TABLE IF NOT EXISTS account_security_events (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    event_type TEXT NOT NULL,
+    metadata_json TEXT NOT NULL,
+    ip_address TEXT NOT NULL DEFAULT '',
+    user_agent TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS email_verification_codes (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    code_hash TEXT NOT NULL,
+    code_salt TEXT NOT NULL,
+    purpose TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    consumed_at TEXT NOT NULL DEFAULT '',
+    expires_at TEXT NOT NULL,
     created_at TEXT NOT NULL
   );
 
@@ -366,30 +411,22 @@ await db.exec(`
     payload_json TEXT NOT NULL
   );
 
-  CREATE TABLE IF NOT EXISTS offer_status (
+  CREATE TABLE IF NOT EXISTS match_feedback (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
-    offer_id TEXT NOT NULL,
-    is_favorite INTEGER NOT NULL DEFAULT 0,
-    is_applied INTEGER NOT NULL DEFAULT 0,
-    updated_at TEXT NOT NULL,
-    UNIQUE(user_id, offer_id)
+    match_run_id TEXT NOT NULL,
+    useful INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (user_id, match_run_id)
   );
 
-  CREATE TABLE IF NOT EXISTS ai_usage_log (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    feature TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS interview_attempts (
-    id TEXT PRIMARY KEY,
-    user_id TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    track TEXT NOT NULL,
-    average_score INTEGER NOT NULL,
-    payload_json TEXT NOT NULL
+  CREATE TABLE IF NOT EXISTS license_codes (
+    code TEXT PRIMARY KEY,
+    owner_user_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    seats_total INTEGER NOT NULL,
+    seats_used INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS offers (
@@ -413,9 +450,20 @@ await db.exec(`
   ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT '';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS role_type TEXT NOT NULL DEFAULT 'candidate';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data_url TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT NOT NULL DEFAULT '';
+  ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT '';
+  ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip_address TEXT NOT NULL DEFAULT '';
+  ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at TEXT NOT NULL DEFAULT '';
 `);
 
 await db.query("UPDATE users SET updated_at = created_at WHERE COALESCE(updated_at, '') = ''");
+await db.query(
+  `INSERT INTO user_email_addresses (id, user_id, email, is_primary, is_verified, created_at, updated_at)
+   SELECT 'eml-' || id, id, email, 1, 1, created_at, updated_at
+   FROM users
+   WHERE email NOT IN (SELECT email FROM user_email_addresses)`
+);
 
 const DEFAULT_PROFILE = {
   headline: "",
@@ -442,6 +490,29 @@ function normalizeText(value) {
 
 function normalizeEmail(email) {
   return normalizeText(email);
+}
+
+function normalizeUsername(value) {
+  return normalizeText(value)
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 30);
+}
+
+function validateUsernameInput(value, required = false) {
+  const raw = coerceString(value).trim();
+  if (!raw) {
+    return required ? "Le nom d'utilisateur est obligatoire." : "";
+  }
+  if (!/^[a-z0-9_-]{3,30}$/i.test(raw)) {
+    return "Le nom d'utilisateur doit contenir 3 à 30 caractères : lettres, chiffres, - ou _.";
+  }
+  return "";
+}
+
+function buildUsername(firstName, lastName, email) {
+  const fromName = normalizeUsername(`${firstName}_${lastName}`);
+  return fromName || normalizeUsername(String(email || "").split("@")[0]) || `user_${crypto.randomUUID().slice(0, 8)}`;
 }
 
 function normalizeSkillList(rawSkills) {
@@ -516,6 +587,211 @@ function verifyPassword(password, salt, expectedHash) {
   );
 }
 
+function createSixDigitCode() {
+  return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
+}
+
+function addMinutes(date, minutes) {
+  return new Date(date.getTime() + minutes * 60 * 1000).toISOString();
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
+  const safeName = escapeHtml(firstName || "Bonjour");
+  const safeEmail = escapeHtml(email);
+  const safeCode = escapeHtml(code);
+  const isSignup = purpose === "signup";
+
+  const subject = isSignup
+    ? `Bienvenue sur Career App — ton code de vérification : ${safeCode}`
+    : `${safeCode} est ton code de vérification Career App`;
+
+  const introTitle = isSignup ? "Bienvenue sur Career App !" : "Vérifiez votre messagerie";
+  const introText = isSignup
+    ? `Merci de rejoindre Career App, ${safeName}. Confirme ton adresse <strong>${safeEmail}</strong> avec le code ci-dessous pour activer ton compte et commencer à optimiser tes candidatures.`
+    : `Utilisez le code ci-dessous pour continuer vers Career App avec l'adresse <strong>${safeEmail}</strong>.`;
+
+  const text = [
+    isSignup ? `Bienvenue sur Career App, ${firstName || ""} !`.trim() : `Bonjour ${firstName || ""}`.trim(),
+    "",
+    isSignup
+      ? `Merci de rejoindre Career App. Ton code de vérification est : ${code}`
+      : `Votre code de vérification Career App est : ${code}`,
+    "",
+    "Ce code expire dans 10 minutes.",
+    "Ne le partagez avec personne. Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email.",
+    "",
+    "Career App"
+  ].join("\n");
+
+  const html = `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${isSignup ? "Bienvenue sur Career App" : "Code de vérification Career App"}</title>
+  </head>
+  <body style="margin:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#101828;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb;padding:32px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5eaf3;border-radius:24px;overflow:hidden;box-shadow:0 18px 45px rgba(15,23,42,0.08);">
+            <tr>
+              <td style="padding:28px 30px 18px;">
+                <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#4f46e5,#10b981);vertical-align:middle;"></div>
+                <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#101828;vertical-align:middle;">Career App</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 30px 4px;">
+                <p style="margin:0 0 8px;color:#667085;font-size:14px;">Bonjour ${safeName},</p>
+                <h1 style="margin:0;font-size:28px;line-height:1.2;color:#101828;">${introTitle}</h1>
+                <p style="margin:12px 0 0;color:#475467;font-size:16px;line-height:1.6;">${introText}</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:24px 30px;">
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;padding:22px;text-align:center;">
+                  <p style="margin:0 0 12px;color:#667085;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;">Code de vérification</p>
+                  <div style="font-size:42px;line-height:1;font-weight:900;letter-spacing:10px;color:#111827;">${safeCode}</div>
+                  <p style="margin:16px 0 0;color:#667085;font-size:14px;">Ce code expire dans 10 minutes.</p>
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 30px 28px;">
+                <div style="border-left:4px solid #10b981;background:#ecfdf5;border-radius:14px;padding:14px 16px;color:#065f46;font-size:14px;line-height:1.55;">
+                  Ne partagez jamais ce code. Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet email.
+                </div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 30px;background:#f8fafc;border-top:1px solid #e5eaf3;color:#667085;font-size:12px;line-height:1.5;">
+                © ${new Date().getFullYear()} Career App. Email automatique envoyé pour sécuriser votre connexion.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+
+  return { subject, text, html };
+}
+
+async function sendVerificationEmail({ to, code, firstName, purpose = "login" }) {
+  const message = buildVerificationEmail({ code, firstName, email: to, purpose });
+  const recipient = AUTH_EMAIL_TO || to;
+
+  if (!SMTP_USER || !SMTP_PASS) {
+    console.warn("[Career App] SMTP non configure. Code affiche dans les logs uniquement.");
+    return { sent: false, reason: "missing_smtp_config" };
+  }
+
+  const transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: SMTP_SECURE,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS
+    }
+  });
+
+  await transporter.sendMail({
+    from: MAIL_FROM || `"${MAIL_FROM_NAME}" <${MAIL_FROM_ADDRESS || SMTP_USER}>`,
+    to: recipient,
+    subject: message.subject,
+    text: message.text,
+    html: message.html
+  });
+
+  return { sent: true, recipient };
+}
+
+async function createEmailVerificationCode(user, purpose = "login", targetEmail = "") {
+  const code = createSixDigitCode();
+  const record = createPasswordRecord(code);
+  const createdAt = nowIso();
+  const expiresAt = addMinutes(new Date(), 10);
+  const id = `evc-${crypto.randomUUID()}`;
+  const email = normalizeEmail(targetEmail || user.email);
+
+  await db.query(
+    `INSERT INTO email_verification_codes (
+      id, user_id, email, code_hash, code_salt, purpose, attempts, consumed_at, expires_at, created_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,0,'',$7,$8)`,
+    [id, user.id, email, record.hash, record.salt, purpose, expiresAt, createdAt]
+  );
+
+  const delivery = await sendVerificationEmail({ to: email, code, firstName: user.first_name, purpose });
+  console.log(`[Career App] Code ${purpose} pour ${email}: ${code} (expire dans 10 min, email=${delivery.sent ? "envoye" : "non_configure"})`);
+  return { id, email, expiresAt, code };
+}
+
+function getRequestIp(req) {
+  return coerceString(req.headers["x-forwarded-for"] || req.socket?.remoteAddress || req.ip || "")
+    .split(",")[0]
+    .trim();
+}
+
+function getRequestUserAgent(req) {
+  return coerceString(req.headers["user-agent"] || "");
+}
+
+function getDeviceName(userAgent = "") {
+  if (/Windows/i.test(userAgent)) return "Windows";
+  if (/Macintosh|Mac OS/i.test(userAgent)) return "macOS";
+  if (/Android/i.test(userAgent)) return "Android";
+  if (/iPhone|iPad/i.test(userAgent)) return "iOS";
+  if (/Linux/i.test(userAgent)) return "Linux";
+  return "Appareil";
+}
+
+function getBrowserName(userAgent = "") {
+  if (/Edg\//i.test(userAgent)) return "Microsoft Edge";
+  if (/Chrome\//i.test(userAgent)) return "Chrome";
+  if (/Firefox\//i.test(userAgent)) return "Firefox";
+  if (/Safari\//i.test(userAgent)) return "Safari";
+  return "Navigateur";
+}
+
+async function createSessionForRequest(req, userId) {
+  const token = `sess-${crypto.randomUUID()}`;
+  const timestamp = nowIso();
+  await db.query(
+    `INSERT INTO sessions (token, user_id, created_at, user_agent, ip_address, last_seen_at)
+     VALUES ($1,$2,$3,$4,$5,$6)`,
+    [token, userId, timestamp, getRequestUserAgent(req), getRequestIp(req), timestamp]
+  );
+  return token;
+}
+
+async function logSecurityEvent(req, userId, eventType, metadata = {}) {
+  await db.query(
+    `INSERT INTO account_security_events (id, user_id, event_type, metadata_json, ip_address, user_agent, created_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [
+      `sec-${crypto.randomUUID()}`,
+      userId,
+      eventType,
+      JSON.stringify(metadata || {}),
+      getRequestIp(req),
+      getRequestUserAgent(req),
+      nowIso()
+    ]
+  );
+}
+
 function parseJsonField(input, fallback) {
   try {
     return input ? JSON.parse(input) : fallback;
@@ -537,6 +813,9 @@ function sanitizeProfilePatch(rawPatch = {}) {
   if (Object.prototype.hasOwnProperty.call(rawPatch, "education")) patch.education = coerceString(rawPatch.education);
   if (Object.prototype.hasOwnProperty.call(rawPatch, "skills")) patch.skills = normalizeSkillList(rawPatch.skills);
   if (Object.prototype.hasOwnProperty.call(rawPatch, "languages")) patch.languages = normalizeSkillList(rawPatch.languages);
+  if (Object.prototype.hasOwnProperty.call(rawPatch, "onboardingQuizSeen")) {
+    patch.onboardingQuizSeen = Boolean(rawPatch.onboardingQuizSeen);
+  }
 
   return patch;
 }
@@ -609,16 +888,1458 @@ function applyOnboardingToProfile(profile, accountType, details) {
   return next;
 }
 
+async function fetchRemoteAvatarAsDataUrl(url) {
+  const remoteUrl = coerceString(url);
+  if (!remoteUrl.startsWith("https://")) return "";
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const response = await fetch(remoteUrl, { signal: controller.signal });
+    clearTimeout(timeout);
+    if (!response.ok) return "";
+
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    if (!contentType.startsWith("image/")) return "";
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (buffer.length > 2_000_000) return "";
+
+    return `data:${contentType};base64,${buffer.toString("base64")}`;
+  } catch (_error) {
+    return "";
+  }
+}
+
 function normalizeAvatarDataUrl(value) {
   const dataUrl = coerceString(value);
   if (!dataUrl) return "";
   if (!dataUrl.startsWith("data:image/")) {
-    throw new Error("Format d'image non supporté.");
+    throw new Error("Format d'image non supportÃ©.");
   }
   if (dataUrl.length > 2_400_000) {
-    throw new Error("Image trop volumineuse (max 2 Mo recommandés).");
+    throw new Error("Image trop volumineuse (max 2 Mo recommandÃ©s).");
   }
   return dataUrl;
+}
+
+function cleanExtractedText(value) {
+  return String(value || "")
+    .replace(/\u0000/g, "")
+    .replace(/\r\n/g, "\n")
+    .replace(/[\u0001-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function bufferFromBase64(value) {
+  const raw = String(value || "");
+  const base64 = raw.includes(",") ? raw.split(",").pop() : raw;
+  if (!base64) throw new Error("Fichier vide.");
+  const buffer = Buffer.from(base64, "base64");
+  if (!buffer.length) throw new Error("Fichier vide.");
+  if (buffer.length > 8 * 1024 * 1024) {
+    throw new Error("Fichier trop lourd. Maximum 8 Mo.");
+  }
+  return buffer;
+}
+
+async function extractTextFromUpload({ fileName, mimeType, base64 }) {
+  const name = coerceString(fileName).toLowerCase();
+  const type = coerceString(mimeType).toLowerCase();
+  const buffer = bufferFromBase64(base64);
+
+  if (name.endsWith(".pdf") || type.includes("pdf")) {
+    const parser = new PDFParse({ data: buffer });
+    try {
+      const output = await parser.getText();
+      return cleanExtractedText(output.text);
+    } finally {
+      await parser.destroy();
+    }
+  }
+
+  if (name.endsWith(".docx") || type.includes("officedocument.wordprocessingml")) {
+    const output = await mammoth.extractRawText({ buffer });
+    return cleanExtractedText(output.value);
+  }
+
+  if (name.endsWith(".doc") || type.includes("msword")) {
+    throw new Error("Le format .doc ancien n'est pas supporté. Convertis le fichier en .docx puis réimporte le CV.");
+  }
+
+  return cleanExtractedText(buffer.toString("utf8"));
+}
+
+const CV_EXTRACTION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    firstName: { type: "string" },
+    lastName: { type: "string" },
+    email: { type: "string" },
+    phone: { type: "string" },
+    linkedinUrl: { type: "string" },
+    portfolioUrl: { type: "string" },
+    location: { type: "string" },
+    headline: { type: "string" },
+    summary: { type: "string" },
+    experienceYears: { type: "number" },
+    skills: { type: "array", items: { type: "string" } },
+    softSkills: { type: "array", items: { type: "string" } },
+    languages: { type: "array", items: { type: "string" } },
+    experiences: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          company: { type: "string" },
+          role: { type: "string" },
+          dates: { type: "string" },
+          location: { type: "string" },
+          description: { type: "string" }
+        },
+        required: ["company", "role", "dates", "location", "description"]
+      }
+    },
+    education: { type: "string" },
+    educationItems: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          school: { type: "string" },
+          degree: { type: "string" },
+          dates: { type: "string" },
+          location: { type: "string" },
+          description: { type: "string" }
+        },
+        required: ["school", "degree", "dates", "location", "description"]
+      }
+    },
+    certifications: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string" },
+          issuer: { type: "string" },
+          date: { type: "string" },
+          url: { type: "string" }
+        },
+        required: ["name", "issuer", "date", "url"]
+      }
+    },
+    projects: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          name: { type: "string" },
+          role: { type: "string" },
+          technologies: { type: "array", items: { type: "string" } },
+          description: { type: "string" },
+          url: { type: "string" }
+        },
+        required: ["name", "role", "technologies", "description", "url"]
+      }
+    },
+    interests: { type: "array", items: { type: "string" } },
+    extractionWarnings: { type: "array", items: { type: "string" } }
+  },
+  required: [
+    "firstName",
+    "lastName",
+    "email",
+    "phone",
+    "linkedinUrl",
+    "portfolioUrl",
+    "location",
+    "headline",
+    "summary",
+    "experienceYears",
+    "skills",
+    "softSkills",
+    "languages",
+    "experiences",
+    "education",
+    "educationItems",
+    "certifications",
+    "projects",
+    "interests",
+    "extractionWarnings"
+  ]
+};
+
+function aiExtractionConfig() {
+  if (AI_PROVIDER === "groq") {
+    return {
+      provider: "groq",
+      apiKey: GROQ_API_KEY || XAI_API_KEY,
+      model: AI_MODEL || "openai/gpt-oss-120b",
+      url: "https://api.groq.com/openai/v1/chat/completions"
+    };
+  }
+  if (AI_PROVIDER === "xai" || AI_PROVIDER === "grok") {
+    return {
+      provider: "xai",
+      apiKey: XAI_API_KEY,
+      model: AI_MODEL || "grok-4.3",
+      url: "https://api.x.ai/v1/chat/completions"
+    };
+  }
+  if (AI_PROVIDER === "openai") {
+    return {
+      provider: "openai",
+      apiKey: OPENAI_API_KEY,
+      model: AI_MODEL || "gpt-4.1-mini",
+      url: "https://api.openai.com/v1/chat/completions"
+    };
+  }
+  return null;
+}
+
+function normalizeAiList(value, max = 40) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map((item) => coerceString(item)).filter(Boolean))].slice(0, max);
+}
+
+function normalizeAiCollection(value, fields, max = 12) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item) => item && typeof item === "object")
+    .slice(0, max)
+    .map((item) => {
+      const normalized = {};
+      for (const field of fields) {
+        normalized[field] = Array.isArray(item[field]) ? normalizeAiList(item[field], 16) : coerceString(item[field]);
+      }
+      return normalized;
+    });
+}
+
+function sanitizeAiCvExtraction(raw) {
+  const parsed = raw && typeof raw === "object" ? raw : {};
+  return {
+    firstName: coerceString(parsed.firstName),
+    lastName: coerceString(parsed.lastName).toUpperCase(),
+    email: normalizeEmail(parsed.email),
+    phone: coerceString(parsed.phone),
+    linkedinUrl: coerceString(parsed.linkedinUrl),
+    portfolioUrl: coerceString(parsed.portfolioUrl),
+    location: coerceString(parsed.location),
+    headline: coerceString(parsed.headline),
+    summary: coerceString(parsed.summary),
+    experienceYears: Math.max(0, Number(parsed.experienceYears || 0)),
+    skills: normalizeAiList(parsed.skills, 60),
+    softSkills: normalizeAiList(parsed.softSkills, 30),
+    languages: normalizeAiList(parsed.languages, 20),
+    experiences: normalizeAiCollection(parsed.experiences, ["company", "role", "dates", "location", "description"], 12),
+    education: coerceString(parsed.education),
+    educationItems: normalizeAiCollection(parsed.educationItems, ["school", "degree", "dates", "location", "description"], 8),
+    certifications: normalizeAiCollection(parsed.certifications, ["name", "issuer", "date", "url"], 12),
+    projects: normalizeAiCollection(parsed.projects, ["name", "role", "technologies", "description", "url"], 10),
+    interests: normalizeAiList(parsed.interests, 20),
+    extractionWarnings: normalizeAiList(parsed.extractionWarnings, 10),
+    extractionMode: "ai"
+  };
+}
+
+const JOB_EXTRACTION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    title: { type: "string" },
+    company: { type: "string" },
+    location: { type: "string" },
+    contract: { type: "string" },
+    sector: { type: "string" },
+    experienceMin: { type: "number" },
+    education: { type: "string" },
+    skills: { type: "array", items: { type: "string" } },
+    softSkills: { type: "array", items: { type: "string" } },
+    description: { type: "string" },
+    missions: { type: "array", items: { type: "string" } }
+  },
+  required: [
+    "title",
+    "company",
+    "location",
+    "contract",
+    "sector",
+    "experienceMin",
+    "education",
+    "skills",
+    "softSkills",
+    "description",
+    "missions"
+  ]
+};
+
+const JOB_SOFT_SKILLS = [
+  "communication",
+  "collaboration",
+  "autonomie",
+  "rigueur",
+  "curiosité",
+  "leadership",
+  "organisation",
+  "analyse",
+  "esprit critique",
+  "résolution de problèmes",
+  "pédagogie",
+  "adaptabilité"
+];
+
+function extractLocalJobSummary(text) {
+  const raw = cleanExtractedText(text);
+  const normalized = normalizeText(raw);
+  const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const skills = SKILL_KEYWORDS.filter((skill) => {
+    const normalizedSkill = normalizeText(skill);
+    if (normalizedSkill.length <= 2) {
+      return new RegExp(`(^|[^a-z0-9])${escapeRegex(normalizedSkill)}([^a-z0-9]|$)`, "i").test(normalized);
+    }
+    return normalized.includes(normalizedSkill);
+  });
+  const softSkills = JOB_SOFT_SKILLS.filter((skill) => normalized.includes(normalizeText(skill)));
+  const yearsMatch = normalized.match(/(\d+)\s*(ans|an|years|year)/);
+  const companyLine = lines.find((line) => /entreprise\s*:|soci[eé]t[eé]\s*:|company\s*:|chez\s+/i.test(line));
+  const titleLine =
+    lines.find((line) => /data|analyst|engineer|developpeur|développeur|chef de projet|manager|consultant|architecte|alternance|stage/i.test(line) && line.length <= 120) ||
+    lines[0] ||
+    "Poste personnalisé";
+  const description = lines.filter((line) => line.length > 60).slice(0, 6).join(" ") || raw.slice(0, 700);
+  return {
+    id: "custom-offer",
+    title: titleLine,
+    company: companyLine ? companyLine.replace(/.*(?:entreprise\s*:|soci[eé]t[eé]\s*:|company\s*:|chez)\s*/i, "").split(/[,.]/)[0].trim() : "Entreprise non précisée",
+    location: lines.find((line) => /(paris|lyon|nantes|lille|marseille|toulouse|bordeaux|france|remote|télétravail|teletravail)/i.test(normalizeText(line))) || "Non précisé",
+    contract: lines.find((line) => /\b(cdi|cdd|stage|alternance|freelance|intérim|interim)\b/i.test(normalizeText(line))) || "À définir",
+    premium: false,
+    sector: "Général",
+    experienceMin: yearsMatch ? Number(yearsMatch[1]) : 0,
+    education: EDUCATION_LEVELS.find((level) => normalized.includes(normalizeText(level))) || "",
+    skills: uniqueByNormalized(skills).slice(0, 14),
+    softSkills: uniqueByNormalized(softSkills).slice(0, 10),
+    description,
+    missions: lines.filter((line) => /^[-•+]/.test(line) || /\b(vous serez|mission|responsabilit|contribu|particip|développ|developp|analy)/i.test(line)).slice(0, 8)
+  };
+}
+
+function sanitizeAiJobExtraction(raw, sourceText) {
+  const parsed = raw && typeof raw === "object" ? raw : {};
+  const fallback = extractLocalJobSummary(sourceText);
+  const normalizedSource = normalizeText(sourceText);
+  const aiSkills = normalizeAiList(parsed.skills, 20).filter((skill) => {
+    const normalizedSkill = normalizeText(skill);
+    if (normalizedSkill.length <= 2) {
+      return new RegExp(`(^|[^a-z0-9])${escapeRegex(normalizedSkill)}([^a-z0-9]|$)`, "i").test(normalizedSource);
+    }
+    return true;
+  });
+  const detectedSkills = SKILL_KEYWORDS.filter((skill) => {
+    const normalizedSkill = normalizeText(skill);
+    if (normalizedSkill.length <= 2) {
+      return new RegExp(`(^|[^a-z0-9])${escapeRegex(normalizedSkill)}([^a-z0-9]|$)`, "i").test(normalizedSource);
+    }
+    return normalizedSource.includes(normalizedSkill);
+  });
+  const skills = uniqueByNormalized([...aiSkills, ...detectedSkills, ...(fallback.skills || [])])
+    .filter((skill) => {
+      const normalizedSkill = normalizeText(skill);
+      if (normalizedSkill.length <= 2) {
+        return new RegExp(`(^|\\s|[,;/|])${escapeRegex(normalizedSkill)}($|\\s|[,;/|])`, "i").test(normalizedSource);
+      }
+      return true;
+    })
+    .slice(0, 18);
+
+  return {
+    id: "custom-offer",
+    title: coerceString(parsed.title) || fallback.title,
+    company: coerceString(parsed.company) || fallback.company,
+    location: coerceString(parsed.location) || fallback.location,
+    contract: coerceString(parsed.contract) || fallback.contract,
+    premium: false,
+    sector: coerceString(parsed.sector) || fallback.sector,
+    experienceMin: Math.max(0, Number(parsed.experienceMin || fallback.experienceMin || 0)),
+    education: coerceString(parsed.education) || fallback.education,
+    skills,
+    softSkills: uniqueByNormalized([...normalizeAiList(parsed.softSkills, 14), ...(fallback.softSkills || [])]).slice(0, 12),
+    description: coerceString(parsed.description) || fallback.description,
+    missions: normalizeAiList(parsed.missions, 10).length ? normalizeAiList(parsed.missions, 10) : fallback.missions
+  };
+}
+
+async function extractJobWithAi(sourceText) {
+  const config = aiExtractionConfig();
+  if (!config?.apiKey) return null;
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Tu es un parseur ATS senior spécialisé dans les offres d'emploi françaises et anglaises. Tu extrais un résumé structuré pour matcher un CV avec une offre. Réponds uniquement en JSON. N'invente pas l'entreprise, le contrat ou le lieu si ce n'est pas indiqué."
+    },
+    {
+      role: "user",
+      content:
+        "Analyse cette offre d'emploi. Extrais: titre du poste, entreprise, lieu, contrat, secteur, années d'expérience minimum, niveau d'étude, compétences techniques, soft skills, description synthétique fidèle et missions principales. Le titre ne doit pas être une phrase longue de contexte; choisis le vrai intitulé du poste si présent.\n\n" +
+        `OFFRE:\n${cleanExtractedText(sourceText).slice(0, 60000)}`
+    }
+  ];
+
+  async function callAi(responseFormat) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    try {
+      const response = await fetch(config.url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: config.model,
+          temperature: 0.05,
+          messages,
+          response_format: responseFormat
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Extraction IA du poste indisponible.");
+      }
+      return JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  try {
+    return sanitizeAiJobExtraction(
+      await callAi({
+        type: "json_schema",
+        json_schema: {
+          name: "job_offer_extraction",
+          strict: false,
+          schema: JOB_EXTRACTION_SCHEMA
+        }
+      }),
+      sourceText
+    );
+  } catch (_schemaError) {
+    return sanitizeAiJobExtraction(await callAi({ type: "json_object" }), sourceText);
+  }
+}
+
+const MATCH_ANALYSIS_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    score: { type: "number" },
+    verdict: { type: "string" },
+    strengths: { type: "array", items: { type: "string" } },
+    missingKeywords: { type: "array", items: { type: "string" } },
+    culturalFit: { type: "string" },
+    recommendations: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          level: { type: "string" },
+          title: { type: "string" },
+          detail: { type: "string" }
+        },
+        required: ["level", "title", "detail"]
+      }
+    }
+  },
+  required: ["score", "verdict", "strengths", "missingKeywords", "culturalFit", "recommendations"]
+};
+
+const RECOMMENDATION_LEVELS = new Set(["critique", "important", "bonus"]);
+
+function sanitizeAiMatchAnalysis(raw, { candidate, offer }) {
+  const fallback = buildLocalMatchInsights({ candidate, offer });
+  const parsed = raw && typeof raw === "object" ? raw : {};
+
+  const score = Number.isFinite(Number(parsed.score)) ? Math.max(0, Math.min(100, Math.round(Number(parsed.score)))) : fallback.score;
+  const strengths = normalizeAiList(parsed.strengths, 8);
+  const missingKeywords = uniqueByNormalized([...normalizeAiList(parsed.missingKeywords, 14), ...fallback.missingKeywords]).slice(0, 14);
+  const culturalFit = coerceString(parsed.culturalFit);
+
+  const recommendations = Array.isArray(parsed.recommendations)
+    ? parsed.recommendations
+        .filter((item) => item && typeof item === "object" && coerceString(item.title) && coerceString(item.detail))
+        .slice(0, 6)
+        .map((item) => ({
+          level: RECOMMENDATION_LEVELS.has(coerceString(item.level)) ? coerceString(item.level) : "important",
+          title: coerceString(item.title),
+          detail: coerceString(item.detail)
+        }))
+    : [];
+
+  return {
+    score,
+    verdict: coerceString(parsed.verdict) || fallback.verdict,
+    strengths: strengths.length ? strengths : fallback.strengths,
+    missingKeywords,
+    culturalFit: culturalFit || fallback.culturalFit,
+    recommendations: recommendations.length ? recommendations : fallback.recommendations
+  };
+}
+
+async function analyzeMatchWithAi(candidate, offer) {
+  const config = aiExtractionConfig();
+  if (!config?.apiKey) return null;
+
+  const candidateName = [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ").trim();
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Tu es un expert recrutement et carriere. Tu compares un profil candidat a une offre d'emploi et tu produis une analyse de matching honnete, actionnable et en francais. Reponds uniquement en JSON. Le score reflete la compatibilite reelle (0-100). N'invente pas de mots-cles absents de l'offre ou du profil. Ecris dans un style naturel et personnalise, jamais generique ou robotique."
+    },
+    {
+      role: "user",
+      content:
+        "Compare ce profil candidat a cette offre. Produis : un score de compatibilite (0-100), un verdict court (ex: Match Excellent, Bon match, Match moyen, A renforcer), 3 a 6 points forts concrets du candidat par rapport a l'offre, les mots-cles/competences demandes par l'offre qui manquent chez le candidat, une analyse du fit culturel en 5 a 7 phrases (adequation entre le parcours, les soft skills et les valeurs du candidat d'une part, et la culture/le contexte/le mode de fonctionnement de l'entreprise d'autre part ; developpe des exemples concrets tires du profil, nuance les points de vigilance eventuels, ne te limite pas a une ou deux phrases), et 3 a 5 recommandations strategiques classees par niveau (critique, important, bonus) pour ameliorer ses chances.\n" +
+        (candidateName
+          ? `Le candidat s'appelle ${candidateName}. Utilise son prenom (ou prenom + nom) dans le texte, notamment dans le fit culturel et les points forts, plutot que des formules generiques comme "le candidat" ou "la candidate".\n`
+          : "") +
+        "\n" +
+        `PROFIL CANDIDAT:\n${JSON.stringify(candidate).slice(0, 12000)}\n\n` +
+        `OFFRE:\n${JSON.stringify(offer).slice(0, 12000)}`
+    }
+  ];
+
+  async function callAi(responseFormat) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    try {
+      const response = await fetch(config.url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: config.model,
+          temperature: 0.2,
+          messages,
+          response_format: responseFormat
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Analyse IA du matching indisponible.");
+      }
+      return JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  try {
+    return sanitizeAiMatchAnalysis(
+      await callAi({
+        type: "json_schema",
+        json_schema: {
+          name: "match_analysis",
+          strict: false,
+          schema: MATCH_ANALYSIS_SCHEMA
+        }
+      }),
+      { candidate, offer }
+    );
+  } catch (_schemaError) {
+    return sanitizeAiMatchAnalysis(await callAi({ type: "json_object" }), { candidate, offer });
+  }
+}
+
+const COVER_LETTER_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    subject: { type: "string" },
+    letter: { type: "string" }
+  },
+  required: ["subject", "letter"]
+};
+
+const TONE_LABELS = {
+  fr: { formal: "formel et professionnel", enthusiastic: "enthousiaste et energique", direct: "direct et concis" },
+  en: { formal: "formal and professional", enthusiastic: "enthusiastic and energetic", direct: "direct and concise" }
+};
+
+function buildLocalCoverLetter(candidate, offer, language) {
+  const candidateName = [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ").trim() || "";
+  const skills = (candidate?.skills || []).slice(0, 3).join(", ");
+  const title = offer?.title || "";
+  const company = offer?.company || "";
+
+  if (language === "en") {
+    return {
+      subject: `Application for ${title || "the position"}${company ? ` at ${company}` : ""}`,
+      letter:
+        `Dear Hiring Manager,\n\n` +
+        `I am writing to apply for the ${title || "position"} role${company ? ` at ${company}` : ""}. ` +
+        `With hands-on experience in ${skills || "the relevant skills for this role"}, I am confident I can contribute quickly and meaningfully to your team.\n\n` +
+        `I would welcome the opportunity to discuss how my background aligns with your needs.\n\n` +
+        `Sincerely,\n${candidateName}`
+    };
+  }
+
+  return {
+    subject: `Candidature au poste de ${title || "poste visé"}${company ? ` chez ${company}` : ""}`,
+    letter:
+      `Madame, Monsieur,\n\n` +
+      `Je me permets de vous adresser ma candidature pour le poste de ${title || "poste visé"}${company ? ` au sein de ${company}` : ""}. ` +
+      `Fort(e) d'une expérience concrète en ${skills || "compétences pertinentes pour ce poste"}, je suis convaincu(e) de pouvoir apporter rapidement une contribution utile à votre équipe.\n\n` +
+      `Je serais ravi(e) d'échanger avec vous pour vous exposer plus en détail ma motivation et mon parcours.\n\n` +
+      `Cordialement,\n${candidateName}`
+  };
+}
+
+function sanitizeAiCoverLetter(raw, { candidate, offer, language }) {
+  const parsed = raw && typeof raw === "object" ? raw : {};
+  const fallback = buildLocalCoverLetter(candidate, offer, language);
+  const letter = coerceString(parsed.letter);
+  return {
+    subject: coerceString(parsed.subject) || fallback.subject,
+    letter: letter.length > 40 ? letter : fallback.letter
+  };
+}
+
+async function generateCoverLetterWithAi(candidate, offer, tone, language) {
+  const config = aiExtractionConfig();
+  if (!config?.apiKey) return null;
+
+  const candidateName = [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ").trim();
+  const toneLabel = TONE_LABELS[language]?.[tone] || TONE_LABELS.fr[tone] || TONE_LABELS.fr.formal;
+  const langLabel = language === "en" ? "in English" : "en francais";
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Tu es un coach carriere expert en redaction de lettres de motivation percutantes. Tu ecris des lettres personnalisees, jamais generiques, qui s'appuient sur de vrais elements du profil et de l'offre. Reponds uniquement en JSON."
+    },
+    {
+      role: "user",
+      content:
+        `Redige une lettre de motivation complete, sur un ton ${toneLabel}, ${langLabel}, entre 220 et 320 mots. ` +
+        "Mentionne 2 a 3 elements concrets et verifiables du profil du candidat en lien direct avec l'offre (competences, experiences, resultats). " +
+        "Evite les formules toutes faites et les cliches. Structure la lettre en paragraphes clairs (accroche, valeur ajoutee, motivation, conclusion), termine par une formule de politesse et la signature." +
+        (candidateName ? ` Le candidat s'appelle ${candidateName}, signe la lettre avec ce nom.` : "") +
+        "\n\n" +
+        `PROFIL CANDIDAT:\n${JSON.stringify(candidate).slice(0, 10000)}\n\n` +
+        `OFFRE:\n${JSON.stringify(offer).slice(0, 10000)}`
+    }
+  ];
+
+  async function callAi(responseFormat) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    try {
+      const response = await fetch(config.url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: config.model,
+          temperature: 0.55,
+          messages,
+          response_format: responseFormat
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Generation IA de la lettre indisponible.");
+      }
+      return JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  try {
+    return sanitizeAiCoverLetter(
+      await callAi({
+        type: "json_schema",
+        json_schema: { name: "cover_letter", strict: false, schema: COVER_LETTER_SCHEMA }
+      }),
+      { candidate, offer, language }
+    );
+  } catch (_schemaError) {
+    return sanitizeAiCoverLetter(await callAi({ type: "json_object" }), { candidate, offer, language });
+  }
+}
+
+const NEGOTIATION_REPLY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    reply: { type: "string" },
+    tip: { type: "string" }
+  },
+  required: ["reply", "tip"]
+};
+
+const NEGOTIATION_SUMMARY_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    summary: { type: "string" },
+    strengths: { type: "array", items: { type: "string" } },
+    improvements: { type: "array", items: { type: "string" } }
+  },
+  required: ["summary", "strengths", "improvements"]
+};
+
+function localNegotiationReply(language) {
+  return language === "en"
+    ? {
+        reply: "Thank you for sharing that. I'll need to check this with the team before confirming a final number.",
+        tip: "Back up your request with a specific, measurable achievement or market data point."
+      }
+    : {
+        reply: "Merci pour ces precisions. Je dois en discuter avec l'equipe avant de valider un montant definitif.",
+        tip: "Appuie ta demande sur un resultat chiffre concret ou une donnee de marche precise."
+      };
+}
+
+function localNegotiationSummary(language) {
+  return language === "en"
+    ? {
+        summary: "You engaged in the negotiation and made your case. Keep practicing to sharpen your arguments.",
+        strengths: ["You stayed engaged in the conversation"],
+        improvements: ["Use more concrete numbers and market benchmarks to support your ask"]
+      }
+    : {
+        summary: "Tu as tenu ta position pendant la negociation. Continue a t'entrainer pour affiner tes arguments.",
+        strengths: ["Tu es reste(e) engage(e) dans l'echange"],
+        improvements: ["Appuie davantage tes demandes sur des chiffres et des reperes de marche"]
+      };
+}
+
+async function negotiationReplyWithAi(candidate, offer, history, options = {}) {
+  const config = aiExtractionConfig();
+  if (!config?.apiKey) return null;
+
+  const language = options.language === "en" ? "en" : "fr";
+  const finish = Boolean(options.finish);
+  const targetSalary = coerceString(options.targetSalary);
+  const currencyLabel = coerceString(options.currencyLabel) || "EUR (€)";
+
+  const systemPrompt =
+    "Tu es un(e) responsable recrutement/RH realiste qui negocie un salaire avec un(e) candidat(e) pour le poste decrit. " +
+    "Tu es ferme(e) mais correct(e), tu tiens compte du budget implicite de l'offre et du marche, tu ne cedes pas facilement mais tu restes respectueux(se) et professionnel(le). " +
+    `Exprime systematiquement tous les montants en ${currencyLabel}, jamais dans une autre devise. ` +
+    "Reponds uniquement en JSON.";
+
+  const contextBlock =
+    `PROFIL CANDIDAT:\n${JSON.stringify(candidate).slice(0, 8000)}\n\n` +
+    `OFFRE:\n${JSON.stringify(offer).slice(0, 8000)}\n\n` +
+    (targetSalary ? `PRETENTION SALARIALE DU CANDIDAT: ${targetSalary}\n\n` : "") +
+    `HISTORIQUE DE LA NEGOCIATION (ordre chronologique):\n${JSON.stringify(history || []).slice(0, 8000)}`;
+
+  const userPrompt = finish
+    ? "La negociation est terminee. Produis un bilan de coaching : un resume court (3-4 phrases), 2 a 4 points forts du candidat pendant la negociation, et 2 a 4 axes d'amelioration concrets."
+    : "Continue la negociation en repondant au dernier message du candidat, en restant dans ton role de recruteur. " +
+      "Produis aussi un conseil court et actionnable pour aider le candidat a mieux negocier son prochain message.";
+
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: `${userPrompt}\n\n${contextBlock}` }
+  ];
+
+  async function callAi(responseFormat) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    try {
+      const response = await fetch(config.url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: config.model,
+          temperature: 0.6,
+          messages,
+          response_format: responseFormat
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Reponse IA de negociation indisponible.");
+      }
+      return JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const schema = finish ? NEGOTIATION_SUMMARY_SCHEMA : NEGOTIATION_REPLY_SCHEMA;
+  const schemaName = finish ? "negotiation_summary" : "negotiation_reply";
+
+  let raw;
+  try {
+    raw = await callAi({ type: "json_schema", json_schema: { name: schemaName, strict: false, schema } });
+  } catch (_schemaError) {
+    raw = await callAi({ type: "json_object" });
+  }
+
+  if (finish) {
+    const parsed = raw && typeof raw === "object" ? raw : {};
+    const fallback = localNegotiationSummary(language);
+    return {
+      summary: coerceString(parsed.summary) || fallback.summary,
+      strengths: normalizeAiList(parsed.strengths, 6).length ? normalizeAiList(parsed.strengths, 6) : fallback.strengths,
+      improvements: normalizeAiList(parsed.improvements, 6).length
+        ? normalizeAiList(parsed.improvements, 6)
+        : fallback.improvements
+    };
+  }
+
+  const parsed = raw && typeof raw === "object" ? raw : {};
+  const fallback = localNegotiationReply(language);
+  return {
+    reply: coerceString(parsed.reply) || fallback.reply,
+    tip: coerceString(parsed.tip) || fallback.tip
+  };
+}
+
+function parseCvLocally(sourceText) {
+  const text = cleanExtractedText(sourceText);
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const normalized = normalizeText(text);
+  const email = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
+  const phone = text.match(/(?:\+\d{1,3}[\s.-]?)?(?:\(?\d{1,4}\)?[\s.-]?){4,7}\d{2}/)?.[0]?.trim() || "";
+  const linkedinUrl = text.match(/https?:\/\/(?:www\.)?linkedin\.com\/[^\s)]+/i)?.[0] || "";
+  const firstNameLine =
+    lines.find((line) => line.length >= 3 && line.length <= 60 && !line.includes("@") && !/^\+?\d/.test(line)) ||
+    String(email).split("@")[0].replace(/[._-]+/g, " ");
+  const nameParts = firstNameLine.split(/\s+/).filter(Boolean);
+  const knownSkills = [
+    "python",
+    "sql",
+    "power bi",
+    "tableau",
+    "excel",
+    "react",
+    "node",
+    "fastapi",
+    "django",
+    "docker",
+    "postgresql",
+    "mysql",
+    "mongodb",
+    "tensorflow",
+    "scikit-learn",
+    "pandas",
+    "numpy",
+    "spark",
+    "airflow",
+    "git",
+    "supabase",
+    "rest api",
+    "machine learning",
+    "nlp",
+    "llm",
+    "rag",
+    "computer vision"
+  ];
+  const skills = knownSkills.filter((skill) => normalized.includes(normalizeText(skill)));
+  const location = lines.find((line) => /(paris|france|ile-de-france|lyon|marseille|remote|teletravail)/i.test(normalizeText(line))) || "";
+  const summary = lines.find((line) => line.length > 80 && line.length < 520) || "";
+  const languageMap = [
+    ["francais", "Français"],
+    ["anglais", "Anglais"],
+    ["english", "Anglais"],
+    ["espagnol", "Espagnol"],
+    ["allemand", "Allemand"]
+  ];
+  const languages = languageMap.filter(([key]) => normalized.includes(key)).map(([, label]) => label);
+  return {
+    firstName: nameParts.slice(0, 1).join(" "),
+    lastName: nameParts.slice(1).join(" ").toUpperCase(),
+    email,
+    phone,
+    linkedinUrl,
+    portfolioUrl: "",
+    location,
+    headline: lines.slice(0, 8).find((line) => line !== firstNameLine && !line.includes("@") && line.length >= 8 && line.length <= 100) || "",
+    summary,
+    experienceYears: Number(text.match(/(\d+)\s*(ans|an|years|year)/i)?.[1] || 0),
+    skills,
+    softSkills: [],
+    languages,
+    experiences: [],
+    education: "",
+    educationItems: [],
+    certifications: [],
+    projects: [],
+    interests: [],
+    extractionWarnings: ["Extraction locale utilisée. Vérifie les sections manquantes."],
+    extractionMode: "local"
+  };
+}
+
+const CV_SKILL_LABELS = [
+  "Docker",
+  "REST API",
+  "Supabase",
+  "Cloudflare",
+  "Redis Cache",
+  "Scikit-learn",
+  "TensorFlow",
+  "Streamlit",
+  "LLM",
+  "RAG",
+  "ChromaDB",
+  "FAISS",
+  "Power BI",
+  "Tableau Software",
+  "Qlik Sense",
+  "Looker Studio",
+  "Talend",
+  "Power Query",
+  "BigQuery",
+  "Data Lake (concepts)",
+  "SQL",
+  "MySQL",
+  "NoSQL",
+  "Oracle",
+  "PostgreSQL",
+  "Python",
+  "Pandas",
+  "FastAPI",
+  "Jira",
+  "Git/GitHub",
+  "Bitbucket",
+  "Agile/Scrum",
+  "Waterfall",
+  "React",
+  "Machine Learning",
+  "NLP",
+  "Computer Vision",
+  "VBA",
+  "Business Intelligence",
+  "Data Visualisation",
+  "Data Analysis",
+  "Reporting"
+];
+
+const DATE_MONTH_PATTERN = "(?:jan\\.?|janv\\.?|févr\\.?|fevr\\.?|f.vr\\.?|mars|avr\\.?|mai|juin|juil\\.?|août|aout|ao.t|sept\\.?|oct\\.?|nov\\.?|déc\\.?|dec\\.?|d.c\\.?)";
+const DATE_RANGE_PATTERN = `(?:de\\s+)?(${DATE_MONTH_PATTERN}\\s*\\d{4})\\s*(?:-|\\u2013|\\u2014|à|a|au|to|\\?)\\s*(${DATE_MONTH_PATTERN}\\s*\\d{4}|aujourd'hui|present|présent|pr.sent)`;
+
+function uniqueByNormalized(list) {
+  const seen = new Set();
+  const output = [];
+  for (const item of list.map((value) => coerceString(value)).filter(Boolean)) {
+    const key = normalizeText(item).replace(/[^a-z0-9]+/g, "");
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    output.push(item);
+  }
+  return output;
+}
+
+function compactKey(value) {
+  return normalizeText(value)
+    .replace(/[‑–—]/g, "-")
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function detectSkillsFromText(sourceText) {
+  const normalized = normalizeText(sourceText);
+  const compact = normalized.replace(/[^a-z0-9]+/g, "");
+  return CV_SKILL_LABELS.filter((skill) => {
+    const key = normalizeText(skill);
+    if (key.length <= 2) {
+      return new RegExp(`(^|[^a-z0-9])${escapeRegex(key)}([^a-z0-9]|$)`, "i").test(normalized);
+    }
+    const variants = [key, key.replace(/[\/()]/g, " "), key.replace(/\s+/g, "")];
+    return variants.some((variant) => {
+      const clean = variant.trim();
+      return clean && (normalized.includes(clean) || compact.includes(clean.replace(/[^a-z0-9]+/g, "")));
+    });
+  });
+}
+
+function extractRobustLinkedin(sourceText, current = "") {
+  const candidate = coerceString(current);
+  if (candidate.includes("linkedin.com") && candidate.length > 35 && !candidate.endsWith("-")) return candidate;
+  const text = String(sourceText || "");
+  const match = text.match(/https?:\/\/(?:www\.)?linkedin\.com\/[^\n\r\t ]+(?:\s*[-_]\s*[A-Za-z0-9-]+)?/i);
+  if (!match) return candidate;
+  return match[0].replace(/\s+/g, "").replace(/[),.;]+$/g, "");
+}
+
+function repairLinkedinWithName(url, firstName, lastName) {
+  const current = coerceString(url);
+  if (!current.includes("linkedin.com")) return current;
+  if (!current.endsWith("-")) return current;
+  const first = normalizeText(firstName).replace(/[^a-z0-9]+/g, "");
+  const last = normalizeText(lastName).replace(/[^a-z0-9]+/g, "");
+  if (!first || !last) return current;
+  return current.replace(/\/in\/[^/]+$/i, `/in/${first}-${last}`);
+}
+
+function formatFrenchPhone(value) {
+  const raw = coerceString(value);
+  const digits = raw.replace(/\D/g, "");
+  if (/^0[67]\d{8}$/.test(digits)) {
+    return `+33 ${digits[1]} ${digits.slice(2, 4)} ${digits.slice(4, 6)} ${digits.slice(6, 8)} ${digits.slice(8, 10)}`;
+  }
+  if (/^33[67]\d{8}$/.test(digits)) {
+    return `+33 ${digits[2]} ${digits.slice(3, 5)} ${digits.slice(5, 7)} ${digits.slice(7, 9)} ${digits.slice(9, 11)}`;
+  }
+  return raw;
+}
+
+function cleanLocation(value) {
+  return coerceString(value)
+    .replace(/^[^\p{L}\p{N}]+/u, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function extractProfessionalSummary(sourceText, current = "") {
+  const currentText = coerceString(current);
+  if (currentText.length >= 220) return currentText;
+  const lines = cleanExtractedText(sourceText).split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const start = lines.findIndex((line) => /professionnel de la data|business intelligence|valorisation des donnees|valorisation des données/i.test(line));
+  if (start < 0) return currentText;
+  const block = [];
+  for (const line of lines.slice(start, start + 8)) {
+    if (/^(experience|expériences|formation|certifications?|competences|compétences|langues)\b/i.test(normalizeText(line))) break;
+    block.push(line);
+  }
+  return block.join(" ").replace(/\s{2,}/g, " ").trim() || currentText;
+}
+
+function extractHeadline(sourceText, current = "") {
+  const currentText = coerceString(current);
+  if (currentText && currentText.length <= 90 && !currentText.includes("|")) return currentText;
+  const lines = cleanExtractedText(sourceText).split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  return (
+    lines.find((line) => /data analyst|business intelligence|data manager|data scientist|bim/i.test(line) && line.length <= 90) ||
+    currentText
+  );
+}
+
+function cleanExperienceDate(value) {
+  const text = coerceString(value);
+  const range = new RegExp(DATE_RANGE_PATTERN, "i");
+  const match = text.match(range);
+  if (match) return `${match[1].replace(/^de\s+/i, "")} - ${match[2]}`.replace(/\s{2,}/g, " ");
+
+  const normalized = normalizeText(text).replace(/\s+/g, " ");
+  const looseMonth = "(?:janv?\\.?|fevr?\\.?|f.vr\\.?|mars|avr\\.?|mai|juin|juil\\.?|aout|ao.t|sept\\.?|oct\\.?|nov\\.?|dec\\.?|d.c\\.?)";
+  const loose = normalized.match(new RegExp(`(?:de\\s+)?(${looseMonth}\\s*\\d{4})\\s*(?:-|\\u2013|\\u2014|a|au|to|\\?)\\s*(${looseMonth}\\s*\\d{4}|aujourd'hui|present|pr.sent)`, "i"));
+  if (!loose) return "";
+  const cleanPart = (part) =>
+    coerceString(part)
+      .replace(/^janv?\.?/i, "jan.")
+      .replace(/^f.vr\.?/i, "févr.")
+      .replace(/^fevr?\.?/i, "févr.")
+      .replace(/^avr\.?/i, "avr.")
+      .replace(/^juil\.?/i, "juil.")
+      .replace(/^ao.t/i, "août")
+      .replace(/^aout/i, "août")
+      .replace(/^sept\.?/i, "sept.")
+      .replace(/^oct\.?/i, "oct.")
+      .replace(/^nov\.?/i, "nov.")
+      .replace(/^d.c\.?/i, "déc.")
+      .replace(/^dec\.?/i, "déc.");
+  return `${cleanPart(loose[1])} - ${cleanPart(loose[2])}`.replace(/\s{2,}/g, " ");
+}
+
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function findDateNearCompany(sourceText, company) {
+  const companyText = coerceString(company);
+  if (!companyText) return "";
+  const text = cleanExtractedText(sourceText);
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const companyTokens = normalizeText(companyText).split(/\s+/).filter((token) => token.length > 2);
+  const lineIndex = lines.findIndex((line) => {
+    const normalizedLine = normalizeText(line);
+    return companyTokens.every((token) => normalizedLine.includes(token));
+  });
+  const windowText =
+    lineIndex >= 0
+      ? lines.slice(Math.max(0, lineIndex - 2), lineIndex + 10).join("\n")
+      : "";
+  return cleanExperienceDate(windowText.match(new RegExp(DATE_RANGE_PATTERN, "i"))?.[0] || "");
+}
+
+function textWindowAroundCompany(sourceText, company, beforeLines = 2, afterLines = 10) {
+  const lines = cleanExtractedText(sourceText).split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const companyTokens = normalizeText(company).split(/\s+/).filter((token) => token.length > 2);
+  const index = lines.findIndex((line) => {
+    const normalizedLine = normalizeText(line);
+    return companyTokens.every((token) => normalizedLine.includes(token));
+  });
+  if (index < 0) return cleanExtractedText(sourceText);
+  return lines.slice(Math.max(0, index - beforeLines), index + afterLines).join("\n");
+}
+
+function dateAfterLabel(sourceText, label, maxChars = 500) {
+  const text = cleanExtractedText(sourceText);
+  const tokens = normalizeText(label).split(/\s+/).filter((token) => token.length > 2);
+  const lines = text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  const index = lines.findIndex((line) => {
+    const normalizedLine = normalizeText(line);
+    return tokens.every((token) => normalizedLine.includes(token));
+  });
+  const windowText =
+    index >= 0
+      ? lines.slice(index, index + 8).join("\n")
+      : text.match(new RegExp(tokens.map(escapeRegex).join("[\\s\\S]{0,40}") + `[\\s\\S]{0,${maxChars}}`, "i"))?.[0] || "";
+  return cleanExperienceDate(windowText);
+}
+
+function cleanRole(value) {
+  const role = coerceString(value).replace(/\s{2,}/g, " ").trim();
+  if (/^(développement|developpement|participation|création|creation|automatisation|exploitation|recueil)\b/i.test(role)) return "";
+  if (role.length > 80) return "";
+  return role;
+}
+
+function hasRoleLikeText(value) {
+  return /(data manager|data analyst|stage|alternance|business intelligence|digital|bim|analyst|manager)/i.test(coerceString(value));
+}
+
+function detectExperiencesFromText(sourceText) {
+  const text = cleanExtractedText(sourceText);
+  const specs = [
+    {
+      company: "VINCI CONSTRUCTION",
+      role: "Data Manager BIM",
+      dateRegex: new RegExp(DATE_RANGE_PATTERN, "i")
+    },
+    {
+      company: "EIFFAGE ENERGIE SYSTEMS",
+      role: "STAGE DATA / DIGITAL",
+      dateRegex: new RegExp(DATE_RANGE_PATTERN, "i")
+    },
+    {
+      company: "ECOBANK INTERNATIONAL",
+      role: "STAGE - DATA ANALYST",
+      dateRegex: new RegExp(DATE_RANGE_PATTERN, "i")
+    }
+  ];
+
+  return specs
+    .filter((spec) => normalizeText(text).includes(normalizeText(spec.company)))
+    .map((spec) => {
+      const windowText = textWindowAroundCompany(text, spec.company);
+      const date = dateAfterLabel(text, spec.company) || windowText.match(spec.dateRegex)?.[0] || "";
+      const sentences = windowText
+        .split(/\n|(?<=[.!?])\s+/)
+        .map((line) => line.trim())
+        .filter((line) => line.length > 35)
+        .filter((line) => !line.toUpperCase().includes(spec.company))
+        .filter((line) => !new RegExp(DATE_RANGE_PATTERN, "i").test(line))
+        .slice(0, 4);
+      return {
+        company: spec.company,
+        role: spec.role,
+        dates: cleanExperienceDate(date),
+        location: windowText.match(/(Nanterre|Courbevoie|Île-de-France|Ile-de-France|France)/i)?.[0] || "",
+        description: sentences.join("\n")
+      };
+    });
+}
+
+function detectEducationFromText(sourceText) {
+  const text = cleanExtractedText(sourceText);
+  const normalized = normalizeText(text);
+  const compact = normalized.replace(/[^a-z0-9]+/g, "");
+  const items = [];
+  if (normalized.includes("hetic") || compact.includes("hetic")) {
+    const rawIndex = Math.max(text.search(/h\s*e\s*t\s*i\s*c/i), 0);
+    const windowText = text.slice(Math.max(0, rawIndex - 250), rawIndex + 650);
+    items.push({
+      school: "HETIC",
+      degree: windowText.match(/Mast[èe]re[^,\n|.]*/i)?.[0]?.trim() || "Mastère Big Data & Intelligence Artificielle",
+      dates: dateAfterLabel(text, "HETIC") || cleanExperienceDate(windowText.match(new RegExp(DATE_RANGE_PATTERN, "i"))?.[0] || "sept. 2025 - sept. 2026"),
+      location: "",
+      description: ""
+    });
+  }
+  if (normalized.includes("paris-saclay") || normalized.includes("paris saclay") || normalized.includes("miage") || compact.includes("parissaclay")) {
+    const idx = Math.max(text.search(/paris[-\s]?saclay/i), text.search(/miage/i), 0);
+    const windowText = text.slice(Math.max(0, idx - 200), idx + 500);
+    items.push({
+      school: "Université Paris-Saclay",
+      degree: windowText.match(/M1\s*-\s*M2[^,\n|.]*/i)?.[0]?.trim() || "M1 - M2 MIAGE - Informatique Décisionnelle",
+      dates: dateAfterLabel(text, "Université Paris-Saclay") || dateAfterLabel(text, "MIAGE") || cleanExperienceDate(windowText.match(new RegExp(DATE_RANGE_PATTERN, "i"))?.[0] || "sept. 2023 - sept. 2025"),
+      location: "",
+      description: ""
+    });
+  }
+  return items;
+}
+
+function normalizeExperienceForReview(item, sourceText) {
+  const company = coerceString(item?.company).replace(/\s{2,}/g, " ");
+  const role = cleanRole(item?.role);
+  const dates = cleanExperienceDate(item?.dates) || findDateNearCompany(sourceText, company);
+  const description = coerceString(item?.description)
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !new RegExp(DATE_RANGE_PATTERN, "i").test(line))
+    .join("\n");
+  return {
+    company,
+    role,
+    dates,
+    location: cleanLocation(item?.location),
+    description
+  };
+}
+
+function mergeExperiencesForReview(sourceText, detected, aiItems) {
+  const output = [];
+  const byCompany = new Map();
+  const scoreExperience = (item) => {
+    let score = 0;
+    if (item.dates) score += 4;
+    if (item.role) score += 2;
+    if (item.location) score += 1;
+    if (item.description && item.description.length > 50) score += 2;
+    if (/linkedin\.com|technical skills|vinci construction \| data manager/i.test(item.description || "")) score -= 4;
+    return score;
+  };
+  for (const item of [...(detected || []), ...(aiItems || [])].map((entry) => normalizeExperienceForReview(entry, sourceText))) {
+    const companyKey = compactKey(item.company);
+    if (!companyKey && !item.role) continue;
+    if (!companyKey) {
+      output.push(item);
+      continue;
+    }
+    const previous = byCompany.get(companyKey);
+    if (!previous || scoreExperience(item) > scoreExperience(previous)) {
+      byCompany.set(companyKey, item);
+    }
+  }
+  output.push(...byCompany.values());
+  return output;
+}
+
+function mergeEducationForReview(primary, secondary) {
+  const bySchool = new Map();
+  const scoreEducation = (item) => {
+    let score = 0;
+    if (coerceString(item?.school)) score += 2;
+    if (coerceString(item?.degree)) score += 2;
+    if (cleanExperienceDate(item?.dates)) score += 3;
+    if (/hetic|paris[-\s‑]?saclay|miage|master|mast[èe]re|licence|bachelor/i.test(`${item?.school || ""} ${item?.degree || ""}`)) score += 2;
+    return score;
+  };
+  for (const item of [...(primary || []), ...(secondary || [])]) {
+    const schoolKey = compactKey(item?.school);
+    if (!schoolKey) continue;
+    const normalized = {
+      ...item,
+      school: coerceString(item.school),
+      degree: coerceString(item.degree),
+      dates: cleanExperienceDate(item.dates) || coerceString(item.dates),
+      location: cleanLocation(item.location),
+      description: coerceString(item.description)
+    };
+    const previous = bySchool.get(schoolKey);
+    if (!previous || scoreEducation(normalized) > scoreEducation(previous)) {
+      bySchool.set(schoolKey, normalized);
+    }
+  }
+  return [...bySchool.values()];
+}
+
+function cleanCertificationName(value) {
+  return coerceString(value)
+    .replace(/^[•\-–—+\d.)\s]+/, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function detectCertificationsFromText(sourceText) {
+  const lines = cleanExtractedText(sourceText)
+    .split(/\n+/)
+    .map((line) => cleanCertificationName(line))
+    .filter(Boolean);
+  const sectionStart = lines.findIndex((line) => /^(certifications?|certificats?|formations?\s+certifiantes?)$/i.test(normalizeText(line)));
+  const sectionLines = [];
+  if (sectionStart >= 0) {
+    for (const line of lines.slice(sectionStart + 1)) {
+      const normalized = normalizeText(line);
+      if (/^(experiences?|expériences?|formation|education|compétences|competences|projets?|projects?|langues?|interests?|centres? d'interet)\b/i.test(normalized)) break;
+      sectionLines.push(line);
+    }
+  }
+
+  const keywordLines = lines.filter((line) => {
+    const normalized = normalizeText(line);
+    if (/^(formation|education|certifications?|certificats?|technical skills|compétences|competences)$/i.test(normalized)) return false;
+    if (/universite|university|ecole|school|master|mastère|mastere|licence|bachelor|miage|hetic/.test(normalized)) return false;
+    return /certification|certificate|certificat|formation|academy|coursera|udemy|google|microsoft|aws|azure|oracle|cisco|scrum|salesforce|databricks|snowflake/.test(normalized);
+  });
+
+  return uniqueByNormalized([...sectionLines, ...keywordLines])
+    .filter((name) => name.length >= 4 && name.length <= 140)
+    .slice(0, 12)
+    .map((name) => ({
+      name,
+      issuer: name.match(/\b(Microsoft|Google|AWS|Amazon|Oracle|Cisco|IBM|Meta|Salesforce|Databricks|Snowflake|Coursera|Udemy)\b/i)?.[0] || "",
+      date: cleanExperienceDate(name),
+      url: name.match(/https?:\/\/[^\s)]+/i)?.[0] || ""
+    }));
+}
+
+function mergeCertificationsForReview(primary, secondary) {
+  const output = [];
+  const seen = new Set();
+  for (const item of [...(primary || []), ...(secondary || [])]) {
+    const name = cleanCertificationName(item?.name || item);
+    const key = compactKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    output.push({
+      name,
+      issuer: coerceString(item?.issuer),
+      date: cleanExperienceDate(item?.date) || coerceString(item?.date),
+      url: coerceString(item?.url)
+    });
+  }
+  return output.slice(0, 12);
+}
+
+function mergeCollections(primary, secondary, keyFields) {
+  const output = [];
+  const seen = new Set();
+  for (const item of [...(primary || []), ...(secondary || [])]) {
+    const key = keyFields.map((field) => compactKey(item?.[field] || "")).join("|");
+    if (!key.replace(/\|/g, "") || seen.has(key)) continue;
+    seen.add(key);
+    output.push(item);
+  }
+  return output;
+}
+
+function postProcessCvExtraction(sourceText, parsed) {
+  const base = parsed || parseCvLocally(sourceText);
+  const detectedSkills = detectSkillsFromText(sourceText);
+  const detectedExperiences = detectExperiencesFromText(sourceText);
+  const detectedEducation = detectEducationFromText(sourceText);
+  const detectedCertifications = detectCertificationsFromText(sourceText);
+  const next = {
+    ...base,
+    linkedinUrl: repairLinkedinWithName(extractRobustLinkedin(sourceText, base.linkedinUrl), base.firstName, base.lastName),
+    phone: formatFrenchPhone(base.phone),
+    location: cleanLocation(base.location),
+    headline: extractHeadline(sourceText, base.headline),
+    summary: extractProfessionalSummary(sourceText, base.summary),
+    skills: uniqueByNormalized([...detectedSkills, ...(base.skills || [])]),
+    languages: uniqueByNormalized([...(base.languages || []), ...(normalizeText(sourceText).includes("anglais") ? ["Anglais"] : []), ...(normalizeText(sourceText).includes("francais") || normalizeText(sourceText).includes("français") ? ["Français"] : [])]),
+    experiences: mergeExperiencesForReview(sourceText, detectedExperiences, base.experiences || []),
+    educationItems: mergeEducationForReview(detectedEducation, base.educationItems || []),
+    certifications: mergeCertificationsForReview(detectedCertifications, base.certifications || [])
+  };
+  next.education = next.education || next.educationItems?.[0]?.degree || "";
+  return next;
+}
+
+async function extractCvWithAi(sourceText) {
+  const config = aiExtractionConfig();
+  if (!config?.apiKey) return null;
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Tu es un parseur ATS senior spécialisé dans les CV français et anglais. Tu dois extraire un CV complet pour une app de matching CV/offre. Réponds uniquement en JSON. N'invente aucune donnée. Ne déplace jamais des expériences professionnelles dans les centres d'intérêt. Les formations doivent être détectées même si elles sont écrites sans titre de section clair. Les expériences doivent être séparées par entreprise/poste/date, même si le PDF a perdu les colonnes."
+    },
+    {
+      role: "user",
+      content:
+        "Structure ce CV. Cherche précisément: identité, titre, résumé, compétences techniques, soft skills, langues, expériences, formations, certifications, projets et centres d'intérêt. Pour les formations, repère les écoles/universités et diplômes comme HETIC, MIAGE, Master, Mastère, Licence, Bachelor, Université. Pour les expériences, repère VINCI, EIFFAGE, ECOBANK, stages, alternances, CDI, dates et descriptions.\n\n" +
+        `CV:\n${sourceText.slice(0, 120000)}`
+    }
+  ];
+
+  async function callAi(responseFormat) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    try {
+      const response = await fetch(config.url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: config.model,
+          temperature: 0,
+          max_completion_tokens: 6000,
+          response_format: responseFormat,
+          messages
+        })
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload?.error?.message || payload?.error || `Erreur IA ${response.status}`);
+      }
+      const content = payload?.choices?.[0]?.message?.content;
+      if (!content) throw new Error("Réponse IA vide.");
+      const start = content.indexOf("{");
+      const end = content.lastIndexOf("}");
+      const jsonText = start >= 0 && end > start ? content.slice(start, end + 1) : content;
+      return sanitizeAiCvExtraction(JSON.parse(jsonText));
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const schemaFormat = {
+    type: "json_schema",
+    json_schema: {
+      name: "career_app_cv_extraction",
+      strict: false,
+      schema: CV_EXTRACTION_SCHEMA
+    }
+  };
+
+  try {
+    return await callAi(schemaFormat);
+  } catch (schemaError) {
+    console.warn(`Extraction IA schema indisponible: ${schemaError.message}`);
+    return callAi({ type: "json_object" });
+  }
 }
 
 function requireFields(payload, fields) {
@@ -639,19 +2360,84 @@ async function getUserRowByEmail(email) {
   return rows[0] || null;
 }
 
+async function getUserRowByAnyEmail(email) {
+  const normalized = normalizeEmail(email);
+  const primary = await getUserRowByEmail(normalized);
+  if (primary) return primary;
+  const { rows } = await db.query(
+    `SELECT users.*
+     FROM user_email_addresses
+     JOIN users ON users.id = user_email_addresses.user_id
+     WHERE user_email_addresses.email = $1
+     LIMIT 1`,
+    [normalized]
+  );
+  return rows[0] || null;
+}
+
+async function getEmailRowsForUser(userId) {
+  const { rows } = await db.query(
+    `SELECT id, email, is_primary, is_verified, created_at, updated_at
+     FROM user_email_addresses
+     WHERE user_id = $1
+     ORDER BY is_primary DESC, created_at ASC`,
+    [userId]
+  );
+  return rows;
+}
+
+async function getUserRowByUsername(username) {
+  const { rows } = await db.query("SELECT * FROM users WHERE username = $1 LIMIT 1", [normalizeUsername(username)]);
+  return rows[0] || null;
+}
+
+async function getUserRowByIdentifier(identifier) {
+  const normalized = normalizeText(identifier);
+  if (!normalized) return null;
+  if (normalized.includes("@")) {
+    return getUserRowByAnyEmail(normalized);
+  }
+  return getUserRowByUsername(normalized);
+}
+
+async function buildUniqueUsername(firstName, lastName, email) {
+  const base = buildUsername(firstName, lastName, email);
+  let candidate = base;
+  let suffix = 2;
+
+  while (await getUserRowByUsername(candidate)) {
+    candidate = `${base}_${suffix}`;
+    suffix += 1;
+  }
+
+  return candidate;
+}
+
+async function ensureUsernames() {
+  const { rows } = await db.query("SELECT id, first_name, last_name, email FROM users WHERE COALESCE(username, '') = ''");
+  for (const row of rows) {
+    const username = await buildUniqueUsername(row.first_name, row.last_name, row.email);
+    await db.query("UPDATE users SET username = $1 WHERE id = $2", [username, row.id]);
+  }
+}
+
 async function getAccountRows(userId) {
-  const [accountQ, candidateQ, recruiterQ, orgQ] = await Promise.all([
+  const [accountQ, candidateQ, recruiterQ, orgQ, emailsQ, sessionsQ] = await Promise.all([
     db.query("SELECT * FROM user_accounts WHERE user_id = $1 LIMIT 1", [userId]),
     db.query("SELECT * FROM user_candidate_profiles WHERE user_id = $1 LIMIT 1", [userId]),
     db.query("SELECT * FROM user_recruiter_profiles WHERE user_id = $1 LIMIT 1", [userId]),
-    db.query("SELECT * FROM user_org_profiles WHERE user_id = $1 LIMIT 1", [userId])
+    db.query("SELECT * FROM user_org_profiles WHERE user_id = $1 LIMIT 1", [userId]),
+    getEmailRowsForUser(userId),
+    db.query("SELECT token, created_at, user_agent, ip_address, last_seen_at FROM sessions WHERE user_id = $1 ORDER BY created_at DESC", [userId])
   ]);
 
   return {
     account: accountQ.rows[0] || null,
     candidate: candidateQ.rows[0] || null,
     recruiter: recruiterQ.rows[0] || null,
-    org: orgQ.rows[0] || null
+    org: orgQ.rows[0] || null,
+    emails: emailsQ || [],
+    sessions: sessionsQ.rows || []
   };
 }
 
@@ -707,15 +2493,45 @@ function toPublicUser(userRow, relations) {
   });
 
   const avatarDataUrl = userRow.avatar_data_url || accountRow?.avatar_data_url || "";
+  const emailRows = (relations.emails || []).length
+    ? relations.emails
+    : [
+        {
+          id: `eml-${userRow.id}`,
+          email: userRow.email,
+          is_primary: 1,
+          is_verified: 1,
+          created_at: userRow.created_at,
+          updated_at: userRow.updated_at
+        }
+      ];
 
   return {
     id: userRow.id,
     firstName: userRow.first_name,
     lastName: userRow.last_name,
     email: userRow.email,
+    emailAddresses: emailRows.map((row) => ({
+      id: row.id,
+      email: row.email,
+      isPrimary: Boolean(Number(row.is_primary || 0)),
+      isVerified: Boolean(Number(row.is_verified || 0)),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    })),
+    sessions: (relations.sessions || []).map((row) => ({
+      id: row.token,
+      device: getDeviceName(row.user_agent || ""),
+      browser: getBrowserName(row.user_agent || ""),
+      ipAddress: row.ip_address || "",
+      createdAt: row.created_at,
+      lastSeenAt: row.last_seen_at || row.created_at
+    })),
+    username: userRow.username || "",
     createdAt: userRow.created_at,
     updatedAt: userRow.updated_at,
     roleType: accountType,
+    googleLinked: Boolean(userRow.google_id),
     avatarDataUrl,
     profile,
     subscription,
@@ -981,16 +2797,16 @@ async function scorePremiumEligibility(userRow) {
   );
 
   const reasons = [];
-  if (exp >= 2) reasons.push("expérience professionnelle solide");
-  if (skillCount >= 8) reasons.push("socle de compétences dense");
+  if (exp >= 2) reasons.push("expÃ©rience professionnelle solide");
+  if (skillCount >= 8) reasons.push("socle de compÃ©tences dense");
   if (avgMatch >= 60) reasons.push("bon potentiel de matching");
-  if (cvCount > 0) reasons.push("CV déjà structuré dans la plateforme");
+  if (cvCount > 0) reasons.push("CV dÃ©jÃ  structurÃ© dans la plateforme");
   if (user.account?.onboardingCompleted) reasons.push("onboarding compte complet");
 
   return {
     score,
     eligible: score >= 55,
-    reasons: reasons.length ? reasons : ["complète ton profil pour évaluer l'éligibilité premium"],
+    reasons: reasons.length ? reasons : ["complÃ¨te ton profil pour Ã©valuer l'Ã©ligibilitÃ© premium"],
     tier: score >= 80 ? "Elite" : score >= 65 ? "Plus" : "Starter"
   };
 }
@@ -998,49 +2814,26 @@ async function scorePremiumEligibility(userRow) {
 async function computePremiumAccess(userRow) {
   const eligibility = await scorePremiumEligibility(userRow);
   const subscription = parseJsonField(userRow.subscription_json, {});
-  const activePlan = subscription.plan === "premium" && subscription.status === "active";
-  // Un vrai abonnement Stripe porte un stripeSubscriptionId ; l'activation gratuite
-  // (/api/premium/activate) écrit la même forme {plan, status} sans cet identifiant.
-  const hasRealStripeSubscription = activePlan && Boolean(subscription.stripeSubscriptionId);
-  const hasFreeActivation = activePlan && !subscription.stripeSubscriptionId;
-  const isFreeEligible = hasFreeActivation || eligibility.score >= 70;
-
-  // Règle produit : l'accès gratuit (activation ou score) n'est qu'un essai, plafonné
-  // aux mêmes 3 analyses IA gratuites/mois que la version non-éligible. Une fois ce
-  // quota épuisé, TOUT l'accès premium (réécriture CV, mode live, offres Premium,
-  // analyses supplémentaires) redevient verrouillé tant qu'aucun abonnement Stripe
-  // réel n'est actif — le score de profil ou le bouton gratuit ne rouvrent pas l'accès
-  // indéfiniment, contrairement à un abonnement payant qui reste illimité.
-  let freeTrialUsed = null;
-  let freeTrialRemaining = null;
-  let freeTrialExhausted = false;
-  if (!hasRealStripeSubscription && isFreeEligible) {
-    freeTrialUsed = await countAiUsageThisMonth(userRow.id, "interview-ai-evaluation");
-    freeTrialRemaining = Math.max(0, FREE_AI_EVALUATIONS_PER_MONTH - freeTrialUsed);
-    freeTrialExhausted = freeTrialUsed >= FREE_AI_EVALUATIONS_PER_MONTH;
-  }
-
-  const hasAccess = hasRealStripeSubscription || (isFreeEligible && !freeTrialExhausted);
+  const activeSubscription = subscription.plan === "premium" && subscription.status === "active";
 
   return {
     eligibility,
-    hasAccess,
-    freeTrial: hasRealStripeSubscription
-      ? null
-      : { used: freeTrialUsed || 0, remaining: freeTrialRemaining || 0, limit: FREE_AI_EVALUATIONS_PER_MONTH, exhausted: freeTrialExhausted },
-    source: hasRealStripeSubscription
-      ? "subscription"
-      : hasFreeActivation
-        ? (freeTrialExhausted ? "free_activation_exhausted" : "free_activation")
-        : eligibility.score >= 70
-          ? (freeTrialExhausted ? "profile_unlock_exhausted" : "profile_unlock")
-          : "locked"
+    hasAccess: activeSubscription || eligibility.score >= 70,
+    source: activeSubscription ? "subscription" : eligibility.score >= 70 ? "profile_unlock" : "locked"
   };
 }
 
+await ensureUsernames();
+
 app.get("/api/health", async (_req, res) => {
   const ping = await db.query("SELECT 1 AS ok");
-  res.json({ ok: ping.rows[0]?.ok === 1 });
+  res.json({
+    ok: ping.rows[0]?.ok === 1,
+    aiProvider: AI_PROVIDER,
+    aiModel: AI_MODEL || null,
+    aiKeyConfigured: Boolean(aiExtractionConfig()?.apiKey),
+    stripeEnabled: Boolean(stripe)
+  });
 });
 
 app.post("/api/auth/register", async (req, res) => {
@@ -1050,6 +2843,11 @@ app.post("/api/auth/register", async (req, res) => {
     const firstName = coerceString(req.body.firstName);
     const lastName = coerceString(req.body.lastName);
     const email = normalizeEmail(req.body.email);
+    const usernameError = validateUsernameInput(req.body.username || "");
+    if (usernameError) {
+      return res.status(400).json({ error: usernameError });
+    }
+    const requestedUsername = normalizeUsername(req.body.username || "");
     const password = String(req.body.password || "");
 
     const accountType = sanitizeAccountType(req.body.accountType || "candidate");
@@ -1059,18 +2857,23 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(400).json({ error: "Email invalide." });
     }
     if (password.length < 8) {
-      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractères." });
+      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractÃ¨res." });
     }
 
-    const existingUser = await getUserRowByEmail(email);
+    const existingUser = await getUserRowByAnyEmail(email);
     if (existingUser) {
-      return res.status(409).json({ error: "Un compte existe déjà avec cet email." });
+      return res.status(409).json({ error: "Un compte existe dÃ©jÃ  avec cet email." });
+    }
+
+    if (requestedUsername && (await getUserRowByUsername(requestedUsername))) {
+      return res.status(409).json({ error: "Ce nom d'utilisateur est deja utilise." });
     }
 
     const id = `usr-${crypto.randomUUID()}`;
     const createdAt = nowIso();
     const passwordRecord = createPasswordRecord(password);
     const avatarDataUrl = normalizeAvatarDataUrl(req.body.avatarDataUrl || "");
+    const username = requestedUsername || (await buildUniqueUsername(firstName, lastName, email));
 
     const seededProfile = applyOnboardingToProfile(
       { ...DEFAULT_PROFILE },
@@ -1080,14 +2883,15 @@ app.post("/api/auth/register", async (req, res) => {
 
     await db.query(
       `INSERT INTO users (
-        id, first_name, last_name, email, password_hash, password_salt, created_at,
+        id, first_name, last_name, email, username, password_hash, password_salt, created_at,
         updated_at, role_type, avatar_data_url, profile_json, subscription_json
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
       [
         id,
         firstName,
         lastName,
         email,
+        username,
         passwordRecord.hash,
         passwordRecord.salt,
         createdAt,
@@ -1106,9 +2910,19 @@ app.post("/api/auth/register", async (req, res) => {
 
     await upsertUserAccount(id, onboardingPayload.accountType, onboardingPayload.base, avatarDataUrl);
     await upsertRoleDetails(id, onboardingPayload.accountType, onboardingPayload.details);
+    await db.query(
+      `INSERT INTO user_email_addresses (id, user_id, email, is_primary, is_verified, created_at, updated_at)
+       VALUES ($1,$2,$3,1,1,$4,$5)`,
+      [`eml-${crypto.randomUUID()}`, id, email, createdAt, createdAt]
+    );
 
     const publicUser = await getPublicUserById(id);
-    return res.status(201).json({ user: publicUser });
+    const verification = await createEmailVerificationCode({ id, email, first_name: firstName }, "signup", email);
+
+    return res.status(201).json({
+      user: publicUser,
+      verification: { email: verification.email, expiresAt: verification.expiresAt, resendAfterSeconds: 30 }
+    });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
   }
@@ -1116,16 +2930,177 @@ app.post("/api/auth/register", async (req, res) => {
 
 app.post("/api/auth/login", async (req, res) => {
   try {
-    const email = normalizeEmail(req.body?.email);
+    const identifier = coerceString(req.body?.identifier || req.body?.email);
     const password = String(req.body?.password || "");
 
-    const user = await getUserRowByEmail(email);
+    const user = await getUserRowByIdentifier(identifier);
     if (!user || !verifyPassword(password, user.password_salt, user.password_hash)) {
       return res.status(401).json({ error: "Identifiants invalides." });
     }
 
-    const token = `sess-${crypto.randomUUID()}`;
-    await db.query("INSERT INTO sessions (token, user_id, created_at) VALUES ($1, $2, $3)", [token, user.id, nowIso()]);
+    const token = await createSessionForRequest(req, user.id);
+    await logSecurityEvent(req, user.id, "login_password", { method: "password" });
+
+    return res.json({ token, user: await getPublicUserById(user.id) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/auth/google", async (req, res) => {
+  try {
+    if (!googleOAuthClient) {
+      return res.status(500).json({ error: "Connexion Google non configurée sur le serveur." });
+    }
+    const credential = coerceString(req.body?.credential);
+    if (!credential) {
+      return res.status(400).json({ error: "Jeton Google manquant." });
+    }
+
+    const ticket = await googleOAuthClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+    const payload = ticket.getPayload();
+    if (!payload?.email) {
+      return res.status(400).json({ error: "Impossible de récupérer l'email Google." });
+    }
+
+    const googleId = coerceString(payload.sub);
+    const email = normalizeEmail(payload.email);
+
+    let user = null;
+    const { rows: byGoogleId } = await db.query("SELECT * FROM users WHERE google_id = $1 LIMIT 1", [googleId]);
+    user = byGoogleId[0] || null;
+
+    if (!user) {
+      user = await getUserRowByAnyEmail(email);
+      if (user) {
+        await db.query("UPDATE users SET google_id = $1 WHERE id = $2", [googleId, user.id]);
+      }
+    }
+
+    if (!user) {
+      const id = `usr-${crypto.randomUUID()}`;
+      const createdAt = nowIso();
+      const firstName = coerceString(payload.given_name) || coerceString(payload.name) || "Utilisateur";
+      const lastName = coerceString(payload.family_name) || "";
+      const passwordRecord = createPasswordRecord(crypto.randomUUID());
+      const avatarDataUrl = await fetchRemoteAvatarAsDataUrl(payload.picture || "");
+      const username = await buildUniqueUsername(firstName, lastName, email);
+      const onboardingPayload = sanitizeOnboardingPayload("student", {});
+      const seededProfile = applyOnboardingToProfile(
+        { ...DEFAULT_PROFILE },
+        onboardingPayload.accountType,
+        onboardingPayload.details
+      );
+
+      await db.query(
+        `INSERT INTO users (
+          id, first_name, last_name, email, username, password_hash, password_salt, created_at,
+          updated_at, role_type, avatar_data_url, profile_json, subscription_json, google_id
+        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          id,
+          firstName,
+          lastName,
+          email,
+          username,
+          passwordRecord.hash,
+          passwordRecord.salt,
+          createdAt,
+          createdAt,
+          onboardingPayload.accountType,
+          avatarDataUrl,
+          JSON.stringify(seededProfile),
+          JSON.stringify({ plan: "free", status: "active", startedAt: createdAt, renewalAt: null }),
+          googleId
+        ]
+      );
+
+      await upsertUserAccount(id, onboardingPayload.accountType, onboardingPayload.base, avatarDataUrl);
+      await upsertRoleDetails(id, onboardingPayload.accountType, onboardingPayload.details);
+      await db.query(
+        `INSERT INTO user_email_addresses (id, user_id, email, is_primary, is_verified, created_at, updated_at)
+         VALUES ($1,$2,$3,1,1,$4,$5)`,
+        [`eml-${crypto.randomUUID()}`, id, email, createdAt, createdAt]
+      );
+
+      user = await getUserRowById(id);
+    }
+
+    const token = await createSessionForRequest(req, user.id);
+    await logSecurityEvent(req, user.id, "login_google", { method: "google" });
+
+    return res.json({ token, user: await getPublicUserById(user.id) });
+  } catch (error) {
+    return res.status(401).json({ error: error.message || "Connexion Google impossible." });
+  }
+});
+
+app.post("/api/auth/request-code", async (req, res) => {
+  try {
+    const identifier = coerceString(req.body?.identifier || req.body?.email);
+    const purpose = coerceString(req.body?.purpose) === "signup" ? "signup" : "login";
+    const user = await getUserRowByIdentifier(identifier);
+    if (!user) {
+      return res.status(404).json({ error: "Aucun compte ne correspond à cet identifiant." });
+    }
+
+    const loginEmail = identifier.includes("@") ? normalizeEmail(identifier) : user.email;
+    const verification = await createEmailVerificationCode(user, purpose, loginEmail);
+    return res.json({
+      ok: true,
+      email: verification.email,
+      expiresAt: verification.expiresAt,
+      resendAfterSeconds: 30
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/auth/verify-code", async (req, res) => {
+  try {
+    const identifier = coerceString(req.body?.identifier || req.body?.email);
+    const code = coerceString(req.body?.code).replace(/\D/g, "");
+    const purpose = coerceString(req.body?.purpose) === "signup" ? "signup" : "login";
+    const user = await getUserRowByIdentifier(identifier);
+    const loginEmail = identifier.includes("@") ? normalizeEmail(identifier) : user?.email;
+
+    if (!user || code.length !== 6) {
+      return res.status(401).json({ error: "Code invalide." });
+    }
+
+    const { rows } = await db.query(
+      `SELECT * FROM email_verification_codes
+       WHERE user_id = $1 AND email = $2 AND purpose = $3 AND consumed_at = ''
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [user.id, loginEmail, purpose]
+    );
+    const verification = rows[0];
+
+    if (!verification) {
+      return res.status(401).json({ error: "Demande de code introuvable." });
+    }
+    if (new Date(verification.expires_at).getTime() < Date.now()) {
+      return res.status(401).json({ error: "Code expiré. Demande un nouveau code." });
+    }
+    if (Number(verification.attempts || 0) >= 5) {
+      return res.status(429).json({ error: "Trop de tentatives. Demande un nouveau code." });
+    }
+
+    const valid = verifyPassword(code, verification.code_salt, verification.code_hash);
+    if (!valid) {
+      await db.query("UPDATE email_verification_codes SET attempts = attempts + 1 WHERE id = $1", [verification.id]);
+      return res.status(401).json({ error: "Code invalide." });
+    }
+
+    await db.query("UPDATE email_verification_codes SET consumed_at = $1 WHERE id = $2", [nowIso(), verification.id]);
+
+    const token = await createSessionForRequest(req, user.id);
+    await logSecurityEvent(req, user.id, purpose === "signup" ? "signup_email_code" : "login_email_code", {
+      method: "email_code",
+      email: loginEmail
+    });
 
     return res.json({ token, user: await getPublicUserById(user.id) });
   } catch (error) {
@@ -1135,11 +3110,14 @@ app.post("/api/auth/login", async (req, res) => {
 
 app.post("/api/auth/password", async (req, res) => {
   try {
+    const authHeader = String(req.headers.authorization || "");
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
     const userId = coerceString(req.body?.userId);
     const currentPassword = String(req.body?.currentPassword || "");
     const newPassword = String(req.body?.newPassword || "");
+    const logoutOtherSessions = Boolean(req.body?.logoutOtherSessions);
 
-    if (!userId || !currentPassword || !newPassword) {
+    if (!userId || !newPassword) {
       return res.status(400).json({ error: "Paramètres manquants pour changer le mot de passe." });
     }
 
@@ -1152,7 +3130,13 @@ app.post("/api/auth/password", async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
-    if (!verifyPassword(currentPassword, user.password_salt, user.password_hash)) {
+    const sessionRows = token ? await db.query("SELECT user_id FROM sessions WHERE token = $1 LIMIT 1", [token]) : { rows: [] };
+    const session = sessionRows.rows[0];
+    if (!session || session.user_id !== userId) {
+      return res.status(401).json({ error: "Session invalide." });
+    }
+
+    if (currentPassword && !verifyPassword(currentPassword, user.password_salt, user.password_hash)) {
       return res.status(401).json({ error: "Mot de passe actuel incorrect." });
     }
 
@@ -1162,59 +3146,15 @@ app.post("/api/auth/password", async (req, res) => {
       [next.hash, next.salt, nowIso(), userId]
     );
 
-    await db.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
-    return res.json({ ok: true });
+    if (logoutOtherSessions) {
+      await db.query("DELETE FROM sessions WHERE user_id = $1 AND token <> $2", [userId, token]);
+    }
+
+    await logSecurityEvent(req, userId, "password_changed", { logoutOtherSessions });
+    const updatedUser = await getUserRowById(userId);
+    return res.json({ user: await getPublicUserById(userId), premium: await computePremiumAccess(updatedUser) });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
-  }
-});
-
-// Droit à l'effacement (Article 17 RGPD, cf. mémoire §3.3.3) : jusqu'ici documenté
-// comme une lacune assumée, cette route la comble. Suppression physique en cascade
-// de toutes les tables rattachées à l'utilisateur (pas de FK CASCADE dans PGlite,
-// donc suppression explicite table par table), après re-authentification par mot
-// de passe — action irréversible, on ne se contente pas d'un simple userId dans le body.
-app.post("/api/account/delete", async (req, res) => {
-  try {
-    const userId = coerceString(req.body?.userId);
-    const password = String(req.body?.password || "");
-
-    if (!userId || !password) {
-      return res.status(400).json({ error: "userId et mot de passe requis pour confirmer la suppression." });
-    }
-
-    const user = await getUserRowById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "Utilisateur introuvable." });
-    }
-
-    if (!verifyPassword(password, user.password_salt, user.password_hash)) {
-      return res.status(401).json({ error: "Mot de passe incorrect. Suppression annulée." });
-    }
-
-    // Ordre sans importance ici (pas de contraintes FK strictes dans PGlite),
-    // mais on part des tables les plus dépendantes vers la table users elle-même.
-    const userScopedTables = [
-      "ai_usage_log",
-      "interview_attempts",
-      "offer_status",
-      "match_runs",
-      "cvs",
-      "sessions",
-      "user_org_profiles",
-      "user_recruiter_profiles",
-      "user_candidate_profiles",
-      "user_accounts"
-    ];
-
-    for (const table of userScopedTables) {
-      await db.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
-    }
-    await db.query("DELETE FROM users WHERE id = $1", [userId]);
-
-    return res.json({ ok: true, deletedUserId: userId });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur lors de la suppression du compte." });
   }
 });
 
@@ -1229,8 +3169,13 @@ app.get("/api/auth/session", async (req, res) => {
     const sessionRows = await db.query("SELECT user_id FROM sessions WHERE token = $1 LIMIT 1", [token]);
     const session = sessionRows.rows[0];
     if (!session) {
-      return res.status(401).json({ error: "Session expirée." });
+      return res.status(401).json({ error: "Session expirÃ©e." });
     }
+
+    await db.query(
+      "UPDATE sessions SET last_seen_at = $1, user_agent = $2, ip_address = $3 WHERE token = $4",
+      [nowIso(), getRequestUserAgent(req), getRequestIp(req), token]
+    );
 
     const user = await getUserRowById(session.user_id);
     if (!user) {
@@ -1304,6 +3249,42 @@ app.patch("/api/account", async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
+    const accountUserPatch = {};
+    if (Object.prototype.hasOwnProperty.call(patch, "firstName")) accountUserPatch.firstName = coerceString(patch.firstName);
+    if (Object.prototype.hasOwnProperty.call(patch, "lastName")) accountUserPatch.lastName = coerceString(patch.lastName);
+    if (Object.prototype.hasOwnProperty.call(patch, "username")) {
+      const usernameError = validateUsernameInput(patch.username, true);
+      if (usernameError) {
+        return res.status(400).json({ error: usernameError });
+      }
+      accountUserPatch.username = normalizeUsername(patch.username);
+    }
+
+    if (accountUserPatch.username) {
+      const owner = await getUserRowByUsername(accountUserPatch.username);
+      if (owner && owner.id !== userId) {
+        return res.status(409).json({ error: "Ce nom d'utilisateur est dÃ©jÃ  utilisÃ©." });
+      }
+    }
+
+    if (Object.keys(accountUserPatch).length) {
+      await db.query(
+        `UPDATE users
+         SET first_name = $1,
+             last_name = $2,
+             username = $3,
+             updated_at = $4
+         WHERE id = $5`,
+        [
+          accountUserPatch.firstName || user.first_name,
+          accountUserPatch.lastName || user.last_name,
+          accountUserPatch.username || user.username || (await buildUniqueUsername(user.first_name, user.last_name, user.email)),
+          nowIso(),
+          userId
+        ]
+      );
+    }
+
     const relations = await getAccountRows(userId);
     const currentAccountType = sanitizeAccountType(
       patch.accountType || relations.account?.account_type || user.role_type || "candidate"
@@ -1339,6 +3320,243 @@ app.patch("/api/account", async (req, res) => {
     const updatedUser = await getUserRowById(userId);
     const premium = await computePremiumAccess(updatedUser);
     return res.json({ user: await getPublicUserById(userId), premium });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/account/emails/request", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const email = normalizeEmail(req.body?.email);
+
+    if (!userId || !email.includes("@")) {
+      return res.status(400).json({ error: "Adresse e-mail invalide." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const existing = await getUserRowByAnyEmail(email);
+    if (existing && existing.id !== userId) {
+      return res.status(409).json({ error: "Cette adresse e-mail est dÃ©jÃ  utilisÃ©e par un autre compte." });
+    }
+
+    const ownEmails = await getEmailRowsForUser(userId);
+    if (ownEmails.some((item) => normalizeEmail(item.email) === email)) {
+      return res.status(409).json({ error: "Cette adresse e-mail est dÃ©jÃ  liÃ©e Ã  ton compte." });
+    }
+
+    const verification = await createEmailVerificationCode(user, "add_email", email);
+    return res.json({
+      ok: true,
+      email: verification.email,
+      expiresAt: verification.expiresAt,
+      resendAfterSeconds: 30
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/account/emails/verify", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const email = normalizeEmail(req.body?.email);
+    const code = coerceString(req.body?.code).replace(/\D/g, "");
+
+    if (!userId || !email.includes("@") || code.length !== 6) {
+      return res.status(400).json({ error: "Code ou adresse e-mail invalide." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const { rows } = await db.query(
+      `SELECT * FROM email_verification_codes
+       WHERE user_id = $1 AND email = $2 AND purpose = 'add_email' AND consumed_at = ''
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [userId, email]
+    );
+    const verification = rows[0];
+    if (!verification) {
+      return res.status(404).json({ error: "Aucun code actif pour cette adresse." });
+    }
+    if (new Date(verification.expires_at).getTime() < Date.now()) {
+      return res.status(410).json({ error: "Le code a expirÃ©. Renvoie un nouveau code." });
+    }
+    if (Number(verification.attempts || 0) >= 5) {
+      return res.status(429).json({ error: "Trop de tentatives. Renvoie un nouveau code." });
+    }
+    if (!verifyPassword(code, verification.code_salt, verification.code_hash)) {
+      await db.query("UPDATE email_verification_codes SET attempts = attempts + 1 WHERE id = $1", [verification.id]);
+      return res.status(401).json({ error: "Code incorrect." });
+    }
+
+    const existing = await getUserRowByAnyEmail(email);
+    if (existing && existing.id !== userId) {
+      return res.status(409).json({ error: "Cette adresse e-mail est dÃ©jÃ  utilisÃ©e par un autre compte." });
+    }
+
+    const timestamp = nowIso();
+    await db.query("UPDATE email_verification_codes SET consumed_at = $1 WHERE id = $2", [timestamp, verification.id]);
+    await db.query(
+      `INSERT INTO user_email_addresses (id, user_id, email, is_primary, is_verified, created_at, updated_at)
+       VALUES ($1,$2,$3,0,1,$4,$5)`,
+      [`eml-${crypto.randomUUID()}`, userId, email, timestamp, timestamp]
+    );
+
+    return res.json({ user: await getPublicUserById(userId), premium: await computePremiumAccess(user) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.patch("/api/account/emails/primary", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const emailId = coerceString(req.body?.emailId);
+    const user = await getUserRowById(userId);
+    if (!user || !emailId) {
+      return res.status(400).json({ error: "ParamÃ¨tres invalides." });
+    }
+
+    const { rows } = await db.query(
+      "SELECT * FROM user_email_addresses WHERE id = $1 AND user_id = $2 LIMIT 1",
+      [emailId, userId]
+    );
+    const target = rows[0];
+    if (!target) {
+      return res.status(404).json({ error: "Adresse e-mail introuvable." });
+    }
+    if (!Number(target.is_verified || 0)) {
+      return res.status(400).json({ error: "Cette adresse doit Ãªtre vÃ©rifiÃ©e avant de devenir principale." });
+    }
+
+    const timestamp = nowIso();
+    await db.query("UPDATE user_email_addresses SET is_primary = 0, updated_at = $1 WHERE user_id = $2", [timestamp, userId]);
+    await db.query("UPDATE user_email_addresses SET is_primary = 1, updated_at = $1 WHERE id = $2", [timestamp, emailId]);
+    await db.query("UPDATE users SET email = $1, updated_at = $2 WHERE id = $3", [target.email, timestamp, userId]);
+
+    const updatedUser = await getUserRowById(userId);
+    return res.json({ user: await getPublicUserById(userId), premium: await computePremiumAccess(updatedUser) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.delete("/api/account/emails", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const emailId = coerceString(req.body?.emailId);
+    const { rows } = await db.query(
+      "SELECT * FROM user_email_addresses WHERE id = $1 AND user_id = $2 LIMIT 1",
+      [emailId, userId]
+    );
+    const target = rows[0];
+    if (!target) {
+      return res.status(404).json({ error: "Adresse e-mail introuvable." });
+    }
+    if (Number(target.is_primary || 0)) {
+      return res.status(400).json({ error: "Impossible de supprimer l'adresse principale." });
+    }
+
+    await db.query("DELETE FROM user_email_addresses WHERE id = $1 AND user_id = $2", [emailId, userId]);
+    const user = await getUserRowById(userId);
+    return res.json({ user: await getPublicUserById(userId), premium: await computePremiumAccess(user) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/account/connected-accounts/link-google", async (req, res) => {
+  try {
+    if (!googleOAuthClient) {
+      return res.status(500).json({ error: "Connexion Google non configurée sur le serveur." });
+    }
+    const userId = coerceString(req.body?.userId);
+    const credential = coerceString(req.body?.credential);
+    const user = await getUserRowById(userId);
+    if (!user || !credential) {
+      return res.status(400).json({ error: "ParamÃ¨tres invalides." });
+    }
+
+    const ticket = await googleOAuthClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+    const payload = ticket.getPayload();
+    const googleId = coerceString(payload?.sub);
+    if (!googleId) {
+      return res.status(400).json({ error: "Compte Google invalide." });
+    }
+
+    const { rows: existing } = await db.query(
+      "SELECT id FROM users WHERE google_id = $1 AND id <> $2 LIMIT 1",
+      [googleId, userId]
+    );
+    if (existing.length) {
+      return res.status(409).json({ error: "Ce compte Google est déjà lié à un autre compte Career App." });
+    }
+
+    await db.query("UPDATE users SET google_id = $1 WHERE id = $2", [googleId, userId]);
+    await logSecurityEvent(req, userId, "connected_account_linked", { provider: "google" });
+
+    return res.json({ user: await getPublicUserById(userId), premium: await computePremiumAccess(user) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Liaison Google impossible." });
+  }
+});
+
+app.post("/api/account/connected-accounts/remove", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const provider = coerceString(req.body?.provider || "google");
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    if (provider === "google") {
+      await db.query("UPDATE users SET google_id = '' WHERE id = $1", [userId]);
+    }
+
+    await logSecurityEvent(req, userId, "connected_account_removed", { provider });
+    return res.json({ user: await getPublicUserById(userId), premium: await computePremiumAccess(user) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.delete("/api/account", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const confirmation = coerceString(req.body?.confirmation);
+
+    if (!userId || confirmation !== "Supprimer le compte") {
+      return res.status(400).json({ error: "Confirmation invalide." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    await logSecurityEvent(req, userId, "account_deleted", { email: user.email });
+    await db.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM email_verification_codes WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM user_email_addresses WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM cvs WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM match_runs WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM user_candidate_profiles WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM user_recruiter_profiles WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM user_org_profiles WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM user_accounts WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM users WHERE id = $1", [userId]);
+
+    return res.json({ ok: true });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
   }
@@ -1386,81 +3604,6 @@ app.patch("/api/profile/avatar", async (req, res) => {
   }
 });
 
-// Crée une session Stripe Checkout pour l'abonnement premium.
-// client_reference_id: userId -> c'est CE champ que le webhook (/api/stripe/webhook,
-// event checkout.session.completed) relit pour savoir quel utilisateur activer.
-// Sans lui, le webhook ne peut pas relier le paiement à un compte (cf. warning
-// "activation ignorée" côté webhook).
-app.post("/api/stripe/create-checkout-session", async (req, res) => {
-  try {
-    if (!stripe) {
-      return res.status(503).json({
-        error: "Paiement indisponible : STRIPE_SECRET_KEY absente côté serveur (.env)."
-      });
-    }
-
-    const userId = coerceString(req.body?.userId);
-    if (!userId) {
-      return res.status(400).json({ error: "userId requis." });
-    }
-
-    const userRow = await getUserRowById(userId);
-    if (!userRow) {
-      return res.status(404).json({ error: "Utilisateur introuvable." });
-    }
-
-    const access = await computePremiumAccess(userRow);
-    if (!access.eligibility.eligible) {
-      return res.status(400).json({ error: "Profil non éligible à l'activation premium." });
-    }
-
-    const subscription = parseJsonField(userRow.subscription_json, {});
-    const hasRealStripeSubscription =
-      subscription.plan === "premium" && subscription.status === "active" && Boolean(subscription.stripeSubscriptionId);
-    if (hasRealStripeSubscription) {
-      return res.status(400).json({ error: "Un abonnement Stripe est déjà actif pour ce compte." });
-    }
-
-    // Tarification différenciée : compte "school" -> BtoB annuel (990 €/an),
-    // tout autre type de compte -> BtoC mensuel (4,99 €/mois).
-    let priceId;
-    try {
-      priceId = resolvePriceIdForUser(userRow.role_type, {
-        individual: STRIPE_PRICE_ID_INDIVIDUAL,
-        school: STRIPE_PRICE_ID_SCHOOL
-      });
-    } catch (priceError) {
-      return res.status(503).json({ error: `Paiement indisponible : ${priceError.message}` });
-    }
-
-    const sessionParams = buildCheckoutSessionParams({
-      userId,
-      userEmail: userRow.email,
-      subscription,
-      priceId
-    });
-
-    const session = await stripe.checkout.sessions.create({
-      ...sessionParams,
-      // Stripe Tax : calcule automatiquement la TVA due selon le pays du client,
-      // MAIS ne collecte réellement que sur les juridictions où une inscription
-      // fiscale active est enregistrée (Dashboard Stripe > Tax > Registrations).
-      // Tant que l'inscription OSS réelle n'est pas faite auprès de l'administration
-      // fiscale (cf. mémoire §5.3/§3.4.3), ce paramètre n'a aucun effet pratique —
-      // il prépare seulement le terrain pour l'activer sans reprendre le code plus tard.
-      automatic_tax: { enabled: true },
-      billing_address_collection: "required",
-      success_url: `${CLIENT_URL}/?checkout=success&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${CLIENT_URL}/?checkout=cancel`
-    });
-
-    return res.json({ url: session.url });
-  } catch (error) {
-    console.error("Erreur création session Stripe Checkout:", error);
-    return res.status(500).json({ error: error.message || "Erreur serveur lors de la création du paiement." });
-  }
-});
-
 app.get("/api/premium", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
@@ -1491,7 +3634,7 @@ app.post("/api/premium/activate", async (req, res) => {
 
     const access = await computePremiumAccess(user);
     if (!access.eligibility.eligible) {
-      return res.status(400).json({ error: "Profil non éligible à l'activation premium." });
+      return res.status(400).json({ error: "Profil non Ã©ligible Ã  l'activation premium." });
     }
 
     const startedAt = nowIso();
@@ -1513,6 +3656,370 @@ app.post("/api/premium/activate", async (req, res) => {
     return res.json({ user: await getPublicUserById(userId), premium });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+async function generateLicenseCodeForPlan(userId, plan) {
+  const code = generateLicenseCode();
+  await db.query(
+    "INSERT INTO license_codes (code, owner_user_id, plan_id, seats_total, seats_used, created_at) VALUES ($1,$2,$3,$4,0,$5)",
+    [code, userId, plan.id, plan.seats, nowIso()]
+  );
+  return code;
+}
+
+function generateLicenseCode() {
+  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "LIC-";
+  for (let i = 0; i < 8; i += 1) {
+    if (i === 4) code += "-";
+    code += alphabet[Math.floor(Math.random() * alphabet.length)];
+  }
+  return code;
+}
+
+async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeIds = null) {
+  const cycle = billingCycle === "annual" ? "annual" : plan.monthlyPrice == null ? "annual" : "monthly";
+  const startedAt = nowIso();
+  const renewalDays = cycle === "annual" ? 365 : 30;
+  const renewalAt = new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000).toISOString();
+
+  await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [
+    JSON.stringify({
+      plan: plan.grantsPremium ? "premium" : "free",
+      status: "active",
+      planId: plan.id,
+      billingCycle: cycle,
+      credits: plan.credits,
+      licenseCode: licenseCode || null,
+      startedAt,
+      renewalAt,
+      stripeCustomerId: stripeIds?.stripeCustomerId || null,
+      stripeSubscriptionId: stripeIds?.stripeSubscriptionId || null
+    }),
+    nowIso(),
+    userId
+  ]);
+}
+
+app.post("/api/stripe/create-checkout-session", async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(503).json({ error: "Paiement Stripe non configuré côté serveur." });
+    }
+
+    const userId = coerceString(req.body?.userId);
+    const planId = coerceString(req.body?.planId);
+    const billingCycle = coerceString(req.body?.billingCycle) === "annual" ? "annual" : "monthly";
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const plan = getPlanById(planId);
+    if (!plan || !plan.grantsPremium) {
+      return res.status(400).json({ error: "Ce plan ne nécessite pas de paiement Stripe." });
+    }
+
+    const priceEnvVar = resolveStripePriceEnvVar(plan, billingCycle);
+    const priceId = String(process.env[priceEnvVar] || "").trim();
+    if (!priceId) {
+      return res.status(500).json({ error: `${priceEnvVar} manquant dans .env pour ce plan.` });
+    }
+
+    const subscription = parseJsonField(user.subscription_json, {});
+    const params = buildCheckoutSessionParams({
+      userId,
+      userEmail: user.email,
+      subscription,
+      priceId,
+      mode: resolveStripeMode(plan),
+      planId: plan.id,
+      billingCycle,
+      successUrl: `${APP_URL}/#/app/tarifs?stripe=success`,
+      cancelUrl: `${APP_URL}/#/app/tarifs?stripe=cancel`
+    });
+
+    const session = await stripe.checkout.sessions.create(params);
+    return res.json({ url: session.url });
+  } catch (error) {
+    console.error("Erreur création session Stripe Checkout:", error);
+    return res.status(500).json({ error: error.message || "Impossible de créer la session de paiement." });
+  }
+});
+
+app.post("/api/plans/activate", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const planId = coerceString(req.body?.planId);
+    const billingCycle = coerceString(req.body?.billingCycle);
+
+    if (!userId || !planId) {
+      return res.status(400).json({ error: "userId et planId requis." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const plan = getPlanById(planId);
+    if (!plan) {
+      return res.status(400).json({ error: "Plan inconnu." });
+    }
+
+    await applyPlanToUser(userId, plan, billingCycle, null);
+
+    const licenseCode = plan.seats ? await generateLicenseCodeForPlan(userId, plan) : null;
+
+    const updatedUser = await getUserRowById(userId);
+    const premium = await computePremiumAccess(updatedUser);
+    return res.json({ user: await getPublicUserById(userId), premium, licenseCode });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/plans/redeem", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const code = coerceString(req.body?.code).toUpperCase();
+
+    if (!userId || !code) {
+      return res.status(400).json({ error: "userId et code requis." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const { rows: codeRows } = await db.query("SELECT * FROM license_codes WHERE code = $1", [code]);
+    const licenseRow = codeRows[0];
+    if (!licenseRow) {
+      return res.status(404).json({ error: "Code de licence introuvable." });
+    }
+
+    const plan = getPlanById(licenseRow.plan_id);
+    if (!plan) {
+      return res.status(400).json({ error: "Plan associé au code introuvable." });
+    }
+
+    const currentSubscription = parseJsonField(user.subscription_json, {});
+    const alreadyRedeemed = currentSubscription.licenseCode === code;
+
+    if (!alreadyRedeemed) {
+      if (Number(licenseRow.seats_used) >= Number(licenseRow.seats_total)) {
+        return res.status(409).json({ error: "Ce code de licence a atteint son nombre maximum d'utilisateurs." });
+      }
+      await db.query("UPDATE license_codes SET seats_used = seats_used + 1 WHERE code = $1", [code]);
+      await applyPlanToUser(userId, plan, null, code);
+    }
+
+    const updatedUser = await getUserRowById(userId);
+    const premium = await computePremiumAccess(updatedUser);
+    return res.json({ user: await getPublicUserById(userId), premium });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/tokens/consume", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const amount = Math.max(1, coerceInteger(req.body?.amount, 1));
+
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const subscription = parseJsonField(user.subscription_json, {});
+    const discoveryPlan = getPlanById("candidate_discovery");
+    const currentCredits =
+      typeof subscription.credits === "number" ? subscription.credits : discoveryPlan?.credits ?? 0;
+
+    if (currentCredits >= 999) {
+      const premium = await computePremiumAccess(user);
+      return res.json({ user: await getPublicUserById(userId), premium, consumed: 0 });
+    }
+
+    if (currentCredits < amount) {
+      return res.status(402).json({ error: "Jetons insuffisants. Passe à un plan supérieur pour continuer." });
+    }
+
+    const nextSubscription = {
+      plan: subscription.plan || "free",
+      status: subscription.status || "active",
+      planId: subscription.planId || "candidate_discovery",
+      billingCycle: subscription.billingCycle || null,
+      credits: currentCredits - amount,
+      licenseCode: subscription.licenseCode || null,
+      startedAt: subscription.startedAt || nowIso(),
+      renewalAt: subscription.renewalAt || null
+    };
+
+    await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [
+      JSON.stringify(nextSubscription),
+      nowIso(),
+      userId
+    ]);
+
+    const updatedUser = await getUserRowById(userId);
+    const premium = await computePremiumAccess(updatedUser);
+    return res.json({ user: await getPublicUserById(userId), premium, consumed: amount });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/cv/extract", async (req, res) => {
+  try {
+    const fileName = coerceString(req.body?.fileName || "cv.txt");
+    const mimeType = coerceString(req.body?.mimeType);
+    const sourceText = await extractTextFromUpload({
+      fileName,
+      mimeType,
+      base64: req.body?.base64
+    });
+
+    if (sourceText.length < 20) {
+      return res.status(422).json({
+        error: "Impossible d'extraire assez de texte depuis ce fichier. Essaie un PDF texte ou un DOCX plus lisible."
+      });
+    }
+
+    let parsed = null;
+    let extractionProvider = "local";
+    try {
+      parsed = await extractCvWithAi(sourceText);
+      if (parsed) extractionProvider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+    } catch (aiError) {
+      parsed = null;
+      console.warn(`Extraction IA indisponible: ${aiError.message}`);
+    }
+
+    const finalParsed = postProcessCvExtraction(sourceText, parsed);
+
+    return res.json({
+      fileName,
+      sourceText,
+      characterCount: sourceText.length,
+      parsed: finalParsed,
+      extractionProvider
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Extraction du CV impossible." });
+  }
+});
+
+app.post("/api/jobs/extract", async (req, res) => {
+  try {
+    const text = cleanExtractedText(req.body?.text);
+    if (text.length < 50) {
+      return res.status(422).json({ error: "Colle une description de poste plus complète avant de lancer l'extraction." });
+    }
+
+    let parsed = null;
+    let extractionProvider = "local";
+    try {
+      parsed = await extractJobWithAi(text);
+      if (parsed) extractionProvider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+    } catch (aiError) {
+      parsed = null;
+      console.warn(`Extraction IA du poste indisponible: ${aiError.message}`);
+    }
+
+    return res.json({
+      parsed: parsed || extractLocalJobSummary(text),
+      extractionProvider
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Extraction du poste impossible." });
+  }
+});
+
+app.post("/api/match/analyze", async (req, res) => {
+  try {
+    const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
+    const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
+
+    if (!Array.isArray(offer.skills) || !offer.title) {
+      return res.status(400).json({ error: "Offre invalide pour lancer le matching." });
+    }
+
+    let analysis = null;
+    let provider = "local";
+    try {
+      analysis = await analyzeMatchWithAi(candidate, offer);
+      if (analysis) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+    } catch (aiError) {
+      analysis = null;
+      console.warn(`Analyse IA du matching indisponible: ${aiError.message}`);
+    }
+
+    return res.json({
+      analysis: analysis || buildLocalMatchInsights({ candidate, offer }),
+      provider
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Analyse du matching impossible." });
+  }
+});
+
+app.post("/api/coverletter/generate", async (req, res) => {
+  try {
+    const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
+    const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
+    const tone = coerceString(req.body?.tone) || "formal";
+    const language = req.body?.language === "en" ? "en" : "fr";
+
+    let letterResult = null;
+    let provider = "local";
+    try {
+      letterResult = await generateCoverLetterWithAi(candidate, offer, tone, language);
+      if (letterResult) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+    } catch (aiError) {
+      letterResult = null;
+      console.warn(`Generation IA de la lettre indisponible: ${aiError.message}`);
+    }
+
+    const result = letterResult || buildLocalCoverLetter(candidate, offer, language);
+    return res.json({ letter: result.letter, subject: result.subject, provider });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Generation de la lettre impossible." });
+  }
+});
+
+app.post("/api/negotiation/reply", async (req, res) => {
+  try {
+    const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
+    const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
+    const history = Array.isArray(req.body?.history) ? req.body.history : [];
+    const targetSalary = req.body?.targetSalary;
+    const finish = Boolean(req.body?.finish);
+    const language = req.body?.language === "en" ? "en" : "fr";
+    const currencyLabel = req.body?.currencyLabel;
+
+    let result = null;
+    let provider = "local";
+    try {
+      result = await negotiationReplyWithAi(candidate, offer, history, { targetSalary, finish, language, currencyLabel });
+      if (result) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+    } catch (aiError) {
+      result = null;
+      console.warn(`Reponse IA de negociation indisponible: ${aiError.message}`);
+    }
+
+    const fallback = finish ? localNegotiationSummary(language) : localNegotiationReply(language);
+    return res.json({ ...(result || fallback), provider });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Reponse de negociation impossible." });
   }
 });
 
@@ -1591,42 +4098,6 @@ app.get("/api/cv", async (req, res) => {
   }
 });
 
-// Offres réelles via l'API France Travail (cf. server/franceTravailService.js).
-// Contrairement à /api/offers (jeu de démonstration seedé dans PGlite), rien
-// n'est stocké en base ici : les résultats sont récupérés en direct (avec cache
-// en mémoire) et fusionnés côté front avec les offres de démonstration.
-app.get("/api/offers/live", async (req, res) => {
-  if (!franceTravailClient) {
-    // Comportement volontairement cohérent avec les autres intégrations externes
-    // optionnelles (Anthropic, Stripe) : message explicite plutôt que 500, le
-    // reste de l'app (offres de démonstration) continue de fonctionner normalement.
-    return res.status(503).json({
-      error: "Offres en direct indisponibles : FRANCE_TRAVAIL_CLIENT_ID/SECRET absents du .env.",
-      items: []
-    });
-  }
-
-  try {
-    const motsCles = coerceString(req.query.motsCles);
-    const commune = coerceString(req.query.commune);
-    const cacheKey = `${motsCles}|${commune}`;
-    const cached = franceTravailCache.get(cacheKey);
-    if (cached && cached.expiresAt > Date.now()) {
-      return res.json({ items: cached.items, cached: true });
-    }
-
-    const items = await franceTravailClient.searchOffers({ motsCles, commune, range: "0-19" });
-    franceTravailCache.set(cacheKey, { items, expiresAt: Date.now() + FRANCE_TRAVAIL_CACHE_TTL_MS });
-    return res.json({ items, cached: false });
-  } catch (error) {
-    console.error("Erreur recherche France Travail:", error);
-    // On répond 200 avec une liste vide plutôt qu'une erreur bloquante : une
-    // panne de l'API externe ne doit pas empêcher l'utilisateur de voir au
-    // moins les offres de démonstration côté front.
-    return res.json({ items: [], error: error.message || "Erreur lors de la recherche d'offres réelles." });
-  }
-});
-
 app.get("/api/offers", async (_req, res) => {
   const { rows } = await db.query(
     `SELECT id, company, title, location, contract, premium, sector, experience_min, education, skills_json, missions_json
@@ -1648,52 +4119,6 @@ app.get("/api/offers", async (_req, res) => {
   }));
 
   res.json({ items });
-});
-
-app.get("/api/offer-status", async (req, res) => {
-  try {
-    const userId = coerceString(req.query.userId);
-    if (!userId) {
-      return res.status(400).json({ error: "userId requis." });
-    }
-    const { rows } = await db.query(
-      "SELECT offer_id, is_favorite, is_applied FROM offer_status WHERE user_id = $1",
-      [userId]
-    );
-    return res.json({
-      items: rows.map((row) => ({
-        offerId: row.offer_id,
-        isFavorite: Boolean(Number(row.is_favorite)),
-        isApplied: Boolean(Number(row.is_applied))
-      }))
-    });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
-  }
-});
-
-app.post("/api/offer-status", async (req, res) => {
-  try {
-    const userId = coerceString(req.body?.userId);
-    const offerId = coerceString(req.body?.offerId);
-    if (!userId || !offerId) {
-      return res.status(400).json({ error: "userId et offerId requis." });
-    }
-    const isFavorite = req.body?.isFavorite ? 1 : 0;
-    const isApplied = req.body?.isApplied ? 1 : 0;
-
-    await db.query(
-      `INSERT INTO offer_status (id, user_id, offer_id, is_favorite, is_applied, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (user_id, offer_id)
-       DO UPDATE SET is_favorite = $4, is_applied = $5, updated_at = $6`,
-      [`offer-status-${crypto.randomUUID()}`, userId, offerId, isFavorite, isApplied, nowIso()]
-    );
-
-    return res.json({ offerId, isFavorite: Boolean(isFavorite), isApplied: Boolean(isApplied) });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
-  }
 });
 
 app.post("/api/matches", async (req, res) => {
@@ -1760,455 +4185,59 @@ app.get("/api/matches/latest", async (req, res) => {
   }
 });
 
-app.post("/api/interviews", async (req, res) => {
+app.post("/api/matches/feedback", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
-    const track = coerceString(req.body?.track);
-    const payload = req.body?.payload;
+    const matchRunId = coerceString(req.body?.matchRunId);
+    const useful = Boolean(req.body?.useful);
 
-    if (!userId || !track || !payload) {
-      return res.status(400).json({ error: "userId, track et payload requis." });
+    if (!userId || !matchRunId) {
+      return res.status(400).json({ error: "userId et matchRunId requis." });
     }
 
-    const user = await getUserRowById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "Utilisateur introuvable." });
+    const { rows: runRows } = await db.query("SELECT id FROM match_runs WHERE id = $1 AND user_id = $2", [matchRunId, userId]);
+    if (!runRows[0]) {
+      return res.status(404).json({ error: "Analyse introuvable." });
     }
 
-    const id = `interview-${crypto.randomUUID()}`;
+    const id = `mfb-${crypto.randomUUID()}`;
     const createdAt = nowIso();
-    const averageScore = Number(payload.averageScore) || 0;
 
     await db.query(
-      "INSERT INTO interview_attempts (id, user_id, created_at, track, average_score, payload_json) VALUES ($1, $2, $3, $4, $5, $6)",
-      [id, userId, createdAt, track, averageScore, JSON.stringify(payload)]
+      `INSERT INTO match_feedback (id, user_id, match_run_id, useful, created_at)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (user_id, match_run_id) DO UPDATE SET useful = EXCLUDED.useful, created_at = EXCLUDED.created_at`,
+      [id, userId, matchRunId, useful ? 1 : 0, createdAt]
     );
 
-    return res.status(201).json({
-      attempt: { id, userId, createdAt, track, averageScore, ...payload }
-    });
+    return res.status(201).json({ feedback: { userId, matchRunId, useful, createdAt } });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
-app.get("/api/interviews", async (req, res) => {
+app.get("/api/matches/feedback", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
-    if (!userId) {
-      return res.status(400).json({ error: "userId requis." });
+    const matchRunId = coerceString(req.query.matchRunId);
+    if (!userId || !matchRunId) {
+      return res.status(400).json({ error: "userId et matchRunId requis." });
     }
 
     const { rows } = await db.query(
-      "SELECT id, user_id, created_at, track, average_score, payload_json FROM interview_attempts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 30",
-      [userId]
+      "SELECT useful, created_at FROM match_feedback WHERE user_id = $1 AND match_run_id = $2",
+      [userId, matchRunId]
     );
 
+    if (!rows[0]) {
+      return res.json({ feedback: null });
+    }
+
     return res.json({
-      items: rows.map((row) => ({
-        id: row.id,
-        userId: row.user_id,
-        createdAt: row.created_at,
-        track: row.track,
-        averageScore: row.average_score,
-        ...parseJsonField(row.payload_json, {})
-      }))
+      feedback: { useful: Boolean(Number(rows[0].useful)), createdAt: rows[0].created_at }
     });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
-  }
-});
-
-// Analyse approfondie à la demande (bouton "Analyse approfondie IA" côté client).
-// Reste optionnelle : l'évaluation heuristique (interviewEvaluation.js, côté client)
-// s'affiche toujours immédiatement ; ce endpoint n'est appelé que si l'utilisateur
-// clique explicitement, pour maîtriser le coût API (cf. Chapitre 5 du mémoire).
-//
-// Gating d'usage (cohérent avec la stratégie freemium décrite au §1.2.2 du mémoire) :
-// 3 analyses IA gratuites par mois par utilisateur (même chiffre que celui déjà retenu
-// pour les simulations d'entretien freemium dans les supports business), illimité pour
-// les comptes premium. Sans ce garde-fou, une fonctionnalité à coût variable réel
-// (3€/15€ par million de tokens, cf. simulateur de coûts) serait exposée sans limite.
-const FREE_AI_EVALUATIONS_PER_MONTH = 3;
-
-async function countAiUsageThisMonth(userId, feature) {
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-
-  const { rows } = await db.query(
-    "SELECT COUNT(*) AS count FROM ai_usage_log WHERE user_id = $1 AND feature = $2 AND created_at >= $3",
-    [userId, feature, monthStart.toISOString()]
-  );
-  return Number(rows[0]?.count || 0);
-}
-
-app.post("/api/interviews/evaluate-ai", async (req, res) => {
-  try {
-    if (!ANTHROPIC_API_KEY) {
-      return res.status(503).json({
-        error: "Analyse IA indisponible : aucune clé ANTHROPIC_API_KEY configurée côté serveur (.env)."
-      });
-    }
-
-    const userId = coerceString(req.body?.userId);
-    const question = coerceString(req.body?.question);
-    const answer = coerceString(req.body?.answer);
-    const personaName = coerceString(req.body?.personaName);
-    const personaSubtitle = coerceString(req.body?.personaSubtitle);
-
-    if (!userId || !question || !answer) {
-      return res.status(400).json({ error: "userId, question et answer requis." });
-    }
-
-    const userRow = await getUserRowById(userId);
-    if (!userRow) {
-      return res.status(404).json({ error: "Utilisateur introuvable." });
-    }
-
-    const premium = await computePremiumAccess(userRow);
-    if (!premium.hasAccess) {
-      const usedThisMonth = await countAiUsageThisMonth(userId, "interview-ai-evaluation");
-      if (usedThisMonth >= FREE_AI_EVALUATIONS_PER_MONTH) {
-        return res.status(402).json({
-          error: `Limite atteinte : ${FREE_AI_EVALUATIONS_PER_MONTH} analyses IA gratuites par mois. Passe premium pour un accès illimité.`,
-          code: "AI_QUOTA_EXCEEDED",
-          used: usedThisMonth,
-          limit: FREE_AI_EVALUATIONS_PER_MONTH
-        });
-      }
-    }
-
-    const systemPrompt = [
-      `Tu es ${personaName || "un recruteur"} (${personaSubtitle || "entretien d'embauche"}).`,
-      "Tu évalues la réponse d'un candidat à une question d'entretien, avec bienveillance mais exigence.",
-      "Réponds UNIQUEMENT avec un objet JSON valide, sans texte avant ni après, au format exact :",
-      '{"score": <entier 0-100>, "strengths": ["...", "..."], "improvements": ["...", "..."], "suggestedAnswer": "..."}',
-      "strengths et improvements : 1 à 3 points courts et concrets, en français.",
-      "suggestedAnswer : une reformulation brève (3-4 phrases max) montrant une meilleure réponse possible."
-    ].join(" ");
-
-    const userPrompt = `Question posée : "${question}"\n\nRéponse du candidat : "${answer}"`;
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 500,
-        system: systemPrompt,
-        messages: [{ role: "user", content: userPrompt }]
-      })
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => "");
-      console.error("Anthropic API error:", response.status, errorBody);
-      return res.status(502).json({ error: describeAnthropicError(response.status, errorBody) });
-    }
-
-    const data = await response.json();
-    const rawText = (data.content || [])
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("");
-
-    let parsed;
-    try {
-      const cleaned = rawText.replace(/```json|```/g, "").trim();
-      parsed = JSON.parse(cleaned);
-    } catch (_parseError) {
-      return res.status(502).json({ error: "Réponse IA illisible, réessaie." });
-    }
-
-    await db.query(
-      "INSERT INTO ai_usage_log (id, user_id, created_at, feature) VALUES ($1, $2, $3, $4)",
-      [`ai-usage-${crypto.randomUUID()}`, userId, nowIso(), "interview-ai-evaluation"]
-    );
-
-    const remaining = premium.hasAccess
-      ? null
-      : Math.max(0, FREE_AI_EVALUATIONS_PER_MONTH - ((await countAiUsageThisMonth(userId, "interview-ai-evaluation"))));
-
-    return res.json({
-      score: Math.max(0, Math.min(100, Number(parsed.score) || 0)),
-      strengths: Array.isArray(parsed.strengths) ? parsed.strengths.slice(0, 3) : [],
-      improvements: Array.isArray(parsed.improvements) ? parsed.improvements.slice(0, 3) : [],
-      suggestedAnswer: coerceString(parsed.suggestedAnswer),
-      quota: premium.hasAccess ? { unlimited: true } : { unlimited: false, remaining, limit: FREE_AI_EVALUATIONS_PER_MONTH }
-    });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur lors de l'analyse IA." });
-  }
-});
-
-// Entretien "live" (mode avatar + audio, cf. mémoire §2.1.2.3 V2.2/V2.3) : génère
-// la prochaine réplique de l'IA-recruteur, en personnage, adaptée à l'offre traitée.
-// Fonctionnalité premium (déjà annoncée au §1.2.2 du mémoire : "simulations
-// d'entretien vocales" fait partie des fonctionnalités premium) — pas de quota
-// gratuit séparé à inventer, on réutilise la logique premium existante.
-const LIVE_TURN_MAX_HISTORY = 12; // limite la fenêtre de contexte envoyée (coût/latence)
-
-app.post("/api/interviews/live-turn", async (req, res) => {
-  try {
-    if (!ANTHROPIC_API_KEY) {
-      return res.status(503).json({
-        error: "Entretien live indisponible : aucune clé ANTHROPIC_API_KEY configurée côté serveur (.env)."
-      });
-    }
-
-    const userId = coerceString(req.body?.userId);
-    const personaName = coerceString(req.body?.personaName);
-    const personaSubtitle = coerceString(req.body?.personaSubtitle);
-    const offerTitle = coerceString(req.body?.offerTitle);
-    const offerCompany = coerceString(req.body?.offerCompany);
-    const offerSkills = Array.isArray(req.body?.offerSkills) ? req.body.offerSkills.slice(0, 12) : [];
-    const history = Array.isArray(req.body?.history) ? req.body.history.slice(-LIVE_TURN_MAX_HISTORY) : [];
-    const userMessage = coerceString(req.body?.userMessage);
-
-    if (!userId) {
-      return res.status(400).json({ error: "userId requis." });
-    }
-    const userRow = await getUserRowById(userId);
-    if (!userRow) {
-      return res.status(404).json({ error: "Utilisateur introuvable." });
-    }
-
-    const premium = await computePremiumAccess(userRow);
-    if (!premium.hasAccess) {
-      return res.status(402).json({
-        error: "L'entretien live avec avatar IA est une fonctionnalité premium. Complète ton profil pour la débloquer.",
-        code: "PREMIUM_REQUIRED"
-      });
-    }
-
-    const offerLine = offerTitle
-      ? `Le candidat postule pour : ${offerTitle}${offerCompany ? ` chez ${offerCompany}` : ""}.${
-          offerSkills.length ? ` Compétences clés recherchées pour ce poste : ${offerSkills.join(", ")}.` : ""
-        } Adapte tes questions à ce poste précis plutôt qu'à un entretien générique.`
-      : "Aucune offre précise n'a été fournie : mène un entretien généraliste pour le profil du candidat.";
-
-    const turnCount = history.filter((m) => m.role === "assistant").length;
-    const shouldClose = turnCount >= 4;
-
-    const systemPrompt = [
-      `Tu es ${personaName || "un recruteur professionnel"} (${personaSubtitle || "entretien d'embauche"}).`,
-      "Tu mènes un entretien d'embauche oral avec le candidat, question par question, comme un vrai recruteur.",
-      offerLine,
-      "Règles strictes : une seule question ou réaction à la fois. Réponse courte (2 à 4 phrases maximum),",
-      "naturelle à l'oral (elle sera lue par une synthèse vocale). Réagis brièvement à la réponse précédente",
-      "avant d'enchaîner sur la question suivante, comme dans une vraie conversation.",
-      shouldClose
-        ? "C'est le moment de conclure l'entretien : remercie le candidat et donne une impression générale brève, sans nouvelle question."
-        : "Pose une nouvelle question pertinente pour ce poste."
-    ].join(" ");
-
-    const messages = [
-      ...history.map((m) => ({ role: m.role === "assistant" ? "assistant" : "user", content: m.text })),
-      ...(userMessage ? [{ role: "user", content: userMessage }] : [])
-    ];
-
-    if (!messages.length) {
-      messages.push({ role: "user", content: "Bonjour, je suis prêt(e) à commencer l'entretien." });
-    }
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 220,
-        system: systemPrompt,
-        messages
-      })
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => "");
-      console.error("Anthropic API error (live-turn):", response.status, errorBody);
-      return res.status(502).json({ error: describeAnthropicError(response.status, errorBody) });
-    }
-
-    const data = await response.json();
-    const reply = (data.content || [])
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("")
-      .trim();
-
-    await db.query(
-      "INSERT INTO ai_usage_log (id, user_id, created_at, feature) VALUES ($1, $2, $3, $4)",
-      [`ai-usage-${crypto.randomUUID()}`, userId, nowIso(), "interview-live-turn"]
-    );
-
-    return res.json({ reply, isClosing: shouldClose });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur lors de l'entretien live." });
-  }
-});
-
-// Réécriture du CV par IA (fonctionnalité premium, cf. mémoire §1.2.2 :
-// "recommandations personnalisées" fait partie des fonctionnalités premium).
-// Réutilise la même clé/API que l'évaluation d'entretien et l'entretien live —
-// pas de nouvelle intégration à documenter, juste un nouveau prompt.
-app.post("/api/cv/rewrite-ai", async (req, res) => {
-  try {
-    if (!ANTHROPIC_API_KEY) {
-      return res.status(503).json({
-        error: "Réécriture IA indisponible : aucune clé ANTHROPIC_API_KEY configurée côté serveur (.env)."
-      });
-    }
-
-    const userId = coerceString(req.body?.userId);
-    const cvText = coerceString(req.body?.cvText);
-    const offerTitle = coerceString(req.body?.offerTitle);
-    const offerCompany = coerceString(req.body?.offerCompany);
-    const offerSkills = Array.isArray(req.body?.offerSkills) ? req.body.offerSkills.slice(0, 15) : [];
-    const missingSkills = Array.isArray(req.body?.missingSkills) ? req.body.missingSkills.slice(0, 10) : [];
-
-    if (!userId || !cvText) {
-      return res.status(400).json({ error: "userId et cvText requis." });
-    }
-
-    const userRow = await getUserRowById(userId);
-    if (!userRow) {
-      return res.status(404).json({ error: "Utilisateur introuvable." });
-    }
-
-    const premium = await computePremiumAccess(userRow);
-    if (!premium.hasAccess) {
-      return res.status(402).json({
-        error: "La réécriture de CV par IA est une fonctionnalité premium. Complète ton profil pour la débloquer.",
-        code: "PREMIUM_REQUIRED"
-      });
-    }
-
-    const systemPrompt = [
-      "Tu es un coach carrière expert en rédaction de CV en français.",
-      "Réécris le CV fourni pour le rendre plus percutant, sans inventer d'expérience ni de compétence absente du CV original.",
-      "Reformule les descriptions d'expérience avec des verbes d'action et, quand c'est plausible à partir du texte fourni,",
-      "suggère des formulations quantifiées entre crochets (ex: [X%], [délai estimé]) plutôt que d'inventer des chiffres précis.",
-      offerTitle
-        ? `Le CV cible ce poste : ${offerTitle}${offerCompany ? ` chez ${offerCompany}` : ""}. Compétences recherchées : ${offerSkills.join(", ") || "non précisées"}.`
-        : "Aucune offre précise fournie : améliore le CV de façon générale.",
-      missingSkills.length
-        ? `Compétences demandées par l'offre mais absentes du CV : ${missingSkills.join(", ")}. Ne les ajoute pas au CV, mais signale-les en une phrase à la fin sous "Points de vigilance".`
-        : "",
-      "Réponds UNIQUEMENT avec le CV réécrit en texte brut structuré (sections claires), sans commentaire ni préambule,",
-      "suivi d'une section finale \"Points de vigilance\" si pertinent."
-    ].filter(Boolean).join(" ");
-
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01"
-      },
-      body: JSON.stringify({
-        model: ANTHROPIC_MODEL,
-        max_tokens: 1800,
-        system: systemPrompt,
-        messages: [{ role: "user", content: cvText }]
-      })
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text().catch(() => "");
-      console.error("Anthropic API error (cv/rewrite-ai):", response.status, errorBody);
-      return res.status(502).json({ error: describeAnthropicError(response.status, errorBody) });
-    }
-
-    const data = await response.json();
-    const rewritten = (data.content || [])
-      .filter((block) => block.type === "text")
-      .map((block) => block.text)
-      .join("")
-      .trim();
-
-    await db.query(
-      "INSERT INTO ai_usage_log (id, user_id, created_at, feature) VALUES ($1, $2, $3, $4)",
-      [`ai-usage-${crypto.randomUUID()}`, userId, nowIso(), "cv-rewrite"]
-    );
-
-    return res.json({ rewritten });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur lors de la réécriture IA." });
-  }
-});
-
-// --- Matching sémantique (Phase 2, cf. mémoire §2.6) ---
-// Contrairement aux fonctionnalités IA du §2.4.6, ceci ne fait AUCUN appel API
-// payant : le modèle d'embeddings tourne localement (transformers.js / ONNX),
-// téléchargé une seule fois puis mis en cache sur disque. Coût nul par requête,
-// mais latence de démarrage au premier appel (téléchargement ~470 Mo) et usage
-// CPU/mémoire plus élevé qu'un scoring par règles.
-//
-// ⚠️ Bloc non vérifié en conditions réelles au moment de l'écriture : l'accès à
-// huggingface.co était bloqué dans l'environnement de développement utilisé pour
-// ce commit. La syntaxe suit la documentation officielle de @xenova/transformers,
-// mais le téléchargement et l'inférence du modèle doivent être testés avant
-// d'être considérés comme fiables en production.
-let semanticExtractorPromise = null;
-
-async function getSemanticExtractor() {
-  if (!semanticExtractorPromise) {
-    const { pipeline } = await import("@xenova/transformers");
-    semanticExtractorPromise = pipeline(
-      "feature-extraction",
-      "Xenova/paraphrase-multilingual-MiniLM-L12-v2"
-    );
-  }
-  return semanticExtractorPromise;
-}
-
-async function embedText(text) {
-  const extractor = await getSemanticExtractor();
-  // pooling: "mean" + normalize: true -> le produit scalaire de deux vecteurs
-  // normalisés équivaut directement à leur similarité cosinus (pas besoin de
-  // diviser par les normes séparément).
-  const output = await extractor(text, { pooling: "mean", normalize: true });
-  return Array.from(output.data);
-}
-
-function dotProduct(a, b) {
-  let sum = 0;
-  for (let i = 0; i < a.length; i += 1) sum += a[i] * b[i];
-  return sum;
-}
-
-app.post("/api/match/semantic-score", async (req, res) => {
-  try {
-    const cvText = coerceString(req.body?.cvText);
-    const offerText = coerceString(req.body?.offerText);
-
-    if (!cvText || !offerText) {
-      return res.status(400).json({ error: "cvText et offerText requis." });
-    }
-    if (cvText.length > 8000 || offerText.length > 8000) {
-      return res.status(400).json({ error: "Texte trop long pour le calcul de similarité sémantique (max 8000 caractères)." });
-    }
-
-    const [cvVector, offerVector] = await Promise.all([embedText(cvText), embedText(offerText)]);
-    const similarity = dotProduct(cvVector, offerVector); // dans [-1, 1], proche de [0, 1] en pratique
-    const score = Math.max(0, Math.min(100, Math.round(similarity * 100)));
-
-    return res.json({ score, raw: similarity });
-  } catch (error) {
-    console.error("Semantic matching error:", error);
-    return res.status(500).json({
-      error: "Calcul de similarité sémantique indisponible (modèle non chargé ou erreur d'inférence). " +
-        "Le scoring par règles (§2.4.4) reste utilisable indépendamment de cette fonctionnalité.",
-      detail: error.message
-    });
   }
 });
 

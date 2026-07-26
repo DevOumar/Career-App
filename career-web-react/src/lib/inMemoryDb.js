@@ -106,14 +106,34 @@ async function request(path, options = {}) {
 }
 
 export async function registerUser(payload) {
-  const data = await request("/auth/register", { method: "POST", body: payload });
-  return data.user;
+  return request("/auth/register", { method: "POST", body: payload });
 }
 
-export async function loginUser({ email, password }) {
+export async function loginUser({ email, identifier, password }) {
   return request("/auth/login", {
     method: "POST",
-    body: { email, password }
+    body: { email, identifier, password }
+  });
+}
+
+export async function requestLoginCode({ email, identifier, purpose }) {
+  return request("/auth/request-code", {
+    method: "POST",
+    body: { email, identifier, purpose }
+  });
+}
+
+export async function verifyLoginCode({ email, identifier, code, purpose }) {
+  return request("/auth/verify-code", {
+    method: "POST",
+    body: { email, identifier, code, purpose }
+  });
+}
+
+export async function loginWithGoogle(credential) {
+  return request("/auth/google", {
+    method: "POST",
+    body: { credential }
   });
 }
 
@@ -131,17 +151,11 @@ export async function logoutUser(token) {
   await request("/auth/logout", { method: "POST", token });
 }
 
-export async function changeUserPassword(userId, currentPassword, newPassword) {
+export async function changeUserPassword(userId, currentPassword, newPassword, options = {}) {
   return request("/auth/password", {
     method: "POST",
-    body: { userId, currentPassword, newPassword }
-  });
-}
-
-export async function deleteUserAccount(userId, password) {
-  return request("/account/delete", {
-    method: "POST",
-    body: { userId, password }
+    token: options.token,
+    body: { userId, currentPassword, newPassword, logoutOtherSessions: Boolean(options.logoutOtherSessions) }
   });
 }
 
@@ -159,6 +173,55 @@ export async function updateUserAccount(userId, patch) {
   });
 }
 
+export async function requestSecondaryEmailCode(userId, email) {
+  return request("/account/emails/request", {
+    method: "POST",
+    body: { userId, email }
+  });
+}
+
+export async function verifySecondaryEmail(userId, email, code) {
+  return request("/account/emails/verify", {
+    method: "POST",
+    body: { userId, email, code }
+  });
+}
+
+export async function setPrimaryEmail(userId, emailId) {
+  return request("/account/emails/primary", {
+    method: "PATCH",
+    body: { userId, emailId }
+  });
+}
+
+export async function removeSecondaryEmail(userId, emailId) {
+  return request("/account/emails", {
+    method: "DELETE",
+    body: { userId, emailId }
+  });
+}
+
+export async function deleteUserAccount(userId, confirmation) {
+  return request("/account", {
+    method: "DELETE",
+    body: { userId, confirmation }
+  });
+}
+
+export async function removeConnectedAccount(userId, provider = "google") {
+  return request("/account/connected-accounts/remove", {
+    method: "POST",
+    body: { userId, provider }
+  });
+}
+
+export async function linkGoogleAccount(userId, credential) {
+  return request("/account/connected-accounts/link-google", {
+    method: "POST",
+    body: { userId, credential }
+  });
+}
+
 export async function updateUserAvatar(userId, avatarDataUrl) {
   return request("/profile/avatar", {
     method: "PATCH",
@@ -173,14 +236,35 @@ export async function activatePremiumSubscription(userId) {
   });
 }
 
-// Distinct de activatePremiumSubscription ci-dessus : celle-ci active gratuitement
-// selon le score d'éligibilité (aucun paiement). Celle-ci crée une session de
-// paiement Stripe réelle — l'activation effective se fait ensuite côté serveur
-// via le webhook (/api/stripe/webhook), pas directement en réponse à cet appel.
-export async function createPremiumCheckoutSession(userId) {
+export async function activatePlan({ userId, planId, billingCycle }) {
+  return request("/plans/activate", {
+    method: "POST",
+    body: { userId, planId, billingCycle }
+  });
+}
+
+export async function createStripeCheckoutSession({ userId, planId, billingCycle }) {
   return request("/stripe/create-checkout-session", {
     method: "POST",
-    body: { userId }
+    body: { userId, planId, billingCycle }
+  });
+}
+
+export async function getHealth() {
+  return request("/health");
+}
+
+export async function redeemLicenseCode({ userId, code }) {
+  return request("/plans/redeem", {
+    method: "POST",
+    body: { userId, code }
+  });
+}
+
+export async function consumeTokens({ userId, amount = 1 }) {
+  return request("/tokens/consume", {
+    method: "POST",
+    body: { userId, amount }
   });
 }
 
@@ -192,6 +276,27 @@ export async function addCvRecord(userId, cvRecord) {
   return data.cv;
 }
 
+export async function extractCvFile({ fileName, mimeType, base64 }) {
+  return request("/cv/extract", {
+    method: "POST",
+    body: { fileName, mimeType, base64 }
+  });
+}
+
+export async function extractJobOffer({ text }) {
+  return request("/jobs/extract", {
+    method: "POST",
+    body: { text }
+  });
+}
+
+export async function analyzeMatch({ candidate, offer }) {
+  return request("/match/analyze", {
+    method: "POST",
+    body: { candidate, offer }
+  });
+}
+
 export async function listUserCvs(userId) {
   if (!userId) return [];
   const data = await request(`/cv?userId=${encodeURIComponent(userId)}`);
@@ -201,22 +306,6 @@ export async function listUserCvs(userId) {
 export async function listOffers() {
   const data = await request("/offers");
   return data.items;
-}
-
-// Offres réelles (France Travail). Contrairement aux autres fonctions de ce
-// fichier, ne lève jamais : si l'intégration n'est pas configurée ou indisponible,
-// on retourne un tableau vide pour se rabattre silencieusement sur les offres
-// de démonstration côté appelant plutôt que de casser l'écran d'analyse.
-export async function listLiveOffers({ motsCles, commune } = {}) {
-  try {
-    const params = new URLSearchParams();
-    if (motsCles) params.set("motsCles", motsCles);
-    if (commune) params.set("commune", commune);
-    const data = await request(`/offers/live?${params.toString()}`);
-    return data.items || [];
-  } catch (_error) {
-    return [];
-  }
 }
 
 export async function saveMatchRun(userId, payload) {
@@ -233,63 +322,34 @@ export async function getLatestMatchRun(userId) {
   return data.run;
 }
 
+export async function submitMatchFeedback({ userId, matchRunId, useful }) {
+  const data = await request("/matches/feedback", {
+    method: "POST",
+    body: { userId, matchRunId, useful }
+  });
+  return data.feedback;
+}
+
+export async function getMatchFeedback({ userId, matchRunId }) {
+  if (!userId || !matchRunId) return null;
+  const data = await request(`/matches/feedback?userId=${encodeURIComponent(userId)}&matchRunId=${encodeURIComponent(matchRunId)}`);
+  return data.feedback;
+}
+
+export async function generateCoverLetter({ candidate, offer, tone, language }) {
+  return request("/coverletter/generate", {
+    method: "POST",
+    body: { candidate, offer, tone, language }
+  });
+}
+
+export async function negotiationReply({ candidate, offer, history, targetSalary, finish, currencyLabel }) {
+  return request("/negotiation/reply", {
+    method: "POST",
+    body: { candidate, offer, history, targetSalary, finish, currencyLabel }
+  });
+}
+
 export async function getPremiumSnapshot(userId) {
   return request(`/premium?userId=${encodeURIComponent(userId)}`);
-}
-
-export async function saveInterviewAttempt(userId, track, payload) {
-  const data = await request("/interviews", {
-    method: "POST",
-    body: { userId, track, payload }
-  });
-  return data.attempt;
-}
-
-export async function listInterviewAttempts(userId) {
-  if (!userId) return [];
-  const data = await request(`/interviews?userId=${encodeURIComponent(userId)}`);
-  return data.items;
-}
-
-export async function requestAiEvaluation({ userId, question, answer, personaName, personaSubtitle }) {
-  return request("/interviews/evaluate-ai", {
-    method: "POST",
-    body: { userId, question, answer, personaName, personaSubtitle }
-  });
-}
-
-export async function requestLiveTurn({ userId, personaName, personaSubtitle, offerTitle, offerCompany, offerSkills, history, userMessage }) {
-  return request("/interviews/live-turn", {
-    method: "POST",
-    body: { userId, personaName, personaSubtitle, offerTitle, offerCompany, offerSkills, history, userMessage }
-  });
-}
-
-export async function listOfferStatuses(userId) {
-  if (!userId) return [];
-  const data = await request(`/offer-status?userId=${encodeURIComponent(userId)}`);
-  return data.items;
-}
-
-export async function updateOfferStatus(userId, offerId, patch) {
-  return request("/offer-status", {
-    method: "POST",
-    body: { userId, offerId, ...patch }
-  });
-}
-
-export async function requestCvRewrite({ userId, cvText, offerTitle, offerCompany, offerSkills, missingSkills }) {
-  return request("/cv/rewrite-ai", {
-    method: "POST",
-    body: { userId, cvText, offerTitle, offerCompany, offerSkills, missingSkills }
-  });
-}
-
-// Pas de userId requis ici : calcul 100% local côté serveur (aucun coût API),
-// contrairement aux fonctionnalités du bloc ci-dessus qui appellent Claude.
-export async function requestSemanticScore({ cvText, offerText }) {
-  return request("/match/semantic-score", {
-    method: "POST",
-    body: { cvText, offerText }
-  });
 }

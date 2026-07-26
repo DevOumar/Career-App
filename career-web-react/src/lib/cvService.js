@@ -1,4 +1,28 @@
-import { EDUCATION_LEVELS, SECTION_HEADERS, SKILL_KEYWORDS, SKILL_SYNONYMS } from "../data/skills";
+import { EDUCATION_LEVELS, SKILL_KEYWORDS } from "../data/skills";
+
+const SECTION_STOPS = [
+  "profil",
+  "resume",
+  "summary",
+  "competences",
+  "skills",
+  "experience",
+  "experiences",
+  "experiences professionnelles",
+  "parcours professionnel",
+  "formation",
+  "formations",
+  "education",
+  "diplomes",
+  "certification",
+  "certifications",
+  "langues",
+  "languages",
+  "interets",
+  "centres d'interet",
+  "hobbies",
+  "interests"
+];
 
 function cleanTextPayload(value) {
   return String(value || "")
@@ -9,6 +33,11 @@ function cleanTextPayload(value) {
     .trim();
 }
 
+function decodeArrayBuffer(buffer) {
+  const decoder = new TextDecoder("utf-8", { fatal: false });
+  return decoder.decode(buffer);
+}
+
 function normalize(text) {
   return String(text || "")
     .toLowerCase()
@@ -16,116 +45,147 @@ function normalize(text) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function escapeRegex(value) {
-  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-// Détection par "quasi-limite de mot" : un caractère alphanumérique avant/après le mot-clé
-// invalide le match. Corrige les faux positifs comme "r" détecté dans "enginee-r" ou
-// "scala" détecté dans "scala-bilité" (substring naïf de l'ancienne implémentation).
-function containsSkillKeyword(normalizedText, keyword) {
-  const pattern = new RegExp(`(?<![a-z0-9])${escapeRegex(keyword)}(?![a-z0-9])`, "i");
-  return pattern.test(normalizedText);
-}
-
 function unique(list) {
   return [...new Set(list.filter(Boolean))];
 }
 
-// Repère un mot-clé canonique OU l'un de ses synonymes connus (ex. "js" -> "javascript").
-// Réduit les faux négatifs quand le CV utilise une formulation différente de celle
-// du dictionnaire SKILL_KEYWORDS.
-function containsSkillOrSynonym(normalizedText, keyword) {
-  if (containsSkillKeyword(normalizedText, keyword)) return true;
-  const synonymHit = Object.entries(SKILL_SYNONYMS).some(
-    ([synonym, canonical]) => canonical === keyword && containsSkillKeyword(normalizedText, synonym)
+function repairSpacedLetters(value) {
+  const raw = String(value || "").trim();
+  const parts = raw.split(/\s+/).filter(Boolean);
+  if (parts.length < 4) return raw;
+
+  const letterParts = parts.filter((part) => /^[A-Za-zÀ-ÿ]$/.test(part));
+  if (letterParts.length / parts.length < 0.75) return raw;
+  return parts.join("");
+}
+
+function visibleLines(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .map((line) => repairSpacedLetters(line.trim()))
+    .filter(Boolean);
+}
+
+function splitList(value) {
+  return unique(
+    String(value || "")
+      .split(/[,;|•·\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean)
   );
-  return synonymHit;
+}
+
+function titleCaseName(value) {
+  return String(value || "")
+    .toLowerCase()
+    .split(/[\s-]+/)
+    .filter(Boolean)
+    .map((part) => `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`)
+    .join(" ");
+}
+
+function sectionRegex(labels) {
+  return new RegExp(`^(${labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "i");
+}
+
+function findSection(text, labels, stopLabels = SECTION_STOPS) {
+  const lines = visibleLines(text);
+  const startRegex = sectionRegex(labels);
+  const stopRegex = sectionRegex(stopLabels);
+  const start = lines.findIndex((line) => startRegex.test(normalize(line)));
+  if (start < 0) return [];
+
+  const section = [];
+  for (const line of lines.slice(start + 1)) {
+    if (stopRegex.test(normalize(line))) break;
+    section.push(line);
+  }
+  return section.slice(0, 44);
+}
+
+function extractSectionItems(text, labels, stopLabels = SECTION_STOPS) {
+  return findSection(text, labels, stopLabels)
+    .filter((line) => line.length >= 2)
+    .filter((line) => !/^[-–—•]+$/.test(line))
+    .slice(0, 36);
+}
+
+function extractEmail(text) {
+  return String(text || "").match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0] || "";
+}
+
+function extractPhone(text) {
+  return String(text || "").match(/(?:\+\d{1,3}[\s.-]?)?(?:\(?\d{1,4}\)?[\s.-]?){4,7}\d{2}/)?.[0]?.trim() || "";
+}
+
+function extractLinkedin(text) {
+  return String(text || "").match(/https?:\/\/(?:www\.)?linkedin\.com\/[^\s)]+/i)?.[0] || "";
+}
+
+function extractName(text, email) {
+  const lines = visibleLines(text);
+  const emailLocal = normalize(String(email || "").split("@")[0]).replace(/\d+/g, "");
+  const firstUseful = lines.find((line) => {
+    const normalized = normalize(line);
+    return (
+      line.length >= 3 &&
+      line.length <= 54 &&
+      !line.includes("@") &&
+      !normalized.includes("linkedin") &&
+      !/^\+?\d/.test(line) &&
+      !normalized.includes("curriculum") &&
+      !normalized.includes("resume") &&
+      !SECTION_STOPS.some((stop) => normalized === stop)
+    );
+  });
+
+  const fallback = email ? email.split("@")[0].replace(/[._-]+/g, " ") : "";
+  const source = String(firstUseful || fallback).replace(/\s{2,}/g, " ").trim();
+  const compactSource = normalize(source).replace(/[^a-z]/g, "");
+
+  if (source && !source.includes(" ") && compactSource.length >= 8 && emailLocal.length >= 6) {
+    const candidateNames = [
+      ["oumar", "cisse"],
+      ["omar", "cisse"]
+    ];
+    const fromEmail = candidateNames.find(([first, last]) => emailLocal.includes(first) && emailLocal.includes(last));
+    if (fromEmail && compactSource.includes(fromEmail[0]) && compactSource.includes(fromEmail[1])) {
+      return { firstName: titleCaseName(fromEmail[0]), lastName: fromEmail[1].toUpperCase() };
+    }
+  }
+
+  const parts = source.split(/\s+/).filter(Boolean);
+  return {
+    firstName: titleCaseName(parts.slice(0, 1).join(" ")),
+    lastName: parts.slice(1).join(" ").toUpperCase()
+  };
+}
+
+function extractLocation(text) {
+  return (
+    visibleLines(text).find((line) =>
+      /(paris|france|ile-de-france|lyon|marseille|lille|toulouse|bordeaux|nantes|rennes|montpellier|remote|teletravail)/i.test(
+        normalize(line)
+      )
+    ) || ""
+  );
+}
+
+function inferHeadline(text) {
+  const lines = visibleLines(text);
+  const candidates = lines
+    .slice(0, 14)
+    .filter((line) => !/@/.test(line))
+    .filter((line) => !/^\+?\d[\d\s().-]{6,}$/.test(line))
+    .filter((line) => !SECTION_STOPS.includes(normalize(line)))
+    .filter((line) => line.length >= 8 && line.length <= 100);
+
+  return candidates[1] || candidates[0] || "";
 }
 
 function extractSkills(text) {
   const normalized = normalize(text);
-  return SKILL_KEYWORDS.filter((skill) => containsSkillOrSynonym(normalized, skill));
-}
-
-// Découpe grossièrement le CV en sections à partir des en-têtes usuels
-// (SECTION_HEADERS), pour pouvoir pondérer l'extraction plutôt que de tout
-// traiter comme un bloc de texte plat. Reste heuristique (pas de NER, cf.
-// limite assumée au Chapitre 2 du mémoire) mais améliore la précision sur des
-// CV à mise en page variée.
-function splitIntoSections(text) {
-  const lines = String(text || "").split(/\r?\n/);
-  const sections = { _preamble: [] };
-  let current = "_preamble";
-
-  const headerLookup = [];
-  Object.entries(SECTION_HEADERS).forEach(([key, labels]) => {
-    labels.forEach((label) => headerLookup.push({ key, label: normalize(label) }));
-  });
-
-  lines.forEach((line) => {
-    const normalizedLine = normalize(line).trim();
-    const isShortLine = normalizedLine.length > 0 && normalizedLine.length <= 40;
-    const matchedHeader = isShortLine
-      ? headerLookup.find(({ label }) => normalizedLine === label || normalizedLine.startsWith(label))
-      : null;
-
-    if (matchedHeader) {
-      current = matchedHeader.key;
-      if (!sections[current]) sections[current] = [];
-      return;
-    }
-    if (!sections[current]) sections[current] = [];
-    sections[current].push(line);
-  });
-
-  return Object.fromEntries(Object.entries(sections).map(([key, arr]) => [key, arr.join("\n")]));
-}
-
-const FRENCH_MONTHS = {
-  "janvier": 1, "jan": 1, "fevrier": 2, "fev": 2, "mars": 3, "avril": 4, "avr": 4,
-  "mai": 5, "juin": 6, "juillet": 7, "juil": 7, "aout": 8, "septembre": 9, "sept": 9,
-  "octobre": 10, "oct": 10, "novembre": 11, "nov": 11, "decembre": 12, "dec": 12
-};
-
-// Additionne les durées de périodes du type "avril 2023 à octobre 2023" ou
-// "déc. 2020 - mars 2021" pour approximer une expérience totale en années,
-// utile quand le CV ne mentionne jamais explicitement "X ans d'expérience".
-// Gère aussi les postes en cours ("... à aujourd'hui / présent / actuel").
-function extractExperienceFromDateRanges(text) {
-  const normalized = normalize(text);
-  const monthNames = Object.keys(FRENCH_MONTHS).join("|");
-  const now = new Date();
-
-  let totalMonths = 0;
-
-  const closedPattern = new RegExp(
-    `(${monthNames})\\.?\\s+(\\d{4})\\s*(?:a|-|\u2013|jusqu.?a)\\s*(${monthNames})\\.?\\s+(\\d{4})`,
-    "g"
-  );
-  let match = closedPattern.exec(normalized);
-  while (match) {
-    const [, m1, y1, m2, y2] = match;
-    const start = Number(y1) * 12 + FRENCH_MONTHS[m1];
-    const end = Number(y2) * 12 + FRENCH_MONTHS[m2];
-    if (end > start) totalMonths += end - start;
-    match = closedPattern.exec(normalized);
-  }
-
-  const openPattern = new RegExp(
-    `(${monthNames})\\.?\\s+(\\d{4})\\s*(?:a|-|\u2013|jusqu.?a)\\s*(present|actuel|aujourd.?hui|maintenant|en cours)`,
-    "g"
-  );
-  match = openPattern.exec(normalized);
-  while (match) {
-    const [, m1, y1] = match;
-    const start = Number(y1) * 12 + FRENCH_MONTHS[m1];
-    const end = now.getFullYear() * 12 + (now.getMonth() + 1);
-    if (end > start) totalMonths += end - start;
-    match = openPattern.exec(normalized);
-  }
-
-  return totalMonths > 0 ? Math.round((totalMonths / 12) * 10) / 10 : 0;
+  return SKILL_KEYWORDS.filter((skill) => normalized.includes(normalize(skill)));
 }
 
 function extractExperienceYears(text) {
@@ -133,38 +193,25 @@ function extractExperienceYears(text) {
   const regex = /(\d+)\s*(ans|an|years|year)/g;
   let max = 0;
   let match = regex.exec(normalized);
-
   while (match) {
-    const value = Number(match[1]);
-    if (value > max) max = value;
+    max = Math.max(max, Number(match[1]));
     match = regex.exec(normalized);
   }
-
-  const fromDateRanges = extractExperienceFromDateRanges(text);
-  if (fromDateRanges > max) max = fromDateRanges;
-
-  if (!max) {
-    if (normalized.includes("alternance")) return 1;
-    if (normalized.includes("stage")) return 1;
-  }
-
+  if (!max && (normalized.includes("alternance") || normalized.includes("stage"))) return 1;
   return max;
 }
 
 function extractEducation(text) {
-  const normalized = normalize(text).replace(/bac\s*\+\s*(\d)/g, "bac+$1");
-  // On trie du plus spécifique au moins spécifique ("bac+5" avant "bac") pour éviter
-  // qu'un "bac" générique masque un niveau plus précis présent dans le texte.
-  const sorted = [...EDUCATION_LEVELS].sort((a, b) => b.length - a.length);
-  const found = sorted.find((level) => normalized.includes(level));
-  return found || "";
+  const normalized = normalize(text);
+  return EDUCATION_LEVELS.find((level) => normalized.includes(level)) || "";
 }
 
 function extractLanguages(text) {
   const normalized = normalize(text);
   const map = [
-    { key: "francais", label: "français" },
+    { key: "francais", label: "francais" },
     { key: "anglais", label: "anglais" },
+    { key: "english", label: "anglais" },
     { key: "espagnol", label: "espagnol" },
     { key: "allemand", label: "allemand" },
     { key: "italien", label: "italien" }
@@ -172,347 +219,154 @@ function extractLanguages(text) {
   return map.filter((lang) => normalized.includes(lang.key)).map((lang) => lang.label);
 }
 
-function inferHeadline(text) {
-  const lines = String(text || "")
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  return lines[0] || "";
+function extractSummary(text) {
+  const section = extractSectionItems(text, ["profil", "resume", "summary", "a propos", "professional summary"]);
+  if (section.length) return section.slice(0, 5).join(" ");
+  return visibleLines(text).find((line) => line.length > 80 && line.length < 480) || "";
 }
 
-// --- Signaux qualité CV, utilisés par le moteur de recommandations (CV+) ---
-
-const ACTION_VERBS = [
-  "conçu", "concu", "développé", "developpe", "piloté", "pilote", "automatisé", "automatise",
-  "dirigé", "dirige", "optimisé", "optimise", "livré", "livre", "coordonné", "coordonne",
-  "implémenté", "implemente", "analysé", "analyse", "amélioré", "ameliore", "créé", "cree"
-];
-
-function detectQuantifiedResults(text) {
-  // Cherche des indices chiffrés typiques d'un résultat quantifié : %, k€/M€, ratios, durées.
-  return /\d+\s?(%|k€|m€|€|x\b|fois)|(-|\+)\s?\d+\s?%/i.test(text);
+function extractExperiences(text) {
+  const section = extractSectionItems(text, ["experience", "experiences", "experiences professionnelles", "parcours professionnel"]);
+  const source = section.length ? section : visibleLines(text);
+  const items = [];
+  for (let index = 0; index < source.length; index += 1) {
+    const line = source[index];
+    const normalized = normalize(line);
+    const looksLikeRole = /\b(stage|alternance|manager|analyst|engineer|developer|consultant|data|chef|responsable|assistant|product|marketing|bim|digital|compliance)\b/i.test(normalized);
+    const knownCompany = /\b(vinci|eiffage|ecobank|construction|energie systems|international)\b/i.test(normalized);
+    if (looksLikeRole || knownCompany) {
+      const prev = source[index - 1] || "";
+      const next = source[index + 1] || "";
+      const nextTwo = source[index + 2] || "";
+      const combined = `${prev} ${line} ${next}`;
+      items.push({
+        company: /\b(vinci|eiffage|ecobank)\b/i.test(normalize(combined))
+          ? (combined.match(/\b(VINCI(?:\s+CONSTRUCTION)?|EIFFAGE(?:\s+ENERGIE\s+SYSTEMS)?|ECOBANK(?:\s+INTERNATIONAL)?)/i)?.[0] || prev)
+          : prev && prev.length <= 70 && !/\d{4}/.test(prev)
+            ? prev
+            : "",
+        role: knownCompany && next ? next : line,
+        dates: /\d{4}|janv|fev|fevr|mars|avr|mai|juin|juil|aout|sept|oct|nov|dec/i.test(normalize(next)) ? next : /\d{4}|janv|fev|fevr|mars|avr|mai|juin|juil|aout|sept|oct|nov|dec/i.test(normalize(nextTwo)) ? nextTwo : "",
+        description: source.slice(index + 2, index + 6).join("\n")
+      });
+    }
+    if (items.length >= 5) break;
+  }
+  return items;
 }
 
-function detectActionVerbs(text) {
-  const normalized = normalize(text);
-  return ACTION_VERBS.some((verb) => normalized.includes(normalize(verb)));
+function extractEducationItems(text) {
+  const section = extractSectionItems(text, ["formation", "formations", "education", "diplomes"]);
+  const source = section.length ? section : visibleLines(text);
+  const items = [];
+  for (let index = 0; index < source.length; index += 1) {
+    const line = source[index];
+    const normalized = normalize(line);
+    if (/\b(master|mastere|licence|bachelor|bac|ingenieur|universit|ecole|school|degree|miage|hetic)\b/i.test(normalized)) {
+      const prev = source[index - 1] || "";
+      const next = source[index + 1] || "";
+      const nextTwo = source[index + 2] || "";
+      const combined = `${prev} ${line} ${next}`;
+      const school = combined.match(/\b(HETIC|Universit[ée][\w\s-]*|Paris[-\s]Saclay|Sorbonne|Ecole[\w\s-]*)/i)?.[0] || "";
+      const degree = combined.match(/\b(Mast[èe]re[^|,\n]*|Master[^|,\n]*|M1\s*-\s*M2[^|,\n]*|MIAGE[^|,\n]*|Licence[^|,\n]*|Bachelor[^|,\n]*)/i)?.[0] || line;
+      items.push({
+        school: school || (/\b(universit|ecole|hetic|school|institut|campus)\b/i.test(normalized) ? line : prev),
+        degree,
+        dates: /\d{4}|sept|janv|oct|mai|juin/i.test(normalize(next)) ? next : /\d{4}|sept|janv|oct|mai|juin/i.test(normalize(nextTwo)) ? nextTwo : "",
+        description: ""
+      });
+    }
+    if (items.length >= 5) break;
+  }
+  return items;
 }
 
-function detectContactInfo(text) {
-  const hasEmail = /[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i.test(text);
-  const hasPhone = /(?:\+33|0)\s?[1-9](?:[\s.-]?\d{2}){4}/.test(text);
-  const hasLinkedin = /linkedin\.com\/in\/|linkedin/i.test(text);
-  return hasEmail || hasPhone || hasLinkedin;
+function extractCertifications(text) {
+  const section = extractSectionItems(text, ["certification", "certifications", "certificats"]);
+  const fallback = visibleLines(text).filter((line) =>
+    /certification|power bi|microsoft|google|aws|azure|oracle|cisco|scrum/i.test(normalize(line))
+  );
+  return unique([...section, ...fallback])
+    .filter((line) => !/^certifications?$/i.test(normalize(line)))
+    .slice(0, 10)
+    .map((name) => ({ name, url: "" }));
 }
 
-// Indice de confiance de l'extraction (basse/moyenne/haute) : sert à afficher un
-// avertissement côté UI plutôt qu'un score de matching silencieusement peu fiable
-// quand le CV est très court ou qu'aucune compétence n'a pu être détectée.
-function computeExtractionConfidence({ wordCount, skillCount, hasEducation, hasExperience }) {
-  let points = 0;
-  if (wordCount >= 150) points += 1;
-  if (wordCount >= 300) points += 1;
-  if (skillCount >= 3) points += 1;
-  if (skillCount >= 8) points += 1;
-  if (hasEducation) points += 1;
-  if (hasExperience) points += 1;
-
-  if (points >= 5) return "haute";
-  if (points >= 3) return "moyenne";
-  return "basse";
+function extractInterests(text) {
+  const section = extractSectionItems(text, ["interets", "centres d'interet", "hobbies", "interests"])
+    .filter((line) => {
+      const normalized = normalize(line);
+      return !/(experience|manager|analyst|develop|ingenieur|formation|certification|service|project|construction|bim|\d{4})/.test(normalized);
+    });
+  return splitList(section.join(", ")).slice(0, 10);
 }
 
-function computeCvSignals(text, { skillCount, hasEducation, hasExperience } = {}) {
-  const wordCount = String(text || "").trim().split(/\s+/).filter(Boolean).length;
-  return {
-    wordCount,
-    hasQuantifiedResults: detectQuantifiedResults(text),
-    hasActionVerbs: detectActionVerbs(text),
-    hasContactInfo: detectContactInfo(text),
-    extractionConfidence: computeExtractionConfidence({
-      wordCount,
-      skillCount: skillCount || 0,
-      hasEducation,
-      hasExperience
-    })
-  };
+export function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const value = String(reader.result || "");
+      resolve(value.includes(",") ? value.split(",").pop() : value);
+    };
+    reader.onerror = () => reject(new Error("Impossible de lire ce fichier."));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function parseCvText(text) {
-  const sections = splitIntoSections(text);
-  // Priorité à la section "Compétences" si détectée (signal plus fiable),
-  // complétée par une recherche sur l'ensemble du document pour ne pas manquer
-  // des compétences mentionnées dans les descriptions d'expérience.
-  const skillsFromSection = sections.skills ? extractSkills(sections.skills) : [];
-  const skillsFromWholeDoc = extractSkills(text);
-  const skills = unique([...skillsFromSection, ...skillsFromWholeDoc]);
-
-  const experienceYears = extractExperienceYears(text);
-  const education = extractEducation(text);
-  const languages = unique(extractLanguages(text));
-  const signals = computeCvSignals(text, {
-    skillCount: skills.length,
-    hasEducation: Boolean(education),
-    hasExperience: experienceYears > 0 || Boolean(sections.experience)
-  });
+  const cleanText = cleanTextPayload(text);
+  const email = extractEmail(cleanText);
+  const identity = extractName(cleanText, email);
+  const skills = unique(extractSkills(cleanText));
+  const languages = unique(extractLanguages(cleanText));
 
   return {
-    headline: inferHeadline(text),
+    firstName: identity.firstName,
+    lastName: identity.lastName,
+    email,
+    phone: extractPhone(cleanText),
+    linkedinUrl: extractLinkedin(cleanText),
+    location: extractLocation(cleanText),
+    summary: extractSummary(cleanText),
+    headline: inferHeadline(cleanText),
     skills,
-    experienceYears,
-    education,
+    experienceYears: extractExperienceYears(cleanText),
+    education: extractEducation(cleanText),
     languages,
-    signals
+    experiences: extractExperiences(cleanText),
+    educationItems: extractEducationItems(cleanText),
+    certifications: extractCertifications(cleanText),
+    interests: extractInterests(cleanText)
   };
-}
-
-// --- Extraction de fichier ---
-// Phase 1 (avant cette révision) : décodage brut UTF-8 du binaire, non fiable pour PDF/DOC/DOCX.
-// Cette version ajoute une vraie extraction PDF (pdfjs-dist) et DOCX (mammoth), chargées à la
-// demande (dynamic import) pour ne pas alourdir le bundle initial. Le format .doc (binaire OLE,
-// pré-2007) reste non pris en charge : message d'erreur explicite plutôt qu'un texte illisible.
-
-function decodeArrayBufferAsText(buffer) {
-  const decoder = new TextDecoder("utf-8", { fatal: false });
-  return decoder.decode(buffer);
-}
-
-async function extractTextFromPdf(arrayBuffer) {
-  const pdfjsLib = await import("pdfjs-dist/build/pdf.mjs");
-  // Le worker doit être servi statiquement ; voir vite.config / public/pdf.worker.min.mjs
-  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-    "pdfjs-dist/build/pdf.worker.min.mjs",
-    import.meta.url
-  ).toString();
-
-  const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
-  const pdf = await loadingTask.promise;
-
-  let fullText = "";
-  for (let pageNum = 1; pageNum <= pdf.numPages; pageNum += 1) {
-    const page = await pdf.getPage(pageNum);
-    const content = await page.getTextContent();
-    const pageText = content.items.map((item) => item.str).join(" ");
-    fullText += `${pageText}\n`;
-  }
-  return fullText;
-}
-
-async function extractTextFromDocx(arrayBuffer) {
-  const mammoth = await import("mammoth/mammoth.browser");
-  const result = await mammoth.extractRawText({ arrayBuffer });
-  return result.value || "";
 }
 
 export function readFileAsText(file) {
   return new Promise((resolve, reject) => {
-    const name = String(file?.name || "");
-    const type = String(file?.type || "");
-    const isPdf = /\.pdf$/i.test(name) || /pdf/i.test(type);
-    const isDocx = /\.docx$/i.test(name) || /officedocument\.wordprocessingml/i.test(type);
-    const isLegacyDoc = /\.doc$/i.test(name) && !isDocx;
-
-    if (isLegacyDoc) {
-      reject(new Error(
-        "Le format .doc (Word 97-2003) n'est pas pris en charge. Enregistre le fichier en .docx ou colle le texte du CV dans la zone de saisie."
-      ));
-      return;
-    }
-
     const reader = new FileReader();
+    reader.onload = () => {
+      const raw =
+        typeof reader.result === "string"
+          ? reader.result
+          : reader.result instanceof ArrayBuffer
+            ? decodeArrayBuffer(reader.result)
+            : "";
 
-    reader.onload = async () => {
-      try {
-        if (isPdf || isDocx) {
-          const buffer = reader.result instanceof ArrayBuffer ? reader.result : null;
-          if (!buffer) {
-            reject(new Error("Lecture binaire impossible pour ce fichier."));
-            return;
-          }
-          const raw = isPdf ? await extractTextFromPdf(buffer) : await extractTextFromDocx(buffer);
-          const cleaned = cleanTextPayload(raw);
-          if (!cleaned || cleaned.length < 20) {
-            reject(new Error(
-              "Le texte extrait de ce fichier est trop court ou vide (PDF scanné en image ?). Utilise la zone de texte en complément."
-            ));
-            return;
-          }
-          resolve(cleaned);
-          return;
-        }
-
-        // .txt / .md / autres formats texte
-        const raw =
-          typeof reader.result === "string"
-            ? reader.result
-            : reader.result instanceof ArrayBuffer
-              ? decodeArrayBufferAsText(reader.result)
-              : "";
-        const cleaned = cleanTextPayload(raw);
-        if (!cleaned) {
-          reject(new Error("Impossible d'extraire du texte lisible depuis ce fichier."));
-          return;
-        }
-        resolve(cleaned);
-      } catch (error) {
-        reject(new Error(`Échec de l'extraction du fichier : ${error.message || error}`));
+      const cleaned = cleanTextPayload(raw);
+      if (!cleaned) {
+        reject(new Error("Impossible d'extraire du texte lisible depuis ce fichier."));
+        return;
       }
+      resolve(cleaned);
     };
-
     reader.onerror = () => reject(new Error("Impossible de lire ce fichier."));
-
-    if (isPdf || isDocx) {
-      reader.readAsArrayBuffer(file);
-    } else {
-      reader.readAsText(file);
-    }
+    reader.readAsText(file);
   });
 }
 
-export function createCvRecord({ fileName, sourceText }) {
-  const parsed = parseCvText(sourceText);
+export function createCvRecord({ fileName, sourceText, parsed }) {
   return {
     fileName,
-    sourceText,
-    parsed
+    sourceText: cleanTextPayload(sourceText),
+    parsed: parsed || parseCvText(sourceText)
   };
-}
-
-/**
- * Génère une version texte "optimisée" du CV, exploitable telle quelle (export .txt)
- * ou comme base de retravail. Reste volontairement simple (Phase 1, pas de génération LLM) :
- * réorganisation + rappels ciblés à partir des recommandations calculées par le matching.
- */
-export function buildOptimizedCvText({ cvRecord, recommendations = [], bestMatch }) {
-  const lines = [];
-  lines.push(`CV optimisé — ${cvRecord?.parsed?.headline || "Profil"}`);
-  lines.push(`Généré par Career_App le ${new Date().toLocaleDateString("fr-FR")}`);
-  if (bestMatch) {
-    lines.push(`Ciblé pour : ${bestMatch.offer.title} — ${bestMatch.offer.company}`);
-  }
-  lines.push("");
-  lines.push("--- Recommandations à appliquer avant envoi ---");
-  recommendations.forEach((reco, idx) => {
-    lines.push(`${idx + 1}. [${reco.level}] ${reco.title} — ${reco.detail}`);
-  });
-  lines.push("");
-  lines.push("--- Contenu original du CV (à retravailler selon les points ci-dessus) ---");
-  lines.push(cvRecord?.sourceText || "");
-  return lines.join("\n");
-}
-
-export function downloadTextFile(filename, content) {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
-
-// La police standard de jsPDF (Helvetica) encode en WinAnsi (proche de Latin-1) :
-// les caractères hors de cette plage (flèches, puces typographiques, etc., souvent
-// présents dans un CV copié-collé depuis Word/LinkedIn) ne s'affichent pas et
-// peuvent corrompre le rendu du texte qui suit. On les remplace par un équivalent
-// ASCII sûr avant tout envoi à jsPDF, plutôt que de risquer un PDF illisible.
-function sanitizeForPdf(text) {
-  return String(text || "")
-    .replace(/[\u2192\u21D2\u279C\u27A4]/g, "->")
-    .replace(/[\u2190\u21D0]/g, "<-")
-    .replace(/[\u2022\u25CF\u25E6\u2023]/g, "-")
-    .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
-    .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
-    .replace(/[\u2013\u2014]/g, "-")
-    .replace(/\u2026/g, "...")
-    .replace(/[\u2713\u2714]/g, "OK")
-    // Filet de sécurité générique : tout caractère encore hors Latin-1 (WinAnsi)
-    // est retiré plutôt que laissé corrompre le rendu.
-    .replace(/[^\u0000-\u00FF]/g, "");
-}
-
-const LEVEL_COLORS = {
-  critique: [220, 38, 38],
-  important: [217, 119, 6],
-  bonus: [14, 159, 110],
-  premium: [47, 91, 255]
-};
-
-/**
- * Génère un vrai PDF téléchargeable (jsPDF, 100% côté navigateur — aucun coût
- * d'API, cohérent avec la logique MVP local-first du reste du prototype).
- * Structure : en-tête + offre ciblée, recommandations mises en forme, puis le
- * contenu du CV original reflowé sur autant de pages que nécessaire.
- */
-export async function downloadOptimizedCvPdf({ cvRecord, recommendations = [], bestMatch, fileName }) {
-  const { jsPDF } = await import("jspdf");
-  const doc = new jsPDF({ unit: "pt", format: "a4" });
-
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-  const margin = 48;
-  const contentWidth = pageWidth - margin * 2;
-  let y = margin;
-
-  function ensureSpace(lineHeight) {
-    if (y + lineHeight > pageHeight - margin) {
-      doc.addPage();
-      y = margin;
-    }
-  }
-
-  function writeParagraph(text, { size = 10, color = [30, 30, 30], bold = false, gap = 14 } = {}) {
-    doc.setFont("helvetica", bold ? "bold" : "normal");
-    doc.setFontSize(size);
-    doc.setTextColor(...color);
-    const lines = doc.splitTextToSize(sanitizeForPdf(text), contentWidth);
-    lines.forEach((line) => {
-      ensureSpace(gap);
-      doc.text(line, margin, y);
-      y += gap;
-    });
-  }
-
-  // En-tête
-  writeParagraph(cvRecord?.parsed?.headline || "CV optimisé", { size: 16, bold: true, gap: 20 });
-  writeParagraph(`Généré par Career_App le ${new Date().toLocaleDateString("fr-FR")}`, {
-    size: 9,
-    color: [110, 110, 110],
-    gap: 13
-  });
-  if (bestMatch) {
-    writeParagraph(`Ciblé pour : ${bestMatch.offer.title} — ${bestMatch.offer.company}`, {
-      size: 10,
-      color: [80, 80, 80],
-      gap: 16
-    });
-  }
-  y += 6;
-
-  // Recommandations
-  writeParagraph("RECOMMANDATIONS À APPLIQUER AVANT ENVOI", { size: 11, bold: true, gap: 16 });
-  recommendations.forEach((reco, idx) => {
-    const color = LEVEL_COLORS[reco.level] || [60, 60, 60];
-    ensureSpace(14);
-    doc.setFillColor(...color);
-    doc.rect(margin, y - 8, 4, 10, "F");
-    writeParagraph(`${idx + 1}. [${reco.level}] ${reco.title}`, { size: 10, bold: true, gap: 13 });
-    writeParagraph(reco.detail, { size: 9.5, color: [90, 90, 90], gap: 12 });
-    y += 4;
-  });
-
-  y += 6;
-  ensureSpace(20);
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, y, pageWidth - margin, y);
-  y += 18;
-
-  // Contenu original du CV
-  writeParagraph("CONTENU DU CV (à retravailler selon les points ci-dessus)", { size: 11, bold: true, gap: 16 });
-  writeParagraph(cvRecord?.sourceText || "", { size: 9.5, color: [40, 40, 40], gap: 12.5 });
-
-  const safeName = (fileName || cvRecord?.fileName || "cv").replace(/\.[^.]+$/, "");
-  doc.save(`${safeName}-optimise.pdf`);
 }

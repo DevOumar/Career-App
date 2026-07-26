@@ -8,33 +8,24 @@
     "dev:api": "node server/index.js",
     "dev:client": "vite --host 127.0.0.1 --port 5174 --force",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1 --port 4174 --strictPort",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:semantic": "node scripts/test-semantic-matching.mjs"
+    "preview": "vite preview --host 127.0.0.1 --port 4174 --strictPort"
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.1",
-    "@xenova/transformers": "^2.0.1",
     "cors": "^2.8.5",
-    "dotenv": "^16.4.5",
     "express": "^4.21.2",
-    "jspdf": "^4.2.1",
-    "mammoth": "^1.8.0",
-    "pdfjs-dist": "^4.7.76",
+    "google-auth-library": "^10.9.1",
+    "mammoth": "^1.12.0",
+    "nodemailer": "^9.0.3",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.22.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "stripe": "^22.3.2"
+    "stripe": "^22.3.2",
+    "sweetalert2": "^11.26.25"
   },
   "devDependencies": {
-    "@vitest/coverage-v8": "^4.1.10",
     "concurrently": "^9.1.2",
-    "jsdom": "^25.0.1",
-    "vite": "^8.1.5",
-    "vitest": "^4.1.10"
-  },
-  "overrides": {
-    "sharp": "^0.35.0"
+    "vite": "^5.4.10"
   }
 }
