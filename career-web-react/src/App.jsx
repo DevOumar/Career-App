@@ -8,11 +8,13 @@ import {
   analyzeMatch,
   changeUserPassword,
   consumeTokens,
+  createStripeCheckoutSession,
   deleteUserAccount,
   extractCvFile,
   extractJobOffer,
   generateCoverLetter,
   getLatestMatchRun,
+  getHealth,
   getMatchFeedback,
   getPremiumSnapshot,
   getUserFromSession,
@@ -1374,6 +1376,7 @@ export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem("career_app_token") || "");
   const [language, setLanguage] = useState(() => localStorage.getItem("career_app_language") || "fr");
   const [currency, setCurrency] = useState(getCurrency);
+  const [stripeEnabled, setStripeEnabled] = useState(false);
   const [session, setSession] = useState(null);
   const [premium, setPremium] = useState(null);
   const [activePage, setActivePage] = useState("home");
@@ -1455,6 +1458,12 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("career_app_currency", currency);
   }, [currency]);
+
+  useEffect(() => {
+    getHealth()
+      .then((health) => setStripeEnabled(Boolean(health.stripeEnabled)))
+      .catch(() => setStripeEnabled(false));
+  }, []);
 
   useEffect(() => {
     if (!pageMessage) return;
@@ -2026,6 +2035,17 @@ export default function App() {
     }
   }
 
+  async function handleStripeCheckout(planId, billingCycle) {
+    if (!user) return;
+    try {
+      clearMessages();
+      const { url } = await createStripeCheckoutSession({ userId: user.id, planId, billingCycle });
+      window.location.href = url;
+    } catch (error) {
+      setProcessingError(error.message);
+    }
+  }
+
   async function handleRedeemLicenseCode(code) {
     if (!user || !code.trim()) return;
     try {
@@ -2361,7 +2381,9 @@ export default function App() {
             premium={premium}
             language={language}
             currency={currency}
+            stripeEnabled={stripeEnabled}
             onActivatePlan={handleActivatePlan}
+            onStripeCheckout={handleStripeCheckout}
             onRedeemCode={handleRedeemLicenseCode}
           />
         ) : null}
@@ -5770,7 +5792,7 @@ function allowedPricingSegmentsForRole(roleType) {
   return ["candidate"];
 }
 
-function PricingPage({ user, premium, language, currency, onActivatePlan, onRedeemCode }) {
+function PricingPage({ user, premium, language, currency, stripeEnabled, onActivatePlan, onStripeCheckout, onRedeemCode }) {
   const copy = APP_COPY[language]?.pricing || APP_COPY.fr.pricing;
   const allowedSegments = allowedPricingSegmentsForRole(user?.roleType);
   const visibleSegments = PRICING_SEGMENTS.filter((item) => allowedSegments.includes(item.id));
@@ -5872,7 +5894,11 @@ function PricingPage({ user, premium, language, currency, onActivatePlan, onRede
                 type="button"
                 className={`btn-main ${plan.highlighted ? "ready" : ""}`}
                 disabled={isCurrentPlan}
-                onClick={() => onActivatePlan(plan.id, billingCycle)}
+                onClick={() =>
+                  stripeEnabled && plan.grantsPremium
+                    ? onStripeCheckout(plan.id, billingCycle)
+                    : onActivatePlan(plan.id, billingCycle)
+                }
               >
                 {isCurrentPlan ? copy.currentPlan : copy.activate}
               </button>

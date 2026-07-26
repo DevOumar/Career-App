@@ -243,6 +243,17 @@ export async function activatePlan({ userId, planId, billingCycle }) {
   });
 }
 
+export async function createStripeCheckoutSession({ userId, planId, billingCycle }) {
+  return request("/stripe/create-checkout-session", {
+    method: "POST",
+    body: { userId, planId, billingCycle }
+  });
+}
+
+export async function getHealth() {
+  return request("/health");
+}
+
 export async function redeemLicenseCode({ userId, code }) {
   return request("/plans/redeem", {
     method: "POST",

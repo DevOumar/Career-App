@@ -11,10 +11,17 @@ import { fileURLToPath } from "url";
 import { PGlite } from "@electric-sql/pglite";
 import pg from "pg";
 import { OAuth2Client } from "google-auth-library";
+import Stripe from "stripe";
 import { OFFERS } from "../src/data/offers.js";
 import { EDUCATION_LEVELS, SKILL_KEYWORDS } from "../src/data/skills.js";
 import { buildLocalMatchInsights } from "../src/lib/matchingService.js";
 import { getPlanById } from "../src/data/plans.js";
+import {
+  applyStripeWebhookEvent,
+  buildCheckoutSessionParams,
+  resolveStripeMode,
+  resolveStripePriceEnvVar
+} from "./stripeService.js";
 
 const BASE_PORT = Number(process.env.PORT || 8787);
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
@@ -63,6 +70,10 @@ const AUTH_EMAIL_TO = String(process.env.AUTH_EMAIL_TO || "").trim();
 const DATABASE_URL = String(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "").trim();
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
 const googleOAuthClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || "").trim();
+const STRIPE_WEBHOOK_SECRET = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
+const APP_URL = String(process.env.APP_URL || "http://127.0.0.1:5174").trim();
+const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
 
 function loadLocalEnv() {
   const envPath = path.join(PROJECT_ROOT, ".env");
@@ -239,6 +250,41 @@ app.use(
     }
   })
 );
+
+// Route webhook Stripe enregistrée AVANT express.json() : Stripe signe le corps
+// BRUT (non parsé) de la requête, donc express.json() ne doit jamais y toucher
+// (sinon la vérification de signature échoue systématiquement).
+app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  if (!stripe || !STRIPE_WEBHOOK_SECRET) {
+    console.error("Webhook Stripe recu mais STRIPE_SECRET_KEY / STRIPE_WEBHOOK_SECRET absent(s) du .env.");
+    return res.status(503).send("Stripe non configure cote serveur.");
+  }
+
+  const signature = req.headers["stripe-signature"];
+  let event;
+  try {
+    event = stripe.webhooks.constructEvent(req.body, signature, STRIPE_WEBHOOK_SECRET);
+  } catch (error) {
+    console.error("Signature webhook Stripe invalide:", error.message);
+    return res.status(400).send(`Webhook Error: ${error.message}`);
+  }
+
+  try {
+    const result = await applyStripeWebhookEvent(event, {
+      db,
+      parseJsonField,
+      getPlanById,
+      applyPlanToUser,
+      generateLicenseCodeForPlan
+    });
+    return res.json({ received: true, ...result });
+  } catch (error) {
+    console.error("Erreur traitement webhook Stripe:", error);
+    // 500 volontaire : Stripe retentera automatiquement l'envoi.
+    return res.status(500).send("Erreur traitement webhook.");
+  }
+});
+
 app.use(express.json({ limit: "10mb" }));
 
 await db.exec(`
@@ -2785,7 +2831,8 @@ app.get("/api/health", async (_req, res) => {
     ok: ping.rows[0]?.ok === 1,
     aiProvider: AI_PROVIDER,
     aiModel: AI_MODEL || null,
-    aiKeyConfigured: Boolean(aiExtractionConfig()?.apiKey)
+    aiKeyConfigured: Boolean(aiExtractionConfig()?.apiKey),
+    stripeEnabled: Boolean(stripe)
   });
 });
 
@@ -3612,6 +3659,15 @@ app.post("/api/premium/activate", async (req, res) => {
   }
 });
 
+async function generateLicenseCodeForPlan(userId, plan) {
+  const code = generateLicenseCode();
+  await db.query(
+    "INSERT INTO license_codes (code, owner_user_id, plan_id, seats_total, seats_used, created_at) VALUES ($1,$2,$3,$4,0,$5)",
+    [code, userId, plan.id, plan.seats, nowIso()]
+  );
+  return code;
+}
+
 function generateLicenseCode() {
   const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "LIC-";
@@ -3622,7 +3678,7 @@ function generateLicenseCode() {
   return code;
 }
 
-async function applyPlanToUser(userId, plan, billingCycle, licenseCode) {
+async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeIds = null) {
   const cycle = billingCycle === "annual" ? "annual" : plan.monthlyPrice == null ? "annual" : "monthly";
   const startedAt = nowIso();
   const renewalDays = cycle === "annual" ? 365 : 30;
@@ -3637,12 +3693,61 @@ async function applyPlanToUser(userId, plan, billingCycle, licenseCode) {
       credits: plan.credits,
       licenseCode: licenseCode || null,
       startedAt,
-      renewalAt
+      renewalAt,
+      stripeCustomerId: stripeIds?.stripeCustomerId || null,
+      stripeSubscriptionId: stripeIds?.stripeSubscriptionId || null
     }),
     nowIso(),
     userId
   ]);
 }
+
+app.post("/api/stripe/create-checkout-session", async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(503).json({ error: "Paiement Stripe non configuré côté serveur." });
+    }
+
+    const userId = coerceString(req.body?.userId);
+    const planId = coerceString(req.body?.planId);
+    const billingCycle = coerceString(req.body?.billingCycle) === "annual" ? "annual" : "monthly";
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const plan = getPlanById(planId);
+    if (!plan || !plan.grantsPremium) {
+      return res.status(400).json({ error: "Ce plan ne nécessite pas de paiement Stripe." });
+    }
+
+    const priceEnvVar = resolveStripePriceEnvVar(plan, billingCycle);
+    const priceId = String(process.env[priceEnvVar] || "").trim();
+    if (!priceId) {
+      return res.status(500).json({ error: `${priceEnvVar} manquant dans .env pour ce plan.` });
+    }
+
+    const subscription = parseJsonField(user.subscription_json, {});
+    const params = buildCheckoutSessionParams({
+      userId,
+      userEmail: user.email,
+      subscription,
+      priceId,
+      mode: resolveStripeMode(plan),
+      planId: plan.id,
+      billingCycle,
+      successUrl: `${APP_URL}/#/app/tarifs?stripe=success`,
+      cancelUrl: `${APP_URL}/#/app/tarifs?stripe=cancel`
+    });
+
+    const session = await stripe.checkout.sessions.create(params);
+    return res.json({ url: session.url });
+  } catch (error) {
+    console.error("Erreur création session Stripe Checkout:", error);
+    return res.status(500).json({ error: error.message || "Impossible de créer la session de paiement." });
+  }
+});
 
 app.post("/api/plans/activate", async (req, res) => {
   try {
@@ -3666,14 +3771,7 @@ app.post("/api/plans/activate", async (req, res) => {
 
     await applyPlanToUser(userId, plan, billingCycle, null);
 
-    let licenseCode = null;
-    if (plan.seats) {
-      licenseCode = generateLicenseCode();
-      await db.query(
-        "INSERT INTO license_codes (code, owner_user_id, plan_id, seats_total, seats_used, created_at) VALUES ($1,$2,$3,$4,0,$5)",
-        [licenseCode, userId, plan.id, plan.seats, nowIso()]
-      );
-    }
+    const licenseCode = plan.seats ? await generateLicenseCodeForPlan(userId, plan) : null;
 
     const updatedUser = await getUserRowById(userId);
     const premium = await computePremiumAccess(updatedUser);
