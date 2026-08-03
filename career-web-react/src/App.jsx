@@ -11,6 +11,7 @@ import {
   createStripeCheckoutSession,
   deleteUserAccount,
   extractCvFile,
+  findEmail,
   extractJobOffer,
   generateCoverLetter,
   getLatestMatchRun,
@@ -18,13 +19,41 @@ import {
   getMatchFeedback,
   getPremiumSnapshot,
   getUserFromSession,
+  createAdminUser,
+  deleteAdminUser,
+  getAdminActivityLog,
+  getAdminAiSamples,
+  getAdminFinance,
+  getAdminLicenseCodes,
+  getAdminOrgAccounts,
+  getAdminOverview,
+  getAdminSettings,
+  revokeAdminLicenseCode,
+  restoreAdminLicenseCode,
+  getAdminAnnouncementAudienceCount,
+  getAdminAnnouncements,
+  sendAdminAnnouncement,
+  updateAdminSetting,
+  updateAdminUser,
   linkGoogleAccount,
+  listAdminUsers,
+  getSchoolOverview,
+  getSchoolStudents,
+  removeSchoolStudent,
+  getSchoolLicense,
+  getSchoolInsights,
+  getSchoolInvitations,
+  sendSchoolInvitation,
   listOffers,
   listUserCvs,
   loginUser,
   loginWithGoogle,
   logoutUser,
   negotiationReply,
+  listNegotiationConversations,
+  saveNegotiationConversation,
+  updateNegotiationConversation,
+  deleteNegotiationConversation,
   redeemLicenseCode,
   registerUser,
   removeConnectedAccount,
@@ -43,7 +72,7 @@ import {
 import { createCvRecord, fileToBase64, parseCvText, readFileAsText } from "./lib/cvService";
 import { extractOfferSummary, runMatching } from "./lib/matchingService";
 import { INTERVIEW_SCRIPTS } from "./lib/interviewScripts";
-import { PLANS, getPlanById } from "./data/plans";
+import { PLANS, PLAN_SEGMENTS, getPlanById } from "./data/plans";
 
 const NAV_ITEMS = [
   { id: "home", label: { fr: "Accueil", en: "Home" }, always: true, icon: "home" },
@@ -51,6 +80,7 @@ const NAV_ITEMS = [
   { id: "entretiens", label: { fr: "Entretiens", en: "Interviews" }, icon: "chat" },
   { id: "lettre", label: { fr: "Lettre IA", en: "AI Letter" }, icon: "mail" },
   { id: "negociation", label: { fr: "Négociation", en: "Negotiation" }, icon: "scale" },
+  { id: "email-finder", label: { fr: "Email Scout", en: "Email Scout" }, icon: "network" },
   { id: "historique", label: { fr: "Historique CV", en: "CV history" }, always: true, icon: "history" },
   { id: "tarifs", label: { fr: "Tarifs", en: "Pricing" }, always: true, icon: "pricetag" }
 ];
@@ -115,6 +145,80 @@ function getCurrency() {
     return localStorage.getItem("career_app_currency") || "EUR";
   } catch (_error) {
     return "EUR";
+  }
+}
+
+const THEME_PRESETS = [
+  {
+    id: "blue",
+    label: { fr: "Bleu (défaut)", en: "Blue (default)" },
+    swatch: "#2f5bff",
+    vars: { "--primary": "#2f5bff", "--primary-2": "#6d7cff", "--primary-ink": "#101a4f", "--bg-accent": "#edf1ff" }
+  },
+  {
+    id: "violet",
+    label: { fr: "Violet", en: "Violet" },
+    swatch: "#7c3aed",
+    vars: { "--primary": "#7c3aed", "--primary-2": "#a78bfa", "--primary-ink": "#2e1065", "--bg-accent": "#f3e8ff" }
+  },
+  {
+    id: "green",
+    label: { fr: "Émeraude", en: "Emerald" },
+    swatch: "#0e9f6e",
+    vars: { "--primary": "#0e9f6e", "--primary-2": "#34d399", "--primary-ink": "#052e2b", "--bg-accent": "#ecfdf5" }
+  },
+  {
+    id: "orange",
+    label: { fr: "Corail", en: "Coral" },
+    swatch: "#ea580c",
+    vars: { "--primary": "#ea580c", "--primary-2": "#fb923c", "--primary-ink": "#431407", "--bg-accent": "#fff7ed" }
+  },
+  {
+    id: "rose",
+    label: { fr: "Framboise", en: "Raspberry" },
+    swatch: "#db2777",
+    vars: { "--primary": "#db2777", "--primary-2": "#f472b6", "--primary-ink": "#500724", "--bg-accent": "#fdf2f8" }
+  },
+  {
+    id: "slate",
+    label: { fr: "Ardoise", en: "Slate" },
+    swatch: "#334155",
+    vars: { "--primary": "#334155", "--primary-2": "#64748b", "--primary-ink": "#0f172a", "--bg-accent": "#f1f5f9" }
+  }
+];
+
+function getTheme() {
+  try {
+    const stored = localStorage.getItem("career_app_theme");
+    return THEME_PRESETS.some((item) => item.id === stored) ? stored : "blue";
+  } catch (_error) {
+    return "blue";
+  }
+}
+
+function applyThemeVars(themeId) {
+  const preset = THEME_PRESETS.find((item) => item.id === themeId) || THEME_PRESETS[0];
+  const root = document.documentElement;
+  Object.entries(preset.vars).forEach(([key, value]) => {
+    root.style.setProperty(key, value);
+  });
+}
+
+function getMode() {
+  try {
+    const stored = localStorage.getItem("career_app_mode");
+    return stored === "dark" ? "dark" : "light";
+  } catch (_error) {
+    return "light";
+  }
+}
+
+function getDensity() {
+  try {
+    const stored = localStorage.getItem("career_app_density");
+    return stored === "compact" ? "compact" : "comfortable";
+  } catch (_error) {
+    return "comfortable";
   }
 }
 
@@ -183,9 +287,9 @@ const LANDING_COPY = {
     footerProduct: "Produit",
     footerCompany: "Entreprise",
     footerLegal: "Légal",
-    linksProduct: ["Fonctionnalités", "Matching CV", "Entretiens", "Offres"],
-    linksCompany: ["À propos", "Contact"],
-    linksLegal: ["Confidentialité", "CGU", "Cookies"]
+    linksProduct: ["Fonctionnalités", "Matching CV", "Entretiens", "Offres", "Tarifs"],
+    linksCompany: ["À propos", "Contact", "Partenariats"],
+    linksLegal: ["Confidentialité", "CGU", "Cookies", "Sécurité"]
   },
   en: {
     login: "Log in",
@@ -246,9 +350,9 @@ const LANDING_COPY = {
     footerProduct: "Product",
     footerCompany: "Company",
     footerLegal: "Legal",
-    linksProduct: ["Features", "CV matching", "Interviews", "Jobs"],
-    linksCompany: ["About", "Contact"],
-    linksLegal: ["Privacy", "Terms", "Cookies"]
+    linksProduct: ["Features", "CV matching", "Interviews", "Jobs", "Pricing"],
+    linksCompany: ["About", "Contact", "Partnerships"],
+    linksLegal: ["Privacy", "Terms", "Cookies", "Security"]
   }
 };
 
@@ -344,7 +448,8 @@ const ACCOUNT_LABELS = {
     company: "Entreprise",
     school: "École / Université",
     coach: "Coach carrière",
-    other: "Autre"
+    other: "Autre",
+    admin: "Administrateur"
   },
   en: {
     student: "Candidate/Student",
@@ -354,7 +459,8 @@ const ACCOUNT_LABELS = {
     company: "Company",
     school: "School / University",
     coach: "Career coach",
-    other: "Other"
+    other: "Other",
+    admin: "Administrator"
   }
 };
 
@@ -672,7 +778,14 @@ const APP_COPY = {
       strengths: "Points forts",
       improvements: "Axes d'amélioration",
       empty: "Importe un CV et analyse une offre pour débloquer ce module.",
-      noTokens: "Tu n'as plus de jetons. Passe à un plan supérieur pour démarrer une négociation."
+      noTokens: "Tu n'as plus de jetons. Passe à un plan supérieur pour démarrer une négociation.",
+      history: "Conversations",
+      newConversation: "Nouvelle négociation",
+      resumeHint: "Reprends une négociation déjà commencée.",
+      noHistory: "Aucune conversation pour l'instant.",
+      deleteConversation: "Supprimer",
+      deleteConfirm: "Supprimer cette conversation ?",
+      untitled: "Négociation sans titre"
     }
   },
   en: {
@@ -988,7 +1101,14 @@ const APP_COPY = {
       strengths: "Strengths",
       improvements: "Areas to improve",
       empty: "Import a CV and analyze a job offer to unlock this module.",
-      noTokens: "You're out of tokens. Upgrade your plan to start a negotiation."
+      noTokens: "You're out of tokens. Upgrade your plan to start a negotiation.",
+      history: "Conversations",
+      newConversation: "New negotiation",
+      resumeHint: "Resume a negotiation you already started.",
+      noHistory: "No conversation yet.",
+      deleteConversation: "Delete",
+      deleteConfirm: "Delete this conversation?",
+      untitled: "Untitled negotiation"
     }
   }
 };
@@ -1230,6 +1350,30 @@ function UiIcon({ name, className = "" }) {
         fill="currentColor"
       />
     ),
+    plus: (
+      <path
+        d="M10 3.75a.75.75 0 01.75.75v4.75h4.75a.75.75 0 010 1.5h-4.75v4.75a.75.75 0 01-1.5 0v-4.75H4.5a.75.75 0 010-1.5h4.75V4.5A.75.75 0 0110 3.75z"
+        fill="currentColor"
+      />
+    ),
+    trash: (
+      <path
+        d="M8.25 3.5a.75.75 0 00-.75.75V5H4.75a.75.75 0 000 1.5h.5l.62 8.06A2 2 0 007.85 16.4h4.3a2 2 0 001.98-1.84l.62-8.06h.5a.75.75 0 000-1.5H12.5v-.75a.75.75 0 00-.75-.75h-3.5zm.25 4a.75.75 0 011.5 0v6a.75.75 0 01-1.5 0v-6zm3.5 0a.75.75 0 011.5 0v6a.75.75 0 01-1.5 0v-6z"
+        fill="currentColor"
+      />
+    ),
+    matchmark: (
+      <>
+        <path
+          d="M7.2 12.8a3.2 3.2 0 010-5.6l1.4-.8a1 1 0 111 1.73l-1.4.8a1.2 1.2 0 000 2.1l1.4.8a1 1 0 11-1 1.74l-1.4-.8a3.2 3.2 0 01-.4-.19z"
+          fill="currentColor"
+        />
+        <path
+          d="M12.8 7.2a3.2 3.2 0 010 5.6l-1.4.8a1 1 0 11-1-1.74l1.4-.8a1.2 1.2 0 000-2.1l-1.4-.8a1 1 0 111-1.73l1.4.8a3.2 3.2 0 01.4.19z"
+          fill="currentColor"
+        />
+      </>
+    ),
     spark: (
       <path
         d="M10 2.5l1.3 3.14L14.5 7l-3.2 1.36L10 11.5 8.7 8.36 5.5 7l3.2-1.36L10 2.5zm5 7l.7 1.7 1.8.8-1.8.8-.7 1.7-.7-1.7-1.8-.8 1.8-.8.7-1.7zM4.5 11l.9 2.18 2.2.95-2.2.95-.9 2.17-.9-2.17-2.2-.95 2.2-.95.9-2.18z"
@@ -1374,8 +1518,39 @@ function UiIcon({ name, className = "" }) {
 
 export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem("career_app_token") || "");
+  const [sessionLoading, setSessionLoading] = useState(() => Boolean(localStorage.getItem("career_app_token")));
   const [language, setLanguage] = useState(() => localStorage.getItem("career_app_language") || "fr");
   const [currency, setCurrency] = useState(getCurrency);
+  const [theme, setTheme] = useState(getTheme);
+  const [mode, setMode] = useState(getMode);
+  const [density, setDensity] = useState(getDensity);
+
+  useEffect(() => {
+    applyThemeVars(theme);
+    try {
+      localStorage.setItem("career_app_theme", theme);
+    } catch (_error) {
+      // ignore storage errors (private mode, quota, etc.)
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", mode);
+    try {
+      localStorage.setItem("career_app_mode", mode);
+    } catch (_error) {
+      // ignore storage errors (private mode, quota, etc.)
+    }
+  }, [mode]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-density", density);
+    try {
+      localStorage.setItem("career_app_density", density);
+    } catch (_error) {
+      // ignore storage errors (private mode, quota, etc.)
+    }
+  }, [density]);
   const [stripeEnabled, setStripeEnabled] = useState(false);
   const [session, setSession] = useState(null);
   const [premium, setPremium] = useState(null);
@@ -1401,6 +1576,7 @@ export default function App() {
 
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [pendingPlanAction, setPendingPlanAction] = useState(null);
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
@@ -1543,38 +1719,42 @@ export default function App() {
   }, []);
 
   async function syncSession(nextToken) {
-    const snapshot = await getUserFromSession(nextToken);
-    if (!snapshot) {
-      setToken("");
-      setSession(null);
-      setPremium(null);
-      setLatestMatch(null);
-      return;
-    }
-    setSession(snapshot);
-    setPremium(snapshot.premium);
+    try {
+      const snapshot = await getUserFromSession(nextToken);
+      if (!snapshot) {
+        setToken("");
+        setSession(null);
+        setPremium(null);
+        setLatestMatch(null);
+        return;
+      }
+      setSession(snapshot);
+      setPremium(snapshot.premium);
 
-    const cvItems = await listUserCvs(snapshot.user.id);
-    setCvHistory(cvItems);
-    const matchRun = await getLatestMatchRun(snapshot.user.id);
-    setLatestMatch(matchRun);
-    setMatchRunId(matchRun?.id || null);
+      const cvItems = await listUserCvs(snapshot.user.id);
+      setCvHistory(cvItems);
+      const matchRun = await getLatestMatchRun(snapshot.user.id);
+      setLatestMatch(matchRun);
+      setMatchRunId(matchRun?.id || null);
 
-    const activeCv = cvItems[0] || null;
-    setLatestCv(activeCv);
-    if (activeCv) {
-      setCvSourceText(activeCv.sourceText || "");
-      setCvFileName(activeCv.fileName || "");
-      setCvReview(activeCv.parsed || null);
-    }
+      const activeCv = cvItems[0] || null;
+      setLatestCv(activeCv);
+      if (activeCv) {
+        setCvSourceText(activeCv.sourceText || "");
+        setCvFileName(activeCv.fileName || "");
+        setCvReview(activeCv.parsed || null);
+      }
 
-    if (matchRun?.matchInsights) {
-      setMatchInsights(matchRun.matchInsights);
-      setOfferText(matchRun.offerText || "");
-      setJobReview(matchRun.jobReview || null);
-      setImportStep("results");
-    } else if (activeCv) {
-      setImportStep("job");
+      if (matchRun?.matchInsights) {
+        setMatchInsights(matchRun.matchInsights);
+        setOfferText(matchRun.offerText || "");
+        setJobReview(matchRun.jobReview || null);
+        setImportStep("results");
+      } else if (activeCv) {
+        setImportStep("job");
+      }
+    } finally {
+      setSessionLoading(false);
     }
   }
 
@@ -1589,6 +1769,7 @@ export default function App() {
       clearMessages();
       const result = credentials.code ? await verifyLoginCode(credentials) : await loginUser(credentials);
       setToken(result.token);
+      setSessionLoading(true);
       await syncSession(result.token);
       setActivePage("home");
       rememberLastAuthMethod("password");
@@ -1602,6 +1783,7 @@ export default function App() {
       clearMessages();
       const result = await loginWithGoogle(credential);
       setToken(result.token);
+      setSessionLoading(true);
       await syncSession(result.token);
       setActivePage("home");
       rememberLastAuthMethod("google");
@@ -1636,6 +1818,7 @@ export default function App() {
       clearMessages();
       const result = await verifyLoginCode({ identifier, code, purpose: "signup" });
       setToken(result.token);
+      setSessionLoading(true);
       await syncSession(result.token);
       setActivePage("home");
       setPageMessage(
@@ -2016,6 +2199,7 @@ export default function App() {
 
   async function handleActivatePlan(planId, billingCycle) {
     if (!user) return;
+    setPendingPlanAction(planId);
     try {
       clearMessages();
       const updated = await activatePlan({ userId: user.id, planId, billingCycle });
@@ -2032,22 +2216,27 @@ export default function App() {
       }
     } catch (error) {
       setProcessingError(error.message);
+    } finally {
+      setPendingPlanAction(null);
     }
   }
 
   async function handleStripeCheckout(planId, billingCycle) {
     if (!user) return;
+    setPendingPlanAction(planId);
     try {
       clearMessages();
       const { url } = await createStripeCheckoutSession({ userId: user.id, planId, billingCycle });
       window.location.href = url;
     } catch (error) {
       setProcessingError(error.message);
+      setPendingPlanAction(null);
     }
   }
 
   async function handleRedeemLicenseCode(code) {
     if (!user || !code.trim()) return;
+    setPendingPlanAction("license");
     try {
       clearMessages();
       const updated = await redeemLicenseCode({ userId: user.id, code: code.trim() });
@@ -2056,6 +2245,8 @@ export default function App() {
       setPageMessage(language === "en" ? "License code activated." : "Code de licence activé.");
     } catch (error) {
       setProcessingError(error.message);
+    } finally {
+      setPendingPlanAction(null);
     }
   }
 
@@ -2179,6 +2370,18 @@ export default function App() {
     setUserMenuOpen(false);
   }
 
+  if (sessionLoading) {
+    return (
+      <div className="app-boot-splash">
+        <div className="app-boot-loader" aria-hidden="true">
+          <span className="brand-mark" aria-hidden="true">
+            <UiIcon name="matchmark" />
+          </span>
+        </div>
+      </div>
+    );
+  }
+
   if (!user) {
     return (
       <AuthScreen
@@ -2195,6 +2398,74 @@ export default function App() {
         setLanguage={setLanguage}
         copy={authCopy}
         landingCopy={landingCopy}
+      />
+    );
+  }
+
+  if (user.roleType === "admin") {
+    return (
+      <AdminApp
+        user={user}
+        language={language}
+        setLanguage={setLanguage}
+        currency={currency}
+        setCurrency={setCurrency}
+        theme={theme}
+        setTheme={setTheme}
+        mode={mode}
+        setMode={setMode}
+        density={density}
+        setDensity={setDensity}
+        onLogout={handleLogout}
+        landingCopy={landingCopy}
+        onSaveAccount={handleAccountSave}
+        onAvatarUpload={handleAvatarUpload}
+        avatarUploading={avatarUploading}
+        onRequestSecondaryEmail={handleSecondaryEmailRequest}
+        onVerifySecondaryEmail={handleSecondaryEmailVerify}
+        onSetPrimaryEmail={handlePrimaryEmail}
+        onRemoveEmail={handleRemoveEmail}
+        onRemoveConnectedAccount={handleRemoveConnectedAccount}
+        onLinkGoogleAccount={handleLinkGoogleAccount}
+        securityForm={securityForm}
+        setSecurityForm={setSecurityForm}
+        securitySaving={securitySaving}
+        onSubmitPassword={submitPasswordChange}
+        onDeleteAccount={handleDeleteAccount}
+      />
+    );
+  }
+
+  if (user.roleType === "school") {
+    return (
+      <SchoolApp
+        user={user}
+        language={language}
+        setLanguage={setLanguage}
+        currency={currency}
+        setCurrency={setCurrency}
+        theme={theme}
+        setTheme={setTheme}
+        mode={mode}
+        setMode={setMode}
+        density={density}
+        setDensity={setDensity}
+        onLogout={handleLogout}
+        landingCopy={landingCopy}
+        onSaveAccount={handleAccountSave}
+        onAvatarUpload={handleAvatarUpload}
+        avatarUploading={avatarUploading}
+        onRequestSecondaryEmail={handleSecondaryEmailRequest}
+        onVerifySecondaryEmail={handleSecondaryEmailVerify}
+        onSetPrimaryEmail={handlePrimaryEmail}
+        onRemoveEmail={handleRemoveEmail}
+        onRemoveConnectedAccount={handleRemoveConnectedAccount}
+        onLinkGoogleAccount={handleLinkGoogleAccount}
+        securityForm={securityForm}
+        setSecurityForm={setSecurityForm}
+        securitySaving={securitySaving}
+        onSubmitPassword={submitPasswordChange}
+        onDeleteAccount={handleDeleteAccount}
       />
     );
   }
@@ -2363,8 +2634,22 @@ export default function App() {
           <SalaryNegotiationPage
             language={language}
             currency={currency}
+            userId={user?.id}
             candidate={user ? buildCandidatePayload() : null}
             offer={jobReview || extractOfferSummary(offerText)}
+            tokensBalance={tokensBalance}
+            onGoToTarifs={() => goTo("tarifs")}
+            onConsumeToken={async () => {
+              const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
+              setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
+              setPremium(tokenUpdate.premium);
+            }}
+          />
+        ) : null}
+        {activePage === "email-finder" ? (
+          <EmailFinderPage
+            language={language}
+            userId={user.id}
             tokensBalance={tokensBalance}
             onGoToTarifs={() => goTo("tarifs")}
             onConsumeToken={async () => {
@@ -2385,6 +2670,7 @@ export default function App() {
             onActivatePlan={handleActivatePlan}
             onStripeCheckout={handleStripeCheckout}
             onRedeemCode={handleRedeemLicenseCode}
+            pendingPlanAction={pendingPlanAction}
           />
         ) : null}
       </main>
@@ -2400,6 +2686,12 @@ export default function App() {
           setLanguage={setLanguage}
           currency={currency}
           setCurrency={setCurrency}
+          theme={theme}
+          setTheme={setTheme}
+          mode={mode}
+          setMode={setMode}
+          density={density}
+          setDensity={setDensity}
           activePanel={accountPanel}
           setActivePanel={setAccountPanel}
           onClose={() => setAccountDrawerOpen(false)}
@@ -2420,6 +2712,3542 @@ export default function App() {
         />
       ) : null}
     </div>
+  );
+}
+
+const ADMIN_ACCOUNT_TYPES = [
+  { id: "student", segment: "candidate", label: { fr: "Étudiant / Candidat", en: "Student / Candidate" } },
+  { id: "school", segment: "school", label: { fr: "École", en: "School" } },
+  { id: "recruiter_firm", segment: "agency", label: { fr: "Cabinet de recrutement", en: "Recruitment agency" } },
+  { id: "admin", segment: null, label: { fr: "Administrateur", en: "Administrator" } }
+];
+
+const ADMIN_MODULE_DEFS = [
+  { id: "dashboard", icon: "chart" },
+  { id: "accounts", icon: "profile" },
+  { id: "finance", icon: "scale" },
+  { id: "activity", icon: "history" },
+  { id: "licenses", icon: "save" },
+  { id: "aiSamples", icon: "spark" },
+  { id: "settings", icon: "globe" },
+  { id: "announcements", icon: "mail" },
+  { id: "pricing", icon: "pricetag" }
+];
+
+function getAllowedAdminModules(user) {
+  const modules = Array.isArray(user?.adminModules) ? user.adminModules : [];
+  if (!modules.length) return ADMIN_MODULE_DEFS.map((item) => item.id);
+  return ADMIN_MODULE_DEFS.map((item) => item.id).filter((id) => modules.includes(id));
+}
+
+const ADMIN_MODULE_LABELS = {
+  dashboard: { fr: "Dashboard", en: "Dashboard" },
+  accounts: { fr: "Gestion de compte", en: "Account management" },
+  finance: { fr: "Gestion de finance", en: "Finance management" },
+  activity: { fr: "Journal d'activité", en: "Activity log" },
+  licenses: { fr: "Codes de licence", en: "License codes" },
+  aiSamples: { fr: "Modération IA", en: "AI moderation" },
+  settings: { fr: "Paramètres plateforme", en: "Platform settings" },
+  announcements: { fr: "Emails d'annonce", en: "Announcement emails" },
+  pricing: { fr: "Tarifs", en: "Pricing" }
+};
+
+function AdminApp({
+  user,
+  language,
+  setLanguage,
+  currency,
+  setCurrency,
+  theme,
+  setTheme,
+  mode,
+  setMode,
+  density,
+  setDensity,
+  onLogout,
+  landingCopy,
+  onSaveAccount,
+  onAvatarUpload,
+  avatarUploading,
+  onRequestSecondaryEmail,
+  onVerifySecondaryEmail,
+  onSetPrimaryEmail,
+  onRemoveEmail,
+  onRemoveConnectedAccount,
+  onLinkGoogleAccount,
+  securityForm,
+  setSecurityForm,
+  securitySaving,
+  onSubmitPassword,
+  onDeleteAccount
+}) {
+  const allowedModules = getAllowedAdminModules(user);
+  const [tab, setTab] = useState(() => {
+    try {
+      return localStorage.getItem("career_app_admin_tab") || allowedModules[0] || "dashboard";
+    } catch (_error) {
+      return allowedModules[0] || "dashboard";
+    }
+  });
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
+  const [accountPanel, setAccountPanel] = useState("account");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [searchInput, setSearchInput] = useState("");
+  const [accountsSearch, setAccountsSearch] = useState("");
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const userMenuRef = useRef(null);
+  const searchBoxRef = useRef(null);
+  const searchCopy =
+    language === "en" ? { placeholder: "Search accounts…" } : { placeholder: "Rechercher des comptes…" };
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!searchInput.trim() || !allowedModules.includes("accounts")) {
+      setSearchSuggestions([]);
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      listAdminUsers(user.id, { search: searchInput.trim() })
+        .then((items) => setSearchSuggestions(items.slice(0, 5)))
+        .catch(() => setSearchSuggestions([]));
+    }, 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  function goToAccount(item) {
+    setAccountsSearch(item.email);
+    setSearchInput(item.email);
+    setShowSuggestions(false);
+    setTab("accounts");
+  }
+
+  function submitSearch(event) {
+    event.preventDefault();
+    if (!searchInput.trim() || !allowedModules.includes("accounts")) return;
+    setAccountsSearch(searchInput.trim());
+    setShowSuggestions(false);
+    setTab("accounts");
+  }
+  const copy =
+    language === "en"
+      ? {
+          dashboard: "Dashboard",
+          pricing: "Pricing",
+          accounts: "Account management",
+          finance: "Finance management",
+          activity: "Activity log",
+          licenses: "License codes",
+          aiSamples: "AI moderation",
+          settings: "Platform settings",
+          announcements: "Announcement emails",
+          accountSettings: "My profile",
+          logout: "Log out",
+          role: "Administrator",
+          secured: "Secured by"
+        }
+      : {
+          dashboard: "Dashboard",
+          pricing: "Tarifs",
+          accounts: "Gestion de compte",
+          finance: "Gestion de finance",
+          activity: "Journal d'activité",
+          licenses: "Codes de licence",
+          aiSamples: "Modération IA",
+          settings: "Paramètres plateforme",
+          announcements: "Emails d'annonce",
+          accountSettings: "Mon profil",
+          logout: "Déconnexion",
+          role: "Administrateur",
+          secured: "Sécurisé par"
+        };
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!allowedModules.includes(tab)) {
+      setTab(allowedModules[0] || "dashboard");
+    }
+  }, [tab, allowedModules]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("career_app_admin_tab", tab);
+    } catch (_error) {
+      // ignore storage errors (private mode, quota, etc.)
+    }
+  }, [tab]);
+
+  function openAccountSettings() {
+    setAccountPanel("account");
+    setAccountDrawerOpen(true);
+    setUserMenuOpen(false);
+  }
+
+  return (
+    <div className="app-shell admin-shell-root">
+      <header className="topbar">
+        <div className="brand">
+          <button
+            type="button"
+            className="topbar-menu-toggle"
+            aria-label={language === "en" ? "Toggle sidebar" : "Afficher/masquer le menu"}
+            onClick={() => setSidebarOpen((prev) => !prev)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+          Career App <span className="admin-badge">Admin</span>
+        </div>
+
+        <div className="topbar-search-box" ref={searchBoxRef}>
+          <form className="topbar-search" onSubmit={submitSearch}>
+            <span className="topbar-search-icon" aria-hidden="true" />
+            <input
+              value={searchInput}
+              onChange={(event) => {
+                setSearchInput(event.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              placeholder={searchCopy.placeholder}
+            />
+          </form>
+          {showSuggestions && searchSuggestions.length ? (
+            <div className="topbar-suggestions">
+              {searchSuggestions.map((item) => (
+                <button type="button" key={item.id} className="topbar-suggestion-row" onClick={() => goToAccount(item)}>
+                  <AvatarCircle user={item} />
+                  <div>
+                    <strong>
+                      {item.firstName} {item.lastName}
+                    </strong>
+                    <span className="muted">{item.email}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="topbar-user" ref={userMenuRef}>
+          <button
+            type="button"
+            className="topbar-icon-btn"
+            title={copy.activity}
+            onClick={() => allowedModules.includes("activity") && setTab("activity")}
+          >
+            <UiIcon name="history" />
+          </button>
+          <button
+            type="button"
+            className="topbar-icon-btn"
+            title={copy.announcements}
+            onClick={() => allowedModules.includes("announcements") && setTab("announcements")}
+          >
+            <UiIcon name="mail" />
+          </button>
+          <LanguageSwitch language={language} setLanguage={setLanguage} compact />
+          <button className="user-menu-trigger" onClick={() => setUserMenuOpen((prev) => !prev)}>
+            <AvatarCircle user={user} />
+            <div className="topbar-user-meta">
+              <strong>
+                {user.firstName} {user.lastName}
+              </strong>
+              <span>{copy.role}</span>
+            </div>
+            <span className="menu-caret">▾</span>
+          </button>
+
+          {userMenuOpen ? (
+            <div className="user-dropdown">
+              <div className="user-dropdown-head">
+                <AvatarCircle user={user} />
+                <div>
+                  <strong>
+                    {user.firstName} {user.lastName}
+                  </strong>
+                  <span>{user.username || user.email.split("@")[0]}</span>
+                </div>
+              </div>
+              <button onClick={openAccountSettings}>
+                <span className="dropdown-icon">
+                  <UiIcon name="profile" />
+                </span>
+                {copy.accountSettings}
+              </button>
+              <button onClick={onLogout}>
+                <span className="dropdown-icon danger">
+                  <UiIcon name="logout" />
+                </span>
+                {copy.logout}
+              </button>
+              <div className="user-dropdown-secured">
+                {copy.secured} <strong>Career App</strong>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="admin-body">
+        <aside className={`admin-sidebar-vertical ${sidebarOpen ? "" : "collapsed"}`}>
+          <nav className="admin-sidebar-nav">
+            <span className="admin-sidebar-section-label">MENU</span>
+            {ADMIN_MODULE_DEFS.filter((item) => allowedModules.includes(item.id)).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className={tab === item.id ? "active" : ""}
+                onClick={() => setTab(item.id)}
+              >
+                <UiIcon name={item.icon} /> {copy[item.id]}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <main className="main-wrap admin-main">
+          <nav className="admin-breadcrumb" aria-label="Breadcrumb">
+            <span>{language === "en" ? "Home" : "Accueil"}</span>
+            <UiIcon name="chevron" className="admin-breadcrumb-sep" />
+            <span className="active">{copy[tab]}</span>
+          </nav>
+
+          {tab === "dashboard" && allowedModules.includes("dashboard") ? <AdminDashboardPage user={user} language={language} /> : null}
+          {tab === "accounts" && allowedModules.includes("accounts") ? (
+            <AdminAccountsPage user={user} language={language} currency={currency} initialSearch={accountsSearch} />
+          ) : null}
+          {tab === "finance" && allowedModules.includes("finance") ? <AdminFinancePage user={user} language={language} currency={currency} /> : null}
+          {tab === "activity" && allowedModules.includes("activity") ? <AdminActivityLogPage user={user} language={language} /> : null}
+          {tab === "licenses" && allowedModules.includes("licenses") ? <AdminLicenseCodesPage user={user} language={language} /> : null}
+          {tab === "aiSamples" && allowedModules.includes("aiSamples") ? <AdminAiSamplesPage user={user} language={language} /> : null}
+          {tab === "settings" && allowedModules.includes("settings") ? <AdminSettingsPage user={user} language={language} /> : null}
+          {tab === "announcements" && allowedModules.includes("announcements") ? <AdminAnnouncementsPage user={user} language={language} /> : null}
+          {tab === "pricing" && allowedModules.includes("pricing") ? <AdminPricingPage language={language} currency={currency} /> : null}
+        </main>
+      </div>
+
+      <ConnectedFooter copy={landingCopy} />
+
+      {accountDrawerOpen ? (
+        <AccountDrawer
+          user={user}
+          language={language}
+          setLanguage={setLanguage}
+          currency={currency}
+          setCurrency={setCurrency}
+          theme={theme}
+          setTheme={setTheme}
+          mode={mode}
+          setMode={setMode}
+          density={density}
+          setDensity={setDensity}
+          activePanel={accountPanel}
+          setActivePanel={setAccountPanel}
+          onClose={() => setAccountDrawerOpen(false)}
+          onSaveAccount={onSaveAccount}
+          onAvatarUpload={onAvatarUpload}
+          avatarUploading={avatarUploading}
+          onRequestSecondaryEmail={onRequestSecondaryEmail}
+          onVerifySecondaryEmail={onVerifySecondaryEmail}
+          onSetPrimaryEmail={onSetPrimaryEmail}
+          onRemoveEmail={onRemoveEmail}
+          onRemoveConnectedAccount={onRemoveConnectedAccount}
+          onLinkGoogleAccount={onLinkGoogleAccount}
+          securityForm={securityForm}
+          setSecurityForm={setSecurityForm}
+          securitySaving={securitySaving}
+          onSubmitPassword={onSubmitPassword}
+          onDeleteAccount={onDeleteAccount}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+const SCHOOL_MODULE_DEFS = [
+  { id: "dashboard", icon: "chart" },
+  { id: "students", icon: "profile" },
+  { id: "invitations", icon: "mail" },
+  { id: "license", icon: "save" },
+  { id: "insights", icon: "spark" }
+];
+
+function SchoolApp({
+  user,
+  language,
+  setLanguage,
+  currency,
+  setCurrency,
+  theme,
+  setTheme,
+  mode,
+  setMode,
+  density,
+  setDensity,
+  onLogout,
+  landingCopy,
+  onSaveAccount,
+  onAvatarUpload,
+  avatarUploading,
+  onRequestSecondaryEmail,
+  onVerifySecondaryEmail,
+  onSetPrimaryEmail,
+  onRemoveEmail,
+  onRemoveConnectedAccount,
+  onLinkGoogleAccount,
+  securityForm,
+  setSecurityForm,
+  securitySaving,
+  onSubmitPassword,
+  onDeleteAccount
+}) {
+  const [tab, setTab] = useState(() => {
+    try {
+      return localStorage.getItem("career_app_school_tab") || "dashboard";
+    } catch (_error) {
+      return "dashboard";
+    }
+  });
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
+  const [accountPanel, setAccountPanel] = useState("account");
+  const [searchInput, setSearchInput] = useState("");
+  const [studentsSearch, setStudentsSearch] = useState("");
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [searchSuggestions, setSearchSuggestions] = useState([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const userMenuRef = useRef(null);
+  const searchBoxRef = useRef(null);
+  const searchCopy =
+    language === "en" ? { placeholder: "Search students…" } : { placeholder: "Rechercher des étudiants…" };
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (searchBoxRef.current && !searchBoxRef.current.contains(event.target)) {
+        setShowSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!searchInput.trim()) {
+      setSearchSuggestions([]);
+      return undefined;
+    }
+    const timer = setTimeout(() => {
+      getSchoolStudents(user.id, { search: searchInput.trim() })
+        .then((items) => setSearchSuggestions(items.slice(0, 5)))
+        .catch(() => setSearchSuggestions([]));
+    }, 250);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchInput]);
+
+  useEffect(() => {
+    if (!SCHOOL_MODULE_DEFS.some((item) => item.id === tab)) {
+      setTab("dashboard");
+      return;
+    }
+    try {
+      localStorage.setItem("career_app_school_tab", tab);
+    } catch (_error) {
+      // ignore storage errors (private mode, quota, etc.)
+    }
+  }, [tab]);
+
+  function goToStudent(item) {
+    setStudentsSearch(item.email);
+    setSearchInput(item.email);
+    setShowSuggestions(false);
+    setTab("students");
+  }
+
+  function submitSearch(event) {
+    event.preventDefault();
+    if (!searchInput.trim()) return;
+    setStudentsSearch(searchInput.trim());
+    setShowSuggestions(false);
+    setTab("students");
+  }
+  const copy =
+    language === "en"
+      ? {
+          dashboard: "Dashboard",
+          students: "Students",
+          invitations: "Invitations",
+          license: "My license",
+          insights: "Tracking & employability",
+          settings: "Institution settings",
+          accountSettings: "My profile",
+          logout: "Log out",
+          role: "School administrator",
+          secured: "Secured by"
+        }
+      : {
+          dashboard: "Dashboard",
+          students: "Étudiants",
+          invitations: "Invitations",
+          license: "Ma licence",
+          insights: "Suivi & employabilité",
+          settings: "Paramètres de l'établissement",
+          accountSettings: "Mon profil",
+          logout: "Déconnexion",
+          role: "Administrateur école",
+          secured: "Sécurisé par"
+        };
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setUserMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  function openAccountSettings() {
+    setAccountPanel("account");
+    setAccountDrawerOpen(true);
+    setUserMenuOpen(false);
+  }
+
+  return (
+    <div className="app-shell school-shell-root">
+      <header className="topbar">
+        <div className="brand">
+          <button
+            type="button"
+            className="topbar-menu-toggle"
+            aria-label={language === "en" ? "Toggle sidebar" : "Afficher/masquer le menu"}
+            onClick={() => setSidebarOpen((prev) => !prev)}
+          >
+            <span />
+            <span />
+            <span />
+          </button>
+          Career App <span className="admin-badge school-badge">École</span>
+        </div>
+
+        <div className="topbar-search-box" ref={searchBoxRef}>
+          <form className="topbar-search" onSubmit={submitSearch}>
+            <span className="topbar-search-icon" aria-hidden="true" />
+            <input
+              value={searchInput}
+              onChange={(event) => {
+                setSearchInput(event.target.value);
+                setShowSuggestions(true);
+              }}
+              onFocus={() => setShowSuggestions(true)}
+              placeholder={searchCopy.placeholder}
+            />
+          </form>
+          {showSuggestions && searchSuggestions.length ? (
+            <div className="topbar-suggestions">
+              {searchSuggestions.map((item) => (
+                <button type="button" key={item.id} className="topbar-suggestion-row" onClick={() => goToStudent(item)}>
+                  <AvatarCircle user={item} />
+                  <div>
+                    <strong>
+                      {item.firstName} {item.lastName}
+                    </strong>
+                    <span className="muted">{item.email}</span>
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="topbar-user" ref={userMenuRef}>
+          <button type="button" className="topbar-icon-btn" title={copy.insights} onClick={() => setTab("insights")}>
+            <UiIcon name="history" />
+          </button>
+          <button
+            type="button"
+            className="topbar-icon-btn"
+            title={copy.invitations}
+            onClick={() => setTab("invitations")}
+          >
+            <UiIcon name="mail" />
+          </button>
+          <LanguageSwitch language={language} setLanguage={setLanguage} compact />
+          <button className="user-menu-trigger" onClick={() => setUserMenuOpen((prev) => !prev)}>
+            <AvatarCircle user={user} />
+            <div className="topbar-user-meta">
+              <strong>
+                {user.firstName} {user.lastName}
+              </strong>
+              <span>{copy.role}</span>
+            </div>
+            <span className="menu-caret">▾</span>
+          </button>
+
+          {userMenuOpen ? (
+            <div className="user-dropdown">
+              <div className="user-dropdown-head">
+                <AvatarCircle user={user} />
+                <div>
+                  <strong>
+                    {user.firstName} {user.lastName}
+                  </strong>
+                  <span>{user.username || user.email.split("@")[0]}</span>
+                </div>
+              </div>
+              <button onClick={openAccountSettings}>
+                <span className="dropdown-icon">
+                  <UiIcon name="profile" />
+                </span>
+                {copy.accountSettings}
+              </button>
+              <button onClick={onLogout}>
+                <span className="dropdown-icon danger">
+                  <UiIcon name="logout" />
+                </span>
+                {copy.logout}
+              </button>
+              <div className="user-dropdown-secured">
+                {copy.secured} <strong>Career App</strong>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </header>
+
+      <div className="admin-body">
+        <aside className={`admin-sidebar-vertical ${sidebarOpen ? "" : "collapsed"}`}>
+          <nav className="admin-sidebar-nav">
+            <span className="admin-sidebar-section-label">MENU</span>
+            {SCHOOL_MODULE_DEFS.map((item) => (
+              <button key={item.id} type="button" className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>
+                <UiIcon name={item.icon} /> {copy[item.id]}
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <main className="main-wrap admin-main">
+          <nav className="admin-breadcrumb" aria-label="Breadcrumb">
+            <span>{language === "en" ? "Home" : "Accueil"}</span>
+            <UiIcon name="chevron" className="admin-breadcrumb-sep" />
+            <span className="active">{copy[tab]}</span>
+          </nav>
+
+          {tab === "dashboard" ? <SchoolDashboardPage user={user} language={language} /> : null}
+          {tab === "students" ? (
+            <SchoolStudentsPage user={user} language={language} initialSearch={studentsSearch} />
+          ) : null}
+          {tab === "invitations" ? <SchoolInvitationsPage user={user} language={language} /> : null}
+          {tab === "license" ? <SchoolLicensePage user={user} language={language} currency={currency} /> : null}
+          {tab === "insights" ? <SchoolInsightsPage user={user} language={language} /> : null}
+        </main>
+      </div>
+
+      <ConnectedFooter copy={landingCopy} />
+
+      {accountDrawerOpen ? (
+        <AccountDrawer
+          user={user}
+          language={language}
+          setLanguage={setLanguage}
+          currency={currency}
+          setCurrency={setCurrency}
+          theme={theme}
+          setTheme={setTheme}
+          mode={mode}
+          setMode={setMode}
+          density={density}
+          setDensity={setDensity}
+          activePanel={accountPanel}
+          setActivePanel={setAccountPanel}
+          onClose={() => setAccountDrawerOpen(false)}
+          onSaveAccount={onSaveAccount}
+          onAvatarUpload={onAvatarUpload}
+          avatarUploading={avatarUploading}
+          onRequestSecondaryEmail={onRequestSecondaryEmail}
+          onVerifySecondaryEmail={onVerifySecondaryEmail}
+          onSetPrimaryEmail={onSetPrimaryEmail}
+          onRemoveEmail={onRemoveEmail}
+          onRemoveConnectedAccount={onRemoveConnectedAccount}
+          onLinkGoogleAccount={onLinkGoogleAccount}
+          securityForm={securityForm}
+          setSecurityForm={setSecurityForm}
+          securitySaving={securitySaving}
+          onSubmitPassword={onSubmitPassword}
+          onDeleteAccount={onDeleteAccount}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function AdminKpiCard({ tone, icon, value, label }) {
+  return (
+    <div className={`admin-kpi-card tone-${tone}`}>
+      <span className="admin-kpi-icon">
+        <UiIcon name={icon} />
+      </span>
+      <span className="admin-kpi-value">{value}</span>
+      <span className="admin-kpi-label">{label}</span>
+    </div>
+  );
+}
+
+function SchoolDashboardPage({ user, language }) {
+  const [overview, setOverview] = useState(null);
+  const [recentStudents, setRecentStudents] = useState(null);
+  const [error, setError] = useState("");
+  const copy =
+    language === "en"
+      ? {
+          title: "Dashboard",
+          subtitle: "Real-time indicators for your students on Career App.",
+          students: "Associated students",
+          seats: "Seats used",
+          activation: "Activation rate",
+          cvs: "CVs imported",
+          matches: "Matches run",
+          avgScore: "Average match score",
+          inactive: "Inactive 30+ days",
+          trend: "New students — last 8 weeks",
+          noScore: "No data yet",
+          recentStudents: "Recently joined",
+          noStudents: "No student linked to your license yet.",
+          joinedOn: "Joined",
+          activityBreakdown: "Activity breakdown",
+          activeLabel: "Active (30d)",
+          inactiveLabel: "Inactive"
+        }
+      : {
+          title: "Dashboard",
+          subtitle: "Indicateurs en temps réel de vos étudiants sur Career App.",
+          students: "Étudiants associés",
+          seats: "Sièges utilisés",
+          activation: "Taux d'activation",
+          cvs: "CV importés",
+          matches: "Analyses réalisées",
+          avgScore: "Score de matching moyen",
+          inactive: "Inactifs depuis 30j+",
+          trend: "Nouveaux étudiants — 8 dernières semaines",
+          noScore: "Pas encore de données",
+          recentStudents: "Derniers inscrits",
+          noStudents: "Aucun étudiant rattaché à votre licence pour l'instant.",
+          joinedOn: "Inscrit le",
+          activityBreakdown: "Répartition de l'activité",
+          activeLabel: "Actifs (30j)",
+          inactiveLabel: "Inactifs"
+        };
+
+  useEffect(() => {
+    getSchoolOverview(user.id)
+      .then(setOverview)
+      .catch((err) => setError(err.message));
+    getSchoolStudents(user.id)
+      .then((items) =>
+        setRecentStudents([...items].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5))
+      )
+      .catch(() => setRecentStudents([]));
+  }, [user.id]);
+
+  if (error) return <p className="field-error">{error}</p>;
+  if (!overview) return <p className="muted">…</p>;
+
+  return (
+    <section className="admin-dashboard">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <div className="admin-kpi-grid">
+        <AdminKpiCard tone="primary" icon="profile" value={overview.totalStudents} label={copy.students} />
+        <AdminKpiCard
+          tone="warning"
+          icon="save"
+          value={`${overview.seatsUsed}/${overview.seatsTotal}`}
+          label={copy.seats}
+        />
+        <AdminKpiCard tone="success" icon="spark" value={`${overview.activationRate}%`} label={copy.activation} />
+        <AdminKpiCard tone="primary" icon="upload" value={overview.totalCvs} label={copy.cvs} />
+        <AdminKpiCard tone="warning" icon="chart" value={overview.totalMatchRuns} label={copy.matches} />
+        <AdminKpiCard
+          tone="success"
+          icon="scale"
+          value={overview.avgScore != null ? `${overview.avgScore}%` : "—"}
+          label={copy.avgScore}
+        />
+        <AdminKpiCard tone="danger" icon="alert" value={overview.inactiveStudents} label={copy.inactive} />
+      </div>
+
+      <div className="admin-panel-grid">
+        <div className="admin-panel admin-trend-panel">
+          <h3>{copy.trend}</h3>
+          <AdminTrendChart trend={overview.signupsTrend} language={language} />
+        </div>
+
+        <div className="admin-panel admin-trend-panel">
+          <h3>{copy.recentStudents}</h3>
+          {recentStudents?.length ? (
+            <div className="admin-recent-activity">
+              {recentStudents.map((student) => (
+                <div key={student.id} className="admin-recent-activity-row">
+                  <AvatarCircle user={student} />
+                  <div>
+                    <strong>
+                      {student.firstName} {student.lastName}
+                    </strong>
+                    <span className="muted">{student.email}</span>
+                  </div>
+                  <span className="admin-recent-activity-time">
+                    {copy.joinedOn} {formatDate(student.createdAt)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : recentStudents ? (
+            <p className="muted">{copy.noStudents}</p>
+          ) : (
+            <p className="muted">…</p>
+          )}
+        </div>
+
+        <div className="admin-panel admin-trend-panel">
+          <h3>{copy.activityBreakdown}</h3>
+          <AdminDonutChart
+            segments={[
+              {
+                label: copy.activeLabel,
+                value: overview.totalStudents - overview.inactiveStudents,
+                color: "var(--success)"
+              },
+              { label: copy.inactiveLabel, value: overview.inactiveStudents, color: "var(--danger)" }
+            ]}
+            emptyLabel={copy.noStudents}
+          />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SchoolStudentsPage({ user, language, initialSearch }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Students",
+          subtitle: "Students linked to your school's license.",
+          search: "Search by name or email…",
+          colName: "Name",
+          colJoined: "Joined on",
+          colActivity: "Last activity",
+          colScore: "Latest score",
+          colStatus: "Status",
+          colActions: "Actions",
+          active: "Active",
+          inactive: "Inactive",
+          never: "No activity yet",
+          remove: "Remove",
+          removeTitle: "Remove this student",
+          removeWarning: "This frees up a seat on your license. The student switches back to the free plan and keeps their data.",
+          removeConfirm: "Remove",
+          cancel: "Cancel",
+          empty: "No student found."
+        }
+      : {
+          title: "Étudiants",
+          subtitle: "Étudiants rattachés à la licence de votre établissement.",
+          search: "Rechercher par nom ou email…",
+          colName: "Nom",
+          colJoined: "Inscrit le",
+          colActivity: "Dernière activité",
+          colScore: "Dernier score",
+          colStatus: "Statut",
+          colActions: "Actions",
+          active: "Actif",
+          inactive: "Inactif",
+          never: "Aucune activité",
+          remove: "Retirer",
+          removeTitle: "Retirer cet étudiant",
+          removeWarning: "Cela libère un siège sur votre licence. L'étudiant repasse au plan gratuit et conserve ses données.",
+          removeConfirm: "Retirer",
+          cancel: "Annuler",
+          empty: "Aucun étudiant trouvé."
+        };
+
+  const [students, setStudents] = useState([]);
+  const [search, setSearch] = useState(initialSearch || "");
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (initialSearch) setSearch(initialSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSearch]);
+
+  function reload() {
+    getSchoolStudents(user.id, { search })
+      .then(setStudents)
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(() => {
+    setPage(1);
+    setError("");
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  const totalPages = Math.max(1, Math.ceil(students.length / ADMIN_PAGE_SIZE));
+  const pagedStudents = students.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+
+  async function handleRemove(student) {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: copy.removeTitle,
+      html: `<p style="text-align:left;margin-bottom:0.6rem;">${copy.removeWarning}</p><p style="text-align:left;font-weight:700;">${student.firstName} ${student.lastName} · ${student.email}</p>`,
+      showCancelButton: true,
+      confirmButtonText: copy.removeConfirm,
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#b91c1c",
+      focusCancel: true
+    });
+
+    if (!result.isConfirmed) return;
+
+    try {
+      await removeSchoolStudent(user.id, student.id);
+      reload();
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: language === "en" ? "Student removed." : "Étudiant retiré.",
+        showConfirmButton: false,
+        timer: 2800,
+        timerProgressBar: true,
+        customClass: { popup: "career-toast", title: "career-toast-title" }
+      });
+    } catch (err) {
+      Swal.fire({ icon: "error", title: err.message });
+    }
+  }
+
+  return (
+    <section className="admin-accounts">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <div className="admin-table-toolbar">
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
+      </div>
+
+      {error ? <p className="field-error">{error}</p> : null}
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{copy.colName}</th>
+              <th>{copy.colJoined}</th>
+              <th>{copy.colActivity}</th>
+              <th>{copy.colScore}</th>
+              <th>{copy.colStatus}</th>
+              <th>{copy.colActions}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pagedStudents.length ? (
+              pagedStudents.map((student) => (
+                <tr key={student.id}>
+                  <td>
+                    <div className="admin-table-name">
+                      <AvatarCircle user={student} />
+                      <div>
+                        <strong>
+                          {student.firstName} {student.lastName}
+                        </strong>
+                        <span className="muted">{student.email}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="muted">{formatDate(student.createdAt)}</td>
+                  <td className="muted">{student.lastActivity ? formatDate(student.lastActivity) : copy.never}</td>
+                  <td>
+                    {student.latestScore != null ? (
+                      <span className="tag">{student.latestScore}%</span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`tag ${student.active ? "tag-success" : ""}`}>
+                      {student.active ? copy.active : copy.inactive}
+                    </span>
+                  </td>
+                  <td>
+                    <div className="admin-row-actions">
+                      <button type="button" className="admin-row-action danger" onClick={() => handleRemove(student)}>
+                        <UiIcon name="alert" /> {copy.remove}
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="admin-table-empty muted">
+                  {copy.empty}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={students.length} />
+    </section>
+  );
+}
+
+function SchoolInvitationsPage({ user, language }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Invitations",
+          subtitle: "Invite a student by email — a license seat is reserved automatically.",
+          emailLabel: "Student email",
+          send: "Send invitation",
+          sending: "Sending…",
+          colEmail: "Email",
+          colCode: "License code",
+          colStatus: "Status",
+          colSent: "Sent on",
+          statusPending: "Pending",
+          statusRedeemed: "Accepted",
+          empty: "No invitation sent yet."
+        }
+      : {
+          title: "Invitations",
+          subtitle: "Invitez un étudiant par email — un siège de licence est réservé automatiquement.",
+          emailLabel: "Email de l'étudiant",
+          send: "Envoyer l'invitation",
+          sending: "Envoi…",
+          colEmail: "Email",
+          colCode: "Code de licence",
+          colStatus: "Statut",
+          colSent: "Envoyée le",
+          statusPending: "En attente",
+          statusRedeemed: "Acceptée",
+          empty: "Aucune invitation envoyée pour l'instant."
+        };
+
+  const [email, setEmail] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [invitations, setInvitations] = useState([]);
+
+  function reload() {
+    getSchoolInvitations(user.id)
+      .then(setInvitations)
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(() => {
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setSending(true);
+    try {
+      await sendSchoolInvitation(user.id, email);
+      setMessage(language === "en" ? "Invitation sent." : "Invitation envoyée.");
+      setEmail("");
+      reload();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="admin-accounts">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <form className="admin-inline-form" onSubmit={submit}>
+        <input
+          type="email"
+          value={email}
+          onChange={(event) => setEmail(event.target.value)}
+          placeholder={copy.emailLabel}
+          required
+        />
+        <button type="submit" className="btn-main ready" disabled={sending}>
+          {sending ? <span className="btn-spinner" /> : null} {sending ? copy.sending : copy.send}
+        </button>
+      </form>
+
+      {error ? <p className="field-error">{error}</p> : null}
+      {message ? <p className="field-hint success">{message}</p> : null}
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{copy.colEmail}</th>
+              <th>{copy.colCode}</th>
+              <th>{copy.colStatus}</th>
+              <th>{copy.colSent}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {invitations.length ? (
+              invitations.map((invite) => (
+                <tr key={invite.id}>
+                  <td>{invite.email}</td>
+                  <td className="admin-license-code">{invite.licenseCode}</td>
+                  <td>
+                    <span className={`tag ${invite.status === "redeemed" ? "tag-success" : ""}`}>
+                      {invite.status === "redeemed" ? copy.statusRedeemed : copy.statusPending}
+                    </span>
+                  </td>
+                  <td className="muted">{formatDate(invite.createdAt)}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={4} className="admin-table-empty muted">
+                  {copy.empty}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function maskLicenseCode(code) {
+  if (!code) return code;
+  const parts = code.split("-");
+  if (parts.length < 3) return code.replace(/[A-Z0-9]/g, "•");
+  return `${parts[0]}-••••-${parts[parts.length - 1]}`;
+}
+
+function SchoolLicenseCard({ item, language, currency, copy }) {
+  const [copied, setCopied] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const pct = item.seatsTotal ? Math.min(100, Math.round((item.seatsUsed / item.seatsTotal) * 100)) : 0;
+  const remaining = Math.max(0, Number(item.seatsTotal || 0) - Number(item.seatsUsed || 0));
+
+  function handleCopy() {
+    navigator.clipboard?.writeText(item.code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1800);
+  }
+
+  return (
+    <div className="school-license-card">
+      <div className="school-license-card-top">
+        <span className="school-license-plan-icon">
+          <UiIcon name="save" />
+        </span>
+        <div className="school-license-plan-meta">
+          <strong>{getPlanById(item.planId)?.name?.[language] || item.planId}</strong>
+          <span className="muted">
+            {copy.created} {formatDate(item.createdAt)}
+          </span>
+        </div>
+        <span className={`tag ${item.revoked ? "tag-danger" : "tag-success"}`}>
+          {item.revoked ? copy.revoked : copy.active}
+        </span>
+      </div>
+
+      <div className="school-license-code-row">
+        <span className="school-license-code-pill">{revealed ? item.code : maskLicenseCode(item.code)}</span>
+        <button
+          type="button"
+          className="school-license-reveal-btn"
+          onClick={() => setRevealed((prev) => !prev)}
+          aria-label={revealed ? copy.hide : copy.reveal}
+          title={revealed ? copy.hide : copy.reveal}
+        >
+          <UiIcon name="eye" />
+        </button>
+        <button type="button" className="school-license-copy-btn" onClick={handleCopy}>
+          {copied ? copy.copied : copy.copy}
+        </button>
+      </div>
+
+      <div className="school-license-progress">
+        <div className="school-license-progress-head">
+          <span>{copy.seats}</span>
+          <strong>
+            {item.seatsUsed}/{item.seatsTotal}
+          </strong>
+        </div>
+        <div className="school-license-bar">
+          <div className="school-license-bar-fill" style={{ width: `${pct}%` }} />
+        </div>
+        <span className="school-license-remaining">
+          {pct}% · {remaining} {copy.remaining}
+        </span>
+      </div>
+
+      <div className="school-license-price">
+        <span className="muted">{copy.plan}</span>
+        <strong>{planPriceLabel(item.planId, "annual", "Gratuit", currency)}</strong>
+      </div>
+    </div>
+  );
+}
+
+function SchoolLicensePage({ user, language, currency }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "My license",
+          subtitle: "Seats granted by Career App for your institution.",
+          seats: "Seats used",
+          plan: "Plan",
+          created: "Issued on",
+          active: "Active",
+          revoked: "Revoked",
+          copy: "Copy code",
+          copied: "Copied!",
+          reveal: "Show code",
+          hide: "Hide code",
+          remaining: "seats left",
+          emptyTitle: "No license code yet",
+          empty: "Contact Career App to get a license for your institution."
+        }
+      : {
+          title: "Ma licence",
+          subtitle: "Sièges accordés par Career App pour votre établissement.",
+          seats: "Sièges utilisés",
+          plan: "Plan",
+          created: "Émise le",
+          active: "Active",
+          revoked: "Révoquée",
+          copy: "Copier le code",
+          copied: "Copié !",
+          reveal: "Afficher le code",
+          hide: "Masquer le code",
+          remaining: "sièges restants",
+          emptyTitle: "Aucun code de licence",
+          empty: "Contactez Career App pour obtenir une licence pour votre établissement."
+        };
+
+  const [codes, setCodes] = useState([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getSchoolLicense(user.id)
+      .then(setCodes)
+      .catch((err) => setError(err.message));
+  }, [user.id]);
+
+  if (error) return <p className="field-error">{error}</p>;
+
+  return (
+    <section className="admin-accounts">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      {codes.length ? (
+        <div className="school-license-grid">
+          {codes.map((item) => (
+            <SchoolLicenseCard key={item.code} item={item} language={language} currency={currency} copy={copy} />
+          ))}
+        </div>
+      ) : (
+        <SchoolEmptyState icon="save" title={copy.emptyTitle} hint={copy.empty} />
+      )}
+    </section>
+  );
+}
+
+function SchoolEmptyState({ icon, title, hint }) {
+  return (
+    <div className="school-empty-state">
+      <span className="school-empty-icon">
+        <UiIcon name={icon} />
+      </span>
+      <strong>{title}</strong>
+      <p>{hint}</p>
+    </div>
+  );
+}
+
+function SchoolInsightsPage({ user, language }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Tracking & employability",
+          subtitle: "Aggregated view of your students' match performance.",
+          distribution: "Score distribution",
+          missing: "Most common missing keywords",
+          ranking: "Student ranking by score",
+          emptyDistribution: "No score data yet",
+          emptyDistributionHint: "This chart fills in as soon as your students run their first CV/offer matches.",
+          emptyMissing: "No missing keywords yet",
+          emptyMissingHint: "Recurring skill gaps across your students will show up here.",
+          emptyRanking: "No ranking yet",
+          emptyRankingHint: "Once students have a match score, they'll appear here ranked from best to worst fit."
+        }
+      : {
+          title: "Suivi & employabilité",
+          subtitle: "Vue agrégée de la performance de matching de vos étudiants.",
+          distribution: "Répartition des scores",
+          missing: "Mots-clés manquants les plus fréquents",
+          ranking: "Classement des étudiants par score",
+          emptyDistribution: "Pas encore de score",
+          emptyDistributionHint: "Ce graphique se remplit dès que vos étudiants lancent leurs premières analyses CV/offre.",
+          emptyMissing: "Pas encore de mots-clés",
+          emptyMissingHint: "Les manques récurrents de compétences chez vos étudiants apparaîtront ici.",
+          emptyRanking: "Pas encore de classement",
+          emptyRankingHint: "Dès qu'un étudiant obtient un score de matching, il apparaît ici classé du meilleur au moins bon."
+        };
+
+  const [insights, setInsights] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getSchoolInsights(user.id)
+      .then(setInsights)
+      .catch((err) => setError(err.message));
+  }, [user.id]);
+
+  if (error) return <p className="field-error">{error}</p>;
+  if (!insights) return <p className="muted">…</p>;
+
+  const bucketEntries = Object.entries(insights.scoreBuckets || {});
+  const maxBucket = Math.max(1, ...bucketEntries.map(([, count]) => count));
+  const hasData = bucketEntries.some(([, count]) => count > 0);
+
+  return (
+    <section className="admin-dashboard">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <div className="admin-panel school-insight-panel">
+        <h3>
+          <span className="school-panel-icon">
+            <UiIcon name="chart" />
+          </span>
+          {copy.distribution}
+        </h3>
+        {hasData ? (
+          <div className="admin-trend-chart school-score-chart">
+            {bucketEntries.map(([label, count]) => (
+              <div key={label} className="admin-trend-bar-col">
+                <div className="admin-trend-bar-track">
+                  <div className="admin-trend-bar" style={{ height: `${Math.max(4, (count / maxBucket) * 100)}%` }}>
+                    {count > 0 ? <span>{count}</span> : null}
+                  </div>
+                </div>
+                <span className="admin-trend-label">{label}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <SchoolEmptyState icon="chart" title={copy.emptyDistribution} hint={copy.emptyDistributionHint} />
+        )}
+      </div>
+
+      <div className="admin-panel-grid">
+        <div className="admin-panel school-insight-panel">
+          <h3>
+            <span className="school-panel-icon">
+              <UiIcon name="network" />
+            </span>
+            {copy.missing}
+          </h3>
+          {insights.topMissingKeywords?.length ? (
+            <div className="admin-permission-tags">
+              {insights.topMissingKeywords.map((item) => (
+                <span key={item.keyword} className="tag">
+                  {item.keyword} · {item.count}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <SchoolEmptyState icon="network" title={copy.emptyMissing} hint={copy.emptyMissingHint} />
+          )}
+        </div>
+
+        <div className="admin-panel school-insight-panel">
+          <h3>
+            <span className="school-panel-icon">
+              <UiIcon name="profile" />
+            </span>
+            {copy.ranking}
+          </h3>
+          {insights.ranking?.length ? (
+            <div className="school-ranking-list">
+              {insights.ranking.slice(0, 10).map((student, index) => (
+                <div key={student.id} className="school-ranking-row">
+                  <span className={`school-ranking-index ${index < 3 ? "top" : ""}`}>{index + 1}</span>
+                  <AvatarCircle user={student} />
+                  <div>
+                    <strong>
+                      {student.firstName} {student.lastName}
+                    </strong>
+                    <span className="muted">{student.email}</span>
+                  </div>
+                  <span className="tag tag-success">{student.score}%</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <SchoolEmptyState icon="profile" title={copy.emptyRanking} hint={copy.emptyRankingHint} />
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+const ADMIN_DASHBOARD_ROLES = [
+  { id: "student", icon: "profile", color: "#2f5bff" },
+  { id: "school", icon: "shield", color: "#0e9f6e" },
+  { id: "recruiter_firm", icon: "briefcase", color: "#d97706" }
+];
+
+function AdminTrendChart({ trend, language, valueKey = "count", formatValue }) {
+  if (!trend?.length) return null;
+  const max = Math.max(1, ...trend.map((point) => point[valueKey]));
+  const weekFormatter = new Intl.DateTimeFormat(language === "en" ? "en-US" : "fr-FR", {
+    day: "2-digit",
+    month: "2-digit"
+  });
+  const display = formatValue || ((value) => value);
+
+  return (
+    <div className="admin-trend-chart">
+      {trend.map((point) => (
+        <div key={point.weekStart} className="admin-trend-bar-col">
+          <div className="admin-trend-bar-track">
+            <div
+              className="admin-trend-bar"
+              style={{ height: `${Math.max(4, (point[valueKey] / max) * 100)}%` }}
+              title={`${display(point[valueKey])}`}
+            >
+              {point[valueKey] > 0 ? <span>{display(point[valueKey])}</span> : null}
+            </div>
+          </div>
+          <span className="admin-trend-label">{weekFormatter.format(new Date(point.weekStart))}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function AdminDonutChart({ segments, emptyLabel }) {
+  const total = segments.reduce((sum, seg) => sum + seg.value, 0);
+  if (!total) return <p className="muted">{emptyLabel}</p>;
+
+  let cumulative = 0;
+  const stops = segments
+    .filter((seg) => seg.value > 0)
+    .map((seg) => {
+      const start = (cumulative / total) * 360;
+      cumulative += seg.value;
+      const end = (cumulative / total) * 360;
+      return `${seg.color} ${start}deg ${end}deg`;
+    })
+    .join(", ");
+
+  return (
+    <div className="admin-donut-wrap">
+      <div className="admin-donut" style={{ background: `conic-gradient(${stops})` }}>
+        <div className="admin-donut-hole">
+          <strong>{total}</strong>
+        </div>
+      </div>
+      <div className="admin-donut-legend">
+        {segments
+          .filter((seg) => seg.value > 0)
+          .map((seg) => (
+            <div key={seg.label} className="admin-donut-legend-row">
+              <span className="admin-donut-dot" style={{ background: seg.color }} />
+              <span>{seg.label}</span>
+              <strong>{seg.value}</strong>
+            </div>
+          ))}
+      </div>
+    </div>
+  );
+}
+
+function AdminDashboardPage({ user, language }) {
+  const [overview, setOverview] = useState(null);
+  const [recentActivity, setRecentActivity] = useState(null);
+  const [error, setError] = useState("");
+  const copy =
+    language === "en"
+      ? {
+          title: "Dashboard",
+          subtitle: "Real-time indicators across the platform.",
+          byRole: "Accounts by role",
+          cvs: "CVs imported",
+          matches: "Matches run",
+          signups: "Signups (last 30 days)",
+          plans: "Active plans",
+          trend: "New signups — last 8 weeks",
+          noPlan: "No active plan",
+          recentActivity: "Recent activity",
+          noActivity: "No activity recorded yet.",
+          planDistribution: "Active plans breakdown",
+          noPlanData: "No active plan yet."
+        }
+      : {
+          title: "Dashboard",
+          subtitle: "Indicateurs en temps réel de la plateforme.",
+          byRole: "Comptes par rôle",
+          cvs: "CV importés",
+          matches: "Analyses réalisées",
+          signups: "Inscriptions (30 derniers jours)",
+          plans: "Plans actifs",
+          trend: "Nouvelles inscriptions — 8 dernières semaines",
+          noPlan: "Aucun plan actif",
+          recentActivity: "Activité récente",
+          noActivity: "Aucune activité enregistrée pour l'instant.",
+          planDistribution: "Répartition des plans actifs",
+          noPlanData: "Aucun plan actif pour l'instant."
+        };
+
+  const DONUT_COLORS = [
+    "var(--primary)",
+    "var(--success)",
+    "var(--warning)",
+    "var(--danger)",
+    "var(--primary-2)"
+  ];
+
+  useEffect(() => {
+    getAdminOverview(user.id)
+      .then(setOverview)
+      .catch((err) => setError(err.message));
+    getAdminActivityLog(user.id)
+      .then((data) => setRecentActivity(data.items.slice(0, 5)))
+      .catch(() => setRecentActivity([]));
+  }, [user.id]);
+
+  if (error) return <p className="field-error">{error}</p>;
+  if (!overview) return <p className="muted">…</p>;
+
+  const planEntries = Object.entries(overview.planCounts || {});
+  const planSegments = planEntries.map(([planId, count], index) => ({
+    label: getPlanById(planId)?.name?.[language] || planId,
+    value: count,
+    color: DONUT_COLORS[index % DONUT_COLORS.length]
+  }));
+
+  return (
+    <section className="admin-dashboard">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <div className="admin-kpi-grid">
+        <AdminKpiCard tone="primary" icon="upload" value={overview.totalCvs} label={copy.cvs} />
+        <AdminKpiCard tone="warning" icon="chart" value={overview.totalMatchRuns} label={copy.matches} />
+        <AdminKpiCard tone="success" icon="spark" value={overview.signupsLast30Days} label={copy.signups} />
+      </div>
+
+      <div className="admin-panel-grid">
+        <div className="admin-panel admin-trend-panel">
+          <h3>{copy.trend}</h3>
+          <AdminTrendChart trend={overview.signupsTrend} language={language} />
+        </div>
+
+        <div className="admin-panel admin-trend-panel">
+          <h3>{copy.recentActivity}</h3>
+          {recentActivity?.length ? (
+            <div className="admin-recent-activity">
+              {recentActivity.map((event) => (
+                <div key={event.id} className="admin-recent-activity-row">
+                  <AvatarCircle user={{ firstName: event.userFirstName, lastName: event.userLastName, avatarDataUrl: event.userAvatarDataUrl }} />
+                  <div>
+                    <strong>
+                      {event.userFirstName} {event.userLastName}
+                    </strong>
+                    <span className="muted">{eventTypeLabel(event.eventType, language)}</span>
+                  </div>
+                  <span className="admin-recent-activity-time">{formatDate(event.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+          ) : recentActivity ? (
+            <p className="muted">{copy.noActivity}</p>
+          ) : (
+            <p className="muted">…</p>
+          )}
+        </div>
+
+        <div className="admin-panel admin-trend-panel">
+          <h3>{copy.planDistribution}</h3>
+          <AdminDonutChart segments={planSegments} emptyLabel={copy.noPlanData} />
+        </div>
+      </div>
+
+      <div className="admin-role-grid">
+        {ADMIN_DASHBOARD_ROLES.map((role) => {
+          const count = overview.usersByRole?.[role.id] || 0;
+          const rolePlans = Object.entries(overview.planCountsByRole?.[role.id] || {});
+          return (
+            <div key={role.id} className="admin-role-card" style={{ "--role-color": role.color }}>
+              <div className="admin-role-card-head">
+                <span className="admin-role-icon">
+                  <UiIcon name={role.icon} />
+                </span>
+                <div>
+                  <span className="admin-role-count">{count}</span>
+                  <span className="admin-role-label">{getAccountLabel(role.id, language)}</span>
+                </div>
+              </div>
+              <ul className="admin-role-plan-list">
+                {rolePlans.length ? (
+                  rolePlans.map(([planId, planCount]) => (
+                    <li key={planId}>
+                      <span>{getPlanById(planId)?.name?.[language] || getPlanById(planId)?.name?.fr || planId}</span>
+                      <strong>{planCount}</strong>
+                    </li>
+                  ))
+                ) : (
+                  <li className="muted">{copy.noPlan}</li>
+                )}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="admin-panel">
+        <h3>{copy.plans}</h3>
+        <ul className="admin-stat-list">
+          {planEntries.map(([planId, count]) => (
+            <li key={planId}>
+              <span>{getPlanById(planId)?.name?.[language] || getPlanById(planId)?.name?.fr || planId}</span>
+              <strong>{count}</strong>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
+function AdminPricingPage({ language, currency = "EUR" }) {
+  const copy =
+    language === "en"
+      ? { title: "Pricing", subtitle: "Read-only overview of the plans currently in effect." }
+      : { title: "Tarifs", subtitle: "Aperçu en lecture seule des grilles tarifaires en vigueur." };
+  const pricingCopy = APP_COPY[language]?.pricing || APP_COPY.fr.pricing;
+
+  return (
+    <section className="admin-pricing">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      {PLAN_SEGMENTS.map((segment) => (
+        <div key={segment} className="admin-pricing-segment">
+          <h3>
+            {segment === "candidate"
+              ? pricingCopy.segmentCandidate
+              : segment === "agency"
+              ? pricingCopy.segmentAgency
+              : pricingCopy.segmentSchool}
+          </h3>
+          <div className="pricing-grid admin-pricing-grid">
+            {PLANS.filter((plan) => plan.segment === segment).map((plan) => {
+              const price = formatPlanPrice(plan, "monthly", language, pricingCopy, currency);
+              return (
+                <article key={plan.id} className={`pricing-card admin-pricing-card ${plan.highlighted ? "recommended" : ""}`}>
+                  {plan.badge ? <span className="pricing-badge">{plan.badge[language] || plan.badge.fr}</span> : null}
+                  <h3>{plan.name[language] || plan.name.fr}</h3>
+                  <p className="muted">{plan.tagline[language] || plan.tagline.fr}</p>
+                  <div className="pricing-price">
+                    <strong>{price.amount}</strong>
+                    <span>{price.unit}</span>
+                  </div>
+                  <ul className="pricing-feature-list">
+                    {(plan.features[language] || plan.features.fr).map((feature) => (
+                      <li key={feature}>{feature}</li>
+                    ))}
+                  </ul>
+                </article>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+const ADMIN_ACCOUNT_SUBTABS = [
+  { id: "all", label: { fr: "Tous les comptes", en: "All accounts" } },
+  { id: "student", label: { fr: "Étudiants", en: "Students" } },
+  { id: "school", label: { fr: "Écoles", en: "Schools" } },
+  { id: "recruiter_firm", label: { fr: "Cabinets", en: "Agencies" } },
+  { id: "admin", label: { fr: "Administrateurs", en: "Administrators" } }
+];
+
+const ADMIN_PAGE_SIZE = 8;
+
+function getPaginationRange(current, total, delta = 1) {
+  const range = [];
+  for (let i = 1; i <= total; i += 1) {
+    if (i === 1 || i === total || (i >= current - delta && i <= current + delta)) {
+      range.push(i);
+    }
+  }
+  const withDots = [];
+  let last = 0;
+  for (const num of range) {
+    if (last) {
+      if (num - last === 2) withDots.push(last + 1);
+      else if (num - last > 2) withDots.push("…");
+    }
+    withDots.push(num);
+    last = num;
+  }
+  return withDots;
+}
+
+function AdminPagination({ page, totalPages, onChange, language, totalItems, pageSize = ADMIN_PAGE_SIZE }) {
+  if (totalPages <= 1) return null;
+
+  const copy =
+    language === "en"
+      ? {
+          previous: "Previous",
+          next: "Next",
+          showing: (from, to, total) => `Showing ${from} to ${to} of ${total} entries`
+        }
+      : {
+          previous: "Précédent",
+          next: "Suivant",
+          showing: (from, to, total) => `Affichage de ${from} à ${to} sur ${total} entrées`
+        };
+
+  const from = totalItems ? (page - 1) * pageSize + 1 : null;
+  const to = totalItems ? Math.min(page * pageSize, totalItems) : null;
+  const pageNumbers = getPaginationRange(page, totalPages);
+
+  return (
+    <div className="admin-pagination-bar">
+      <span className="admin-pagination-info">{totalItems ? copy.showing(from, to, totalItems) : ""}</span>
+      <div className="admin-pagination">
+        <button
+          type="button"
+          className="admin-pagination-textbtn"
+          disabled={page <= 1}
+          onClick={() => onChange(page - 1)}
+        >
+          {copy.previous}
+        </button>
+        {pageNumbers.map((num, index) =>
+          num === "…" ? (
+            <span key={`dots-${index}`} className="admin-pagination-ellipsis">
+              …
+            </span>
+          ) : (
+            <button
+              key={num}
+              type="button"
+              className={`admin-pagination-num ${num === page ? "active" : ""}`}
+              onClick={() => onChange(num)}
+            >
+              {num}
+            </button>
+          )
+        )}
+        <button
+          type="button"
+          className="admin-pagination-textbtn"
+          disabled={page >= totalPages}
+          onClick={() => onChange(page + 1)}
+        >
+          {copy.next}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function AdminOrgCard({ org, language, roleType }) {
+  const copy =
+    language === "en"
+      ? { seats: "Seats", members: "Members", noMembers: "No member linked to a license code yet.", createdOn: "Created on" }
+      : { seats: "Sièges", members: "Membres", noMembers: "Aucun membre lié à un code de licence pour l'instant.", createdOn: "Créé le" };
+
+  const totalSeats = org.licenseCodes.reduce((sum, code) => sum + Number(code.seatsTotal || 0), 0);
+  const usedSeats = org.licenseCodes.reduce((sum, code) => sum + Number(code.seatsUsed || 0), 0);
+
+  return (
+    <article className="admin-org-card">
+      <div className="admin-org-card-head">
+        <AvatarCircle user={org} />
+        <div className="admin-org-card-meta">
+          <strong>{org.organizationName || `${org.firstName} ${org.lastName}`}</strong>
+          <span className="muted">
+            {org.organizationName ? `${org.firstName} ${org.lastName} · ` : ""}
+            {org.email}
+          </span>
+        </div>
+        {org.licenseCodes.length ? (
+          <span className="tag">
+            {copy.seats}: {usedSeats}/{totalSeats}
+          </span>
+        ) : null}
+        <span className="muted admin-org-card-date">
+          {copy.createdOn} {formatDate(org.createdAt)}
+        </span>
+      </div>
+
+      <div className="admin-org-members">
+        <h4>
+          {copy.members} ({org.members.length})
+        </h4>
+        {org.members.length ? (
+          <div className="admin-org-members-list">
+            {org.members.map((member) => (
+              <div key={member.id} className="admin-org-member-row">
+                <AvatarCircle user={member} />
+                <div>
+                  <strong>
+                    {member.firstName} {member.lastName}
+                  </strong>
+                  <span className="muted">{member.email}</span>
+                </div>
+                <span className="tag">{getAccountLabel(member.roleType, language)}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="muted">{copy.noMembers}</p>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Account management",
+          subtitle: "Browse every account on the platform and create new ones.",
+          firstName: "First name",
+          lastName: "Last name",
+          email: "Email",
+          password: "Password",
+          accountType: "Account type",
+          plan: "Plan (optional)",
+          noPlan: "No plan",
+          create: "Create account",
+          creating: "Creating…",
+          addAccount: "Create an account",
+          search: "Search by name or email…",
+          createdOn: "Created on",
+          colName: "Name",
+          colRole: "Role",
+          colPlan: "Plan",
+          colPrice: "Price",
+          colCreated: "Created on",
+          colActions: "Actions",
+          empty: "No account found.",
+          schoolOrgName: "School name",
+          agencyOrgName: "Agency name",
+          website: "Website (optional)",
+          studentSchool: "School / institution (optional)",
+          edit: "Edit",
+          delete: "Delete",
+          editTitle: "Edit account",
+          save: "Save changes",
+          saving: "Saving…",
+          deleteTitle: "Delete this account",
+          deleteWarning:
+            "This will permanently delete the account and all its data (CVs, match history, license codes). This cannot be undone.",
+          deleteConfirmLabel: "Type the account's email to confirm",
+          deleteConfirm: "Delete permanently",
+          cancel: "Cancel",
+          free: "Free",
+          adminModulesLabel: "Visible modules",
+          adminModulesHint: "Leave everything checked for full access.",
+          colPermissions: "Permissions",
+          fullAccess: "Full access"
+        }
+      : {
+          title: "Gestion de compte",
+          subtitle: "Consulte tous les comptes de la plateforme et crée-en de nouveaux.",
+          firstName: "Prénom",
+          lastName: "Nom",
+          email: "Email",
+          password: "Mot de passe",
+          accountType: "Type de compte",
+          plan: "Plan (optionnel)",
+          noPlan: "Aucun plan",
+          create: "Créer le compte",
+          creating: "Création…",
+          addAccount: "Créer un compte",
+          search: "Rechercher par nom ou email…",
+          createdOn: "Créé le",
+          colName: "Nom",
+          colRole: "Rôle",
+          colPlan: "Plan",
+          colPrice: "Tarif",
+          colCreated: "Créé le",
+          colActions: "Actions",
+          schoolOrgName: "Nom de l'école",
+          agencyOrgName: "Nom du cabinet",
+          website: "Site web (optionnel)",
+          studentSchool: "École / établissement (optionnel)",
+          empty: "Aucun compte trouvé.",
+          edit: "Modifier",
+          delete: "Supprimer",
+          editTitle: "Modifier le compte",
+          save: "Enregistrer",
+          saving: "Enregistrement…",
+          deleteTitle: "Supprimer ce compte",
+          deleteWarning:
+            "Cela supprime définitivement le compte et toutes ses données (CV, historique de matching, codes de licence). Action irréversible.",
+          deleteConfirmLabel: "Tape l'email du compte pour confirmer",
+          deleteConfirm: "Supprimer définitivement",
+          cancel: "Annuler",
+          free: "Gratuit",
+          adminModulesLabel: "Modules visibles",
+          adminModulesHint: "Laisse tout coché pour un accès complet.",
+          colPermissions: "Permissions",
+          fullAccess: "Accès complet"
+        };
+
+  const [subTab, setSubTab] = useState("all");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [form, setForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    password: "",
+    accountType: "student",
+    planId: "",
+    billingCycle: "monthly",
+    organizationName: "",
+    schoolName: "",
+    website: "",
+    adminModules: []
+  });
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+  const [users, setUsers] = useState([]);
+  const [orgAccounts, setOrgAccounts] = useState([]);
+  const [search, setSearch] = useState(initialSearch || "");
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    if (initialSearch) setSearch(initialSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSearch]);
+  const [editTarget, setEditTarget] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState("");
+
+  const isOrgTab = subTab === "school" || subTab === "recruiter_firm";
+  const selectedSegment = ADMIN_ACCOUNT_TYPES.find((item) => item.id === form.accountType)?.segment;
+  const availablePlans = PLANS.filter((plan) => plan.segment === selectedSegment);
+  const editSegment = editForm ? ADMIN_ACCOUNT_TYPES.find((item) => item.id === editForm.accountType)?.segment : null;
+  const editAvailablePlans = PLANS.filter((plan) => plan.segment === editSegment);
+
+  function reload() {
+    if (isOrgTab) loadOrgAccounts();
+    else loadUsers();
+  }
+
+  function openEdit(item) {
+    setEditTarget(item);
+    setEditError("");
+    setEditForm({
+      firstName: item.firstName,
+      lastName: item.lastName,
+      accountType: item.roleType,
+      planId: item.planId || "",
+      billingCycle: item.billingCycle || "monthly",
+      organizationName: item.organizationName || "",
+      website: item.website || "",
+      adminModules: item.adminModules || []
+    });
+  }
+
+  function toggleAdminModule(setter, moduleId) {
+    setter((prev) => {
+      const allIds = ADMIN_MODULE_DEFS.map((item) => item.id);
+      const current = Array.isArray(prev.adminModules) && prev.adminModules.length ? prev.adminModules : allIds;
+      const next = current.includes(moduleId) ? current.filter((id) => id !== moduleId) : [...current, moduleId];
+      return { ...prev, adminModules: next.length === allIds.length ? [] : next };
+    });
+  }
+
+  async function submitEdit(event) {
+    event.preventDefault();
+    setEditError("");
+    setEditSaving(true);
+    try {
+      await updateAdminUser({
+        adminUserId: user.id,
+        userId: editTarget.id,
+        firstName: editForm.firstName,
+        lastName: editForm.lastName,
+        organizationName: editForm.organizationName,
+        website: editForm.website,
+        planId: editForm.planId || null,
+        billingCycle: editForm.billingCycle,
+        adminModules: editForm.adminModules || []
+      });
+      setEditTarget(null);
+      reload();
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function openDelete(item) {
+    const { value: confirmationEmail } = await Swal.fire({
+      icon: "warning",
+      title: copy.deleteTitle,
+      html: `<p style="text-align:left;margin-bottom:0.6rem;">${copy.deleteWarning}</p><p style="text-align:left;font-weight:700;">${item.firstName} ${item.lastName} · ${item.email}</p>`,
+      input: "text",
+      inputPlaceholder: item.email,
+      inputLabel: copy.deleteConfirmLabel,
+      showCancelButton: true,
+      confirmButtonText: copy.deleteConfirm,
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#b91c1c",
+      focusCancel: true,
+      preConfirm: (value) => {
+        if (value !== item.email) {
+          Swal.showValidationMessage(copy.deleteConfirmLabel);
+          return false;
+        }
+        return value;
+      }
+    });
+
+    if (!confirmationEmail) return;
+
+    try {
+      await deleteAdminUser({ adminUserId: user.id, userId: item.id, confirmation: confirmationEmail });
+      reload();
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: language === "en" ? "Account deleted." : "Compte supprimé.",
+        showConfirmButton: false,
+        timer: 2800,
+        timerProgressBar: true,
+        customClass: { popup: "career-toast", title: "career-toast-title" }
+      });
+    } catch (err) {
+      Swal.fire({ icon: "error", title: err.message });
+    }
+  }
+
+  function loadUsers() {
+    listAdminUsers(user.id, { search, roleType: subTab === "all" ? "" : subTab })
+      .then(setUsers)
+      .catch((err) => setError(err.message));
+  }
+
+  function loadOrgAccounts() {
+    getAdminOrgAccounts(user.id, subTab)
+      .then(setOrgAccounts)
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(() => {
+    setPage(1);
+    setError("");
+    if (isOrgTab) {
+      loadOrgAccounts();
+    } else {
+      loadUsers();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subTab, search]);
+
+  const totalPages = Math.max(1, Math.ceil(users.length / ADMIN_PAGE_SIZE));
+  const pagedUsers = users.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+
+  function updateField(key, value) {
+    setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setCreating(true);
+    try {
+      const result = await createAdminUser({
+        adminUserId: user.id,
+        firstName: form.firstName,
+        lastName: form.lastName,
+        email: form.email,
+        password: form.password,
+        accountType: form.accountType,
+        planId: form.planId || null,
+        billingCycle: form.billingCycle,
+        organizationName: form.organizationName,
+        schoolName: form.schoolName,
+        website: form.website,
+        adminModules: form.accountType === "admin" ? form.adminModules : undefined
+      });
+      setMessage(
+        result.licenseCode
+          ? language === "en"
+            ? `Account created. License code: ${result.licenseCode}`
+            : `Compte créé. Code de licence : ${result.licenseCode}`
+          : language === "en"
+          ? "Account created."
+          : "Compte créé."
+      );
+      setForm({
+        firstName: "",
+        lastName: "",
+        email: "",
+        password: "",
+        accountType: "student",
+        planId: "",
+        billingCycle: "monthly",
+        organizationName: "",
+        schoolName: "",
+        website: "",
+        adminModules: []
+      });
+      if (isOrgTab) loadOrgAccounts();
+      else loadUsers();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <section className="admin-accounts">
+      <header className="module-header admin-accounts-header">
+        <div>
+          <h2>{copy.title}</h2>
+          <p>{copy.subtitle}</p>
+        </div>
+        <button type="button" className="btn-main ready" onClick={() => setCreateOpen(true)}>
+          <UiIcon name="profile" /> {copy.addAccount}
+        </button>
+      </header>
+
+      <div className="admin-subtabs">
+        {ADMIN_ACCOUNT_SUBTABS.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            className={`admin-subtab ${subTab === item.id ? "active" : ""}`}
+            onClick={() => setSubTab(item.id)}
+          >
+            {item.label[language] || item.label.fr}
+          </button>
+        ))}
+      </div>
+
+      {!isOrgTab ? (
+        <>
+          <div className="admin-table-toolbar">
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
+          </div>
+
+          {error ? <p className="field-error">{error}</p> : null}
+
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>{copy.colName}</th>
+                  <th>{copy.colRole}</th>
+                  {subTab !== "admin" ? <th>{copy.colPlan}</th> : null}
+                  {subTab !== "admin" ? <th>{copy.colPrice}</th> : null}
+                  {subTab === "admin" ? <th>{copy.colPermissions}</th> : null}
+                  <th>{copy.colCreated}</th>
+                  <th>{copy.colActions}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedUsers.length ? (
+                  pagedUsers.map((item) => (
+                    <tr key={item.id}>
+                      <td>
+                        <div className="admin-table-name">
+                          <AvatarCircle user={item} />
+                          <div>
+                            <strong>
+                              {item.firstName} {item.lastName}
+                            </strong>
+                            <span className="muted">{item.email}</span>
+                          </div>
+                        </div>
+                      </td>
+                      <td>
+                        <span className="tag">{getAccountLabel(item.roleType, language)}</span>
+                      </td>
+                      {subTab !== "admin" ? (
+                        <td>
+                          {item.planId ? (
+                            <span className="tag">{getPlanById(item.planId)?.name?.[language] || item.planId}</span>
+                          ) : (
+                            <span className="muted">{copy.noPlan}</span>
+                          )}
+                        </td>
+                      ) : null}
+                      {subTab !== "admin" ? (
+                        <td className="muted">{planPriceLabel(item.planId, item.billingCycle, copy.free, currency)}</td>
+                      ) : null}
+                      {subTab === "admin" ? (
+                        <td>
+                          {item.adminModules?.length ? (
+                            <div className="admin-permission-tags">
+                              {item.adminModules.map((moduleId) => (
+                                <span key={moduleId} className="tag">
+                                  {ADMIN_MODULE_LABELS[moduleId]?.[language] || ADMIN_MODULE_LABELS[moduleId]?.fr || moduleId}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="tag tag-success">{copy.fullAccess}</span>
+                          )}
+                        </td>
+                      ) : null}
+                      <td className="muted">{formatDate(item.createdAt)}</td>
+                      <td>
+                        <div className="admin-row-actions">
+                          <button type="button" className="admin-row-action" onClick={() => openEdit(item)}>
+                            <UiIcon name="edit" /> {copy.edit}
+                          </button>
+                          {item.roleType !== "admin" ? (
+                            <button type="button" className="admin-row-action danger" onClick={() => openDelete(item)}>
+                              <UiIcon name="alert" /> {copy.delete}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={subTab === "admin" ? 5 : 6} className="admin-table-empty muted">
+                      {copy.empty}
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={users.length} />
+        </>
+      ) : (
+        <div className="admin-org-list">
+          {error ? <p className="field-error">{error}</p> : null}
+          {orgAccounts.length ? (
+            orgAccounts.map((org) => <AdminOrgCard key={org.id} org={org} language={language} roleType={subTab} />)
+          ) : (
+            <p className="muted">{copy.empty}</p>
+          )}
+        </div>
+      )}
+
+      {createOpen ? (
+        <div className="modal-overlay" onMouseDown={() => setCreateOpen(false)}>
+          <div className="admin-create-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="modal-close" onClick={() => setCreateOpen(false)} aria-label="Fermer">
+              ×
+            </button>
+            <h3>{copy.addAccount}</h3>
+            <form onSubmit={submit}>
+              <div className="admin-form-grid">
+                <label>
+                  {copy.firstName}
+                  <input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} required />
+                </label>
+                <label>
+                  {copy.lastName}
+                  <input value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} required />
+                </label>
+                <label>
+                  {copy.email}
+                  <input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} required />
+                </label>
+                <label>
+                  {copy.password}
+                  <input
+                    type="password"
+                    minLength={8}
+                    value={form.password}
+                    onChange={(event) => updateField("password", event.target.value)}
+                    required
+                  />
+                </label>
+                <label>
+                  {copy.accountType}
+                  <select value={form.accountType} onChange={(event) => updateField("accountType", event.target.value)}>
+                    {ADMIN_ACCOUNT_TYPES.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label[language] || item.label.fr}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {form.accountType !== "admin" ? (
+                  <label>
+                    {copy.plan}
+                    <select value={form.planId} onChange={(event) => updateField("planId", event.target.value)}>
+                      <option value="">{copy.noPlan}</option>
+                      {availablePlans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name[language] || plan.name.fr}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+
+                {form.accountType === "school" ? (
+                  <>
+                    <label>
+                      {copy.schoolOrgName}
+                      <input
+                        value={form.organizationName}
+                        onChange={(event) => updateField("organizationName", event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label>
+                      {copy.website}
+                      <input value={form.website} onChange={(event) => updateField("website", event.target.value)} />
+                    </label>
+                  </>
+                ) : null}
+
+                {form.accountType === "recruiter_firm" ? (
+                  <>
+                    <label>
+                      {copy.agencyOrgName}
+                      <input
+                        value={form.organizationName}
+                        onChange={(event) => updateField("organizationName", event.target.value)}
+                        required
+                      />
+                    </label>
+                    <label>
+                      {copy.website}
+                      <input value={form.website} onChange={(event) => updateField("website", event.target.value)} />
+                    </label>
+                  </>
+                ) : null}
+
+                {form.accountType === "student" ? (
+                  <label>
+                    {copy.studentSchool}
+                    <input value={form.schoolName} onChange={(event) => updateField("schoolName", event.target.value)} />
+                  </label>
+                ) : null}
+              </div>
+
+              {form.accountType === "admin" ? (
+                <div className="admin-permissions-block">
+                  <strong>{copy.adminModulesLabel}</strong>
+                  <p className="muted">{copy.adminModulesHint}</p>
+                  <div className="admin-permissions-grid">
+                    {ADMIN_MODULE_DEFS.map((moduleDef) => (
+                      <label key={moduleDef.id} className="admin-permission-check">
+                        <input
+                          type="checkbox"
+                          checked={!form.adminModules.length || form.adminModules.includes(moduleDef.id)}
+                          onChange={() => toggleAdminModule(setForm, moduleDef.id)}
+                        />
+                        {ADMIN_MODULE_LABELS[moduleDef.id][language] || ADMIN_MODULE_LABELS[moduleDef.id].fr}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {error ? <p className="field-error">{error}</p> : null}
+              {message ? <p className="field-hint success">{message}</p> : null}
+
+              <button type="submit" className="btn-main ready" disabled={creating}>
+                {creating ? <span className="btn-spinner" /> : null} {creating ? copy.creating : copy.create}
+              </button>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+      {editTarget ? (
+        <div className="modal-overlay" onMouseDown={() => setEditTarget(null)}>
+          <div className="admin-create-modal" onMouseDown={(event) => event.stopPropagation()}>
+            <button type="button" className="modal-close" onClick={() => setEditTarget(null)} aria-label="Fermer">
+              ×
+            </button>
+            <h3>{copy.editTitle}</h3>
+            <form onSubmit={submitEdit}>
+              <div className="admin-form-grid">
+                <label>
+                  {copy.firstName}
+                  <input
+                    value={editForm.firstName}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, firstName: event.target.value }))}
+                    required
+                  />
+                </label>
+                <label>
+                  {copy.lastName}
+                  <input
+                    value={editForm.lastName}
+                    onChange={(event) => setEditForm((prev) => ({ ...prev, lastName: event.target.value }))}
+                    required
+                  />
+                </label>
+                {editForm.accountType !== "admin" ? (
+                  <label>
+                    {copy.plan}
+                    <select
+                      value={editForm.planId}
+                      onChange={(event) => setEditForm((prev) => ({ ...prev, planId: event.target.value }))}
+                    >
+                      <option value="">{copy.noPlan}</option>
+                      {editAvailablePlans.map((plan) => (
+                        <option key={plan.id} value={plan.id}>
+                          {plan.name[language] || plan.name.fr}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
+                {(editForm.accountType === "school" || editForm.accountType === "recruiter_firm") ? (
+                  <>
+                    <label>
+                      {editForm.accountType === "school" ? copy.schoolOrgName : copy.agencyOrgName}
+                      <input
+                        value={editForm.organizationName}
+                        onChange={(event) => setEditForm((prev) => ({ ...prev, organizationName: event.target.value }))}
+                      />
+                    </label>
+                    <label>
+                      {copy.website}
+                      <input
+                        value={editForm.website}
+                        onChange={(event) => setEditForm((prev) => ({ ...prev, website: event.target.value }))}
+                      />
+                    </label>
+                  </>
+                ) : null}
+              </div>
+
+              {editForm.accountType === "admin" ? (
+                <div className="admin-permissions-block">
+                  <strong>{copy.adminModulesLabel}</strong>
+                  <p className="muted">{copy.adminModulesHint}</p>
+                  <div className="admin-permissions-grid">
+                    {ADMIN_MODULE_DEFS.map((moduleDef) => (
+                      <label key={moduleDef.id} className="admin-permission-check">
+                        <input
+                          type="checkbox"
+                          checked={!editForm.adminModules?.length || editForm.adminModules.includes(moduleDef.id)}
+                          onChange={() => toggleAdminModule(setEditForm, moduleDef.id)}
+                        />
+                        {ADMIN_MODULE_LABELS[moduleDef.id][language] || ADMIN_MODULE_LABELS[moduleDef.id].fr}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+
+              {editError ? <p className="field-error">{editError}</p> : null}
+
+              <div className="admin-modal-actions">
+                <button type="button" className="btn-ghost" onClick={() => setEditTarget(null)}>
+                  {copy.cancel}
+                </button>
+                <button type="submit" className="btn-main ready" disabled={editSaving}>
+                  {editSaving ? <span className="btn-spinner" /> : null} {editSaving ? copy.saving : copy.save}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
+
+    </section>
+  );
+}
+
+const ADMIN_FINANCE_SOURCES = [
+  { id: "", label: { fr: "Toutes les sources", en: "All sources" } },
+  { id: "stripe", label: { fr: "Stripe (paiement réel)", en: "Stripe (real payment)" } },
+  { id: "instant", label: { fr: "Activation instantanée", en: "Instant activation" } },
+  { id: "license_redeem", label: { fr: "Code de licence", en: "License code" } },
+  { id: "admin_created", label: { fr: "Créé par l'admin", en: "Created by admin" } }
+];
+
+function formatEur(amount, currency = "EUR") {
+  return formatAmountInCurrency(amount, currency, { decimals: true });
+}
+
+function planPriceLabel(planId, billingCycle, freeLabel, currency = "EUR") {
+  const plan = getPlanById(planId);
+  if (!plan) return "—";
+  if (plan.monthlyPrice === 0 && plan.annualPrice === 0) return freeLabel || "Gratuit";
+  if (plan.monthlyPrice == null) return formatEur(plan.annualPrice, currency);
+  const amount = billingCycle === "annual" ? plan.annualPrice : plan.monthlyPrice;
+  return `${formatEur(amount, currency)} / ${billingCycle === "annual" ? "an" : "mois"}`;
+}
+
+function AdminFinancePage({ user, language, currency = "EUR" }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Finance management",
+          subtitle: "Every transaction recorded on the platform, with real vs. listed amounts.",
+          revenueCollected: "Real revenue collected",
+          listedValue: "Total listed value (all sources)",
+          transactionCount: "Transactions",
+          trend: "Real revenue collected — last 8 weeks",
+          bySource: "Transactions by source",
+          byPlan: "Revenue collected by plan",
+          search: "Search by user, email or plan…",
+          colDate: "Date",
+          colUser: "User",
+          colPlan: "Plan",
+          colCycle: "Cycle",
+          colListed: "Listed price",
+          colCollected: "Amount collected",
+          colSource: "Source",
+          empty: "No transaction found.",
+          disclaimer:
+            "\"Listed price\" is the plan's catalog price at the time of the transaction. \"Amount collected\" is only non-zero for real Stripe payments — instant/admin/license activations are free or already covered by a license seat, so no money changes hands for those."
+        }
+      : {
+          title: "Gestion de finance",
+          subtitle: "Toutes les transactions de la plateforme, avec distinction montant réel / prix catalogue.",
+          revenueCollected: "Revenu réel encaissé",
+          listedValue: "Valeur catalogue totale (toutes sources)",
+          transactionCount: "Transactions",
+          trend: "Revenu réel encaissé — 8 dernières semaines",
+          bySource: "Transactions par source",
+          byPlan: "Revenu encaissé par plan",
+          search: "Rechercher par utilisateur, email ou plan…",
+          colDate: "Date",
+          colUser: "Utilisateur",
+          colPlan: "Plan",
+          colCycle: "Cycle",
+          colListed: "Prix catalogue",
+          colCollected: "Montant encaissé",
+          colSource: "Source",
+          empty: "Aucune transaction trouvée.",
+          disclaimer:
+            "Le \"prix catalogue\" est le tarif du plan au moment de la transaction. Le \"montant encaissé\" n'est non-nul que pour les vrais paiements Stripe — les activations instantanées/admin/licence sont gratuites ou déjà couvertes par un siège de licence, donc aucun argent ne change de main pour celles-ci."
+        };
+
+  const sourceLabels =
+    language === "en"
+      ? {
+          stripe: "Stripe",
+          instant: "Instant activation",
+          license_redeem: "License code",
+          admin_created: "Created by admin"
+        }
+      : {
+          stripe: "Stripe",
+          instant: "Activation instantanée",
+          license_redeem: "Code de licence",
+          admin_created: "Créé par l'admin"
+        };
+
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [source, setSource] = useState("");
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+    getAdminFinance(user.id, { search, source })
+      .then(setData)
+      .catch((err) => setError(err.message));
+  }, [user.id, search, source]);
+
+  if (error) return <p className="field-error">{error}</p>;
+  if (!data) return <p className="muted">…</p>;
+
+  const totalPages = Math.max(1, Math.ceil(data.items.length / ADMIN_PAGE_SIZE));
+  const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+  const planEntries = Object.entries(data.revenueByPlan || {}).filter(([, amount]) => amount > 0);
+  const sourceEntries = Object.entries(data.countBySource || {});
+
+  return (
+    <section className="admin-finance">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <div className="admin-kpi-grid">
+        <AdminKpiCard
+          tone="success"
+          icon="scale"
+          value={formatEur(data.totalRevenueCollected, currency)}
+          label={copy.revenueCollected}
+        />
+        <AdminKpiCard
+          tone="warning"
+          icon="pricetag"
+          value={formatEur(data.totalListedValue, currency)}
+          label={copy.listedValue}
+        />
+        <AdminKpiCard tone="primary" icon="chart" value={data.totalTransactions} label={copy.transactionCount} />
+      </div>
+
+      <p className="admin-finance-disclaimer muted">{copy.disclaimer}</p>
+
+      <div className="admin-panel admin-trend-panel">
+        <h3>{copy.trend}</h3>
+        <AdminTrendChart
+          trend={data.revenueTrend}
+          language={language}
+          valueKey="amount"
+          formatValue={(amount) => formatEur(amount, currency)}
+        />
+      </div>
+
+      <div className="admin-panel-grid">
+        <div className="admin-panel">
+          <h3>{copy.bySource}</h3>
+          <ul className="admin-stat-list">
+            {sourceEntries.map(([sourceId, count]) => (
+              <li key={sourceId}>
+                <span>{sourceLabels[sourceId] || sourceId}</span>
+                <strong>{count}</strong>
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div className="admin-panel">
+          <h3>{copy.byPlan}</h3>
+          <ul className="admin-stat-list">
+            {planEntries.length ? (
+              planEntries.map(([planId, amount]) => (
+                <li key={planId}>
+                  <span>{getPlanById(planId)?.name?.[language] || getPlanById(planId)?.name?.fr || planId}</span>
+                  <strong>{formatEur(amount, currency)}</strong>
+                </li>
+              ))
+            ) : (
+              <li className="muted">{copy.empty}</li>
+            )}
+          </ul>
+        </div>
+      </div>
+
+      <div className="admin-table-toolbar admin-finance-toolbar">
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
+      </div>
+      <div className="admin-subtabs">
+        {ADMIN_FINANCE_SOURCES.map((item) => (
+          <button
+            key={item.id || "all"}
+            type="button"
+            className={`admin-subtab ${source === item.id ? "active" : ""}`}
+            onClick={() => setSource(item.id)}
+          >
+            {item.label[language] || item.label.fr}
+          </button>
+        ))}
+      </div>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{copy.colDate}</th>
+              <th>{copy.colUser}</th>
+              <th>{copy.colPlan}</th>
+              <th>{copy.colCycle}</th>
+              <th>{copy.colListed}</th>
+              <th>{copy.colCollected}</th>
+              <th>{copy.colSource}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pagedItems.length ? (
+              pagedItems.map((item) => (
+                <tr key={item.id}>
+                  <td className="muted">{formatDate(item.createdAt)}</td>
+                  <td>
+                    <div className="admin-table-name">
+                      <AvatarCircle
+                        user={{ firstName: item.userFirstName, lastName: item.userLastName, avatarDataUrl: item.userAvatarDataUrl }}
+                      />
+                      <div>
+                        <strong>
+                          {item.userFirstName} {item.userLastName}
+                        </strong>
+                        <span className="muted">{item.userEmail}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td>{getPlanById(item.planId)?.name?.[language] || getPlanById(item.planId)?.name?.fr || item.planId}</td>
+                  <td className="muted">{item.billingCycle}</td>
+                  <td>{formatEur(item.listedAmount, currency)}</td>
+                  <td>
+                    <strong className={item.amountCollected > 0 ? "admin-finance-real" : "muted"}>
+                      {formatEur(item.amountCollected, currency)}
+                    </strong>
+                  </td>
+                  <td>
+                    <span className="tag">{sourceLabels[item.source] || item.source}</span>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={7} className="admin-table-empty muted">
+                  {copy.empty}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={data.items.length} />
+    </section>
+  );
+}
+
+const ADMIN_EVENT_LABELS = {
+  login_password: { fr: "Connexion (mot de passe)", en: "Login (password)" },
+  login_google: { fr: "Connexion (Google)", en: "Login (Google)" },
+  connected_account_linked: { fr: "Compte Google lié", en: "Google account linked" },
+  connected_account_removed: { fr: "Compte Google délié", en: "Google account unlinked" },
+  account_deleted: { fr: "Compte supprimé (par l'utilisateur)", en: "Account deleted (by user)" },
+  admin_user_updated: { fr: "Compte modifié par l'admin", en: "Account edited by admin" },
+  admin_user_deleted: { fr: "Compte supprimé par l'admin", en: "Account deleted by admin" },
+  admin_license_code_revoked: { fr: "Code de licence révoqué", en: "License code revoked" },
+  admin_license_code_restored: { fr: "Code de licence restauré", en: "License code restored" },
+  admin_setting_changed: { fr: "Paramètre plateforme modifié", en: "Platform setting changed" }
+};
+
+function eventTypeLabel(eventType, language) {
+  return ADMIN_EVENT_LABELS[eventType]?.[language] || ADMIN_EVENT_LABELS[eventType]?.fr || eventType;
+}
+
+function AdminActivityLogPage({ user, language }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Activity log",
+          subtitle: "Every security-relevant event recorded on the platform: logins, account changes, admin actions.",
+          search: "Search by user, email, event or IP…",
+          colDate: "Date",
+          colUser: "Actor",
+          colEvent: "Event",
+          colDetails: "Details",
+          colIp: "IP address",
+          empty: "No event found.",
+          allEvents: "All events"
+        }
+      : {
+          title: "Journal d'activité",
+          subtitle: "Tous les événements de sécurité enregistrés : connexions, modifications de compte, actions admin.",
+          search: "Rechercher par utilisateur, email, événement ou IP…",
+          colDate: "Date",
+          colUser: "Acteur",
+          colEvent: "Événement",
+          colDetails: "Détails",
+          colIp: "Adresse IP",
+          empty: "Aucun événement trouvé.",
+          allEvents: "Tous les événements"
+        };
+
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [eventType, setEventType] = useState("");
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+    getAdminActivityLog(user.id, { search, eventType })
+      .then(setData)
+      .catch((err) => setError(err.message));
+  }, [user.id, search, eventType]);
+
+  if (error) return <p className="field-error">{error}</p>;
+  if (!data) return <p className="muted">…</p>;
+
+  const totalPages = Math.max(1, Math.ceil(data.items.length / ADMIN_PAGE_SIZE));
+  const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+  const eventEntries = Object.entries(data.eventTypeCounts || {});
+
+  return (
+    <section className="admin-activity">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <div className="admin-table-toolbar">
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
+      </div>
+
+      <div className="admin-subtabs">
+        <button type="button" className={`admin-subtab ${eventType === "" ? "active" : ""}`} onClick={() => setEventType("")}>
+          {copy.allEvents}
+        </button>
+        {eventEntries.map(([type, count]) => (
+          <button
+            key={type}
+            type="button"
+            className={`admin-subtab ${eventType === type ? "active" : ""}`}
+            onClick={() => setEventType(type)}
+          >
+            {eventTypeLabel(type, language)} ({count})
+          </button>
+        ))}
+      </div>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{copy.colDate}</th>
+              <th>{copy.colUser}</th>
+              <th>{copy.colEvent}</th>
+              <th>{copy.colDetails}</th>
+              <th>{copy.colIp}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pagedItems.length ? (
+              pagedItems.map((item) => (
+                <tr key={item.id}>
+                  <td className="muted">{formatDate(item.createdAt)}</td>
+                  <td>
+                    <div className="admin-table-name">
+                      <AvatarCircle
+                        user={{ firstName: item.userFirstName, lastName: item.userLastName, avatarDataUrl: item.userAvatarDataUrl }}
+                      />
+                      <div>
+                        <strong>
+                          {item.userFirstName} {item.userLastName}
+                        </strong>
+                        <span className="muted">{item.userEmail}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td>
+                    <span className="tag">{eventTypeLabel(item.eventType, language)}</span>
+                  </td>
+                  <td className="muted admin-activity-details">
+                    {Object.keys(item.metadata || {}).length ? JSON.stringify(item.metadata) : "—"}
+                  </td>
+                  <td className="muted">{item.ipAddress || "—"}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="admin-table-empty muted">
+                  {copy.empty}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={data.items.length} />
+    </section>
+  );
+}
+
+function AdminLicenseCodesPage({ user, language }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "License codes",
+          subtitle: "All license codes generated for agency and school seats.",
+          search: "Search by code, owner or plan…",
+          colCode: "Code",
+          colOwner: "Owner",
+          colPlan: "Plan",
+          colSeats: "Seats",
+          colStatus: "Status",
+          colActions: "Actions",
+          empty: "No license code found.",
+          active: "Active",
+          revoked: "Revoked",
+          revoke: "Revoke",
+          restore: "Restore",
+          confirmRevokeTitle: "Revoke this license code?",
+          confirmRevokeText: "It can no longer be redeemed by new members. Existing members keep their access.",
+          confirmRevokeBtn: "Revoke",
+          cancel: "Cancel"
+        }
+      : {
+          title: "Codes de licence",
+          subtitle: "Tous les codes de licence générés pour les sièges cabinet/école.",
+          search: "Rechercher par code, propriétaire ou plan…",
+          colCode: "Code",
+          colOwner: "Propriétaire",
+          colPlan: "Plan",
+          colSeats: "Sièges",
+          colStatus: "Statut",
+          colActions: "Actions",
+          empty: "Aucun code de licence trouvé.",
+          active: "Actif",
+          revoked: "Révoqué",
+          revoke: "Révoquer",
+          restore: "Restaurer",
+          confirmRevokeTitle: "Révoquer ce code de licence ?",
+          confirmRevokeText: "Il ne pourra plus être utilisé par de nouveaux membres. Les membres déjà inscrits gardent leur accès.",
+          confirmRevokeBtn: "Révoquer",
+          cancel: "Annuler"
+        };
+
+  const [items, setItems] = useState([]);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [busyCode, setBusyCode] = useState("");
+
+  function load() {
+    getAdminLicenseCodes(user.id, { search })
+      .then(setItems)
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(() => {
+    setPage(1);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  async function handleRevoke(code) {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: copy.confirmRevokeTitle,
+      text: copy.confirmRevokeText,
+      showCancelButton: true,
+      confirmButtonText: copy.confirmRevokeBtn,
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#b91c1c"
+    });
+    if (!result.isConfirmed) return;
+    setBusyCode(code);
+    try {
+      await revokeAdminLicenseCode(user.id, code);
+      load();
+    } catch (err) {
+      Swal.fire({ icon: "error", title: err.message });
+    } finally {
+      setBusyCode("");
+    }
+  }
+
+  async function handleRestore(code) {
+    setBusyCode(code);
+    try {
+      await restoreAdminLicenseCode(user.id, code);
+      load();
+    } catch (err) {
+      Swal.fire({ icon: "error", title: err.message });
+    } finally {
+      setBusyCode("");
+    }
+  }
+
+  const totalPages = Math.max(1, Math.ceil(items.length / ADMIN_PAGE_SIZE));
+  const pagedItems = items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+
+  return (
+    <section className="admin-licenses">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      {error ? <p className="field-error">{error}</p> : null}
+
+      <div className="admin-table-toolbar">
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
+      </div>
+
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{copy.colCode}</th>
+              <th>{copy.colOwner}</th>
+              <th>{copy.colPlan}</th>
+              <th>{copy.colSeats}</th>
+              <th>{copy.colStatus}</th>
+              <th>{copy.colActions}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pagedItems.length ? (
+              pagedItems.map((item) => (
+                <tr key={item.code}>
+                  <td>
+                    <code className="admin-license-code">{item.code}</code>
+                  </td>
+                  <td>
+                    <div className="admin-table-name">
+                      <AvatarCircle
+                        user={{ firstName: item.ownerFirstName, lastName: item.ownerLastName, avatarDataUrl: item.ownerAvatarDataUrl }}
+                      />
+                      <div>
+                        <strong>
+                          {item.ownerFirstName} {item.ownerLastName}
+                        </strong>
+                        <span className="muted">{item.ownerEmail}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td>{getPlanById(item.planId)?.name?.[language] || item.planId}</td>
+                  <td className="muted">
+                    {item.seatsUsed}/{item.seatsTotal}
+                  </td>
+                  <td>
+                    <span className={`tag ${item.revoked ? "tag-danger" : "tag-success"}`}>
+                      {item.revoked ? copy.revoked : copy.active}
+                    </span>
+                  </td>
+                  <td>
+                    {item.revoked ? (
+                      <button
+                        type="button"
+                        className="admin-row-action"
+                        disabled={busyCode === item.code}
+                        onClick={() => handleRestore(item.code)}
+                      >
+                        {copy.restore}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="admin-row-action danger"
+                        disabled={busyCode === item.code}
+                        onClick={() => handleRevoke(item.code)}
+                      >
+                        {copy.revoke}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={6} className="admin-table-empty muted">
+                  {copy.empty}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={items.length} />
+    </section>
+  );
+}
+
+function AdminAiSamplesPage({ user, language }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "AI moderation",
+          subtitle: "Sample of AI-generated match analyses, for quality and abuse review.",
+          disclaimer:
+            "Only CV/job match analyses are stored server-side and reviewable here. Generated cover letters live only in the user's browser and are never saved. Salary negotiation transcripts are now saved so users can resume them, but they remain private to each user's account and are not reviewable in this admin panel.",
+          search: "Search by user, job title or company…",
+          empty: "No analysis found.",
+          score: "Score",
+          strengths: "Strengths",
+          missing: "Missing keywords",
+          recommendation: "Recommendation",
+          for: "for"
+        }
+      : {
+          title: "Modération IA",
+          subtitle: "Échantillon des analyses de matching générées par l'IA, pour contrôle qualité et détection d'abus.",
+          disclaimer:
+            "Seules les analyses de matching CV/offre sont enregistrées côté serveur et consultables ici. Les lettres de motivation générées ne vivent que dans le navigateur de l'utilisateur et ne sont jamais sauvegardées. Les transcripts de négociation salariale sont désormais sauvegardés pour permettre de les reprendre, mais restent privés au compte de chaque utilisateur et ne sont pas consultables dans ce panneau admin.",
+          search: "Rechercher par utilisateur, poste ou entreprise…",
+          empty: "Aucune analyse trouvée.",
+          score: "Score",
+          strengths: "Points forts",
+          missing: "Mots-clés manquants",
+          recommendation: "Recommandation",
+          for: "pour"
+        };
+
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setPage(1);
+    getAdminAiSamples(user.id, { search })
+      .then(setData)
+      .catch((err) => setError(err.message));
+  }, [user.id, search]);
+
+  if (error) return <p className="field-error">{error}</p>;
+  if (!data) return <p className="muted">…</p>;
+
+  const totalPages = Math.max(1, Math.ceil(data.items.length / ADMIN_PAGE_SIZE));
+  const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+
+  return (
+    <section className="admin-ai-samples">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <p className="admin-finance-disclaimer muted">{copy.disclaimer}</p>
+
+      <div className="admin-table-toolbar">
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
+      </div>
+
+      <div className="admin-ai-sample-list">
+        {pagedItems.length ? (
+          pagedItems.map((item) => (
+            <article key={item.id} className="admin-ai-sample-card">
+              <div className="admin-ai-sample-head">
+                <AvatarCircle
+                  user={{ firstName: item.userFirstName, lastName: item.userLastName, avatarDataUrl: item.userAvatarDataUrl }}
+                />
+                <div>
+                  <strong>
+                    {item.userFirstName} {item.userLastName}
+                  </strong>
+                  <span className="muted">
+                    {copy.for} {item.jobTitle}
+                    {item.jobCompany ? ` · ${item.jobCompany}` : ""}
+                  </span>
+                </div>
+                {item.score !== null ? (
+                  <span className="admin-ai-sample-score">
+                    {copy.score}: {item.score}/100
+                  </span>
+                ) : null}
+                <span className="muted admin-ai-sample-date">{formatDate(item.createdAt)}</span>
+              </div>
+
+              {item.strengths.length ? (
+                <p>
+                  <strong>{copy.strengths} : </strong>
+                  {item.strengths.join(", ")}
+                </p>
+              ) : null}
+              {item.missingKeywords.length ? (
+                <p>
+                  <strong>{copy.missing} : </strong>
+                  {item.missingKeywords.join(", ")}
+                </p>
+              ) : null}
+              {item.recommendation ? (
+                <p>
+                  <strong>{copy.recommendation} : </strong>
+                  {item.recommendation}
+                </p>
+              ) : null}
+            </article>
+          ))
+        ) : (
+          <p className="muted">{copy.empty}</p>
+        )}
+      </div>
+
+      <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={data.items.length} />
+    </section>
+  );
+}
+
+function AdminSettingsPage({ user, language }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Platform settings",
+          subtitle: "Kill-switches for optional integrations — no .env change or restart needed.",
+          google: "Google Sign-In",
+          googleText: "Lets candidates sign in/up with their Google account.",
+          stripe: "Stripe payments",
+          stripeText: "Lets users pay for a plan with a real Stripe Checkout session.",
+          enabled: "Enabled",
+          disabled: "Disabled",
+          notConfigured: "Not configured in .env — toggle has no effect",
+          announceTitle: "Announcement emails",
+          announceText: "Not built yet — would require a template/audience/sending system. Let me know if you want it next.",
+          toggle: "Toggle"
+        }
+      : {
+          title: "Paramètres plateforme",
+          subtitle: "Interrupteurs pour les intégrations optionnelles — aucun changement de .env ni redémarrage nécessaire.",
+          google: "Connexion Google",
+          googleText: "Permet aux candidats de se connecter/inscrire avec leur compte Google.",
+          stripe: "Paiement Stripe",
+          stripeText: "Permet aux utilisateurs de payer un plan via une vraie session Stripe Checkout.",
+          enabled: "Activé",
+          disabled: "Désactivé",
+          notConfigured: "Non configuré dans .env — le bouton n'a aucun effet",
+          announceTitle: "Emails d'annonce",
+          announceText: "Pas encore construit — nécessiterait un système de modèles/audience/envoi. Dis-moi si tu veux qu'on le fasse ensuite.",
+          toggle: "Basculer"
+        };
+
+  const [settings, setSettings] = useState(null);
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState("");
+
+  useEffect(() => {
+    getAdminSettings(user.id).then(setSettings).catch((err) => setError(err.message));
+  }, [user.id]);
+
+  async function toggle(key, currentValue) {
+    setSaving(key);
+    try {
+      const updated = await updateAdminSetting(user.id, key, !currentValue);
+      setSettings(updated);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSaving("");
+    }
+  }
+
+  if (error) return <p className="field-error">{error}</p>;
+  if (!settings) return <p className="muted">…</p>;
+
+  return (
+    <section className="admin-settings">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <div className="admin-panel-grid">
+        <div className="admin-panel admin-settings-card">
+          <div className="admin-settings-card-head">
+            <h3>{copy.google}</h3>
+            <span className={`tag ${settings.googleSignInEnabled ? "tag-success" : "tag-danger"}`}>
+              {settings.googleSignInEnabled ? copy.enabled : copy.disabled}
+            </span>
+          </div>
+          <p className="muted">{copy.googleText}</p>
+          {!settings.googleConfigured ? <p className="admin-settings-warning">{copy.notConfigured}</p> : null}
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={saving === "google_signin_enabled"}
+            onClick={() => toggle("google_signin_enabled", settings.googleSignInEnabled)}
+          >
+            {copy.toggle}
+          </button>
+        </div>
+
+        <div className="admin-panel admin-settings-card">
+          <div className="admin-settings-card-head">
+            <h3>{copy.stripe}</h3>
+            <span className={`tag ${settings.stripeEnabled ? "tag-success" : "tag-danger"}`}>
+              {settings.stripeEnabled ? copy.enabled : copy.disabled}
+            </span>
+          </div>
+          <p className="muted">{copy.stripeText}</p>
+          {!settings.stripeConfigured ? <p className="admin-settings-warning">{copy.notConfigured}</p> : null}
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={saving === "stripe_enabled"}
+            onClick={() => toggle("stripe_enabled", settings.stripeEnabled)}
+          >
+            {copy.toggle}
+          </button>
+        </div>
+      </div>
+
+    </section>
+  );
+}
+
+const ADMIN_ANNOUNCEMENT_AUDIENCES = [
+  { id: "", label: { fr: "Tous les utilisateurs", en: "All users" } },
+  { id: "student", label: { fr: "Étudiants / Candidats", en: "Students / Candidates" } },
+  { id: "school", label: { fr: "Écoles", en: "Schools" } },
+  { id: "recruiter_firm", label: { fr: "Cabinets de recrutement", en: "Recruitment agencies" } }
+];
+
+function AdminAnnouncementsPage({ user, language }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Announcement emails",
+          subtitle: "Send a real email to a segment of users via the configured SMTP server.",
+          audience: "Audience",
+          subject: "Subject",
+          message: "Message",
+          messagePlaceholder: "Write your announcement… (use a blank line to start a new paragraph)",
+          recipients: "recipient(s)",
+          send: "Send announcement",
+          sending: "Sending…",
+          confirmTitle: "Send this announcement?",
+          confirmText: (count) => `This will email ${count} recipient(s) right now. This cannot be undone.`,
+          confirmBtn: "Send",
+          cancel: "Cancel",
+          history: "Sent history",
+          noHistory: "No announcement sent yet.",
+          colDate: "Date",
+          colSubject: "Subject",
+          colAudience: "Audience",
+          colRecipients: "Recipients",
+          colFailed: "Failed"
+        }
+      : {
+          title: "Emails d'annonce",
+          subtitle: "Envoie un vrai email à un segment d'utilisateurs via le serveur SMTP configuré.",
+          audience: "Audience",
+          subject: "Objet",
+          message: "Message",
+          messagePlaceholder: "Rédige ton annonce… (laisse une ligne vide pour un nouveau paragraphe)",
+          recipients: "destinataire(s)",
+          send: "Envoyer l'annonce",
+          sending: "Envoi en cours…",
+          confirmTitle: "Envoyer cette annonce ?",
+          confirmText: (count) => `Cela enverra un email à ${count} destinataire(s) immédiatement. Action irréversible.`,
+          confirmBtn: "Envoyer",
+          cancel: "Annuler",
+          history: "Historique des envois",
+          noHistory: "Aucune annonce envoyée pour l'instant.",
+          colDate: "Date",
+          colSubject: "Objet",
+          colAudience: "Audience",
+          colRecipients: "Destinataires",
+          colFailed: "Échecs"
+        };
+
+  const [audience, setAudience] = useState("");
+  const [subject, setSubject] = useState("");
+  const [message, setMessage] = useState("");
+  const [audienceCount, setAudienceCount] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+  const [history, setHistory] = useState([]);
+
+  function loadHistory() {
+    getAdminAnnouncements(user.id)
+      .then(setHistory)
+      .catch((err) => setError(err.message));
+  }
+
+  useEffect(() => {
+    loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    getAdminAnnouncementAudienceCount(user.id, audience)
+      .then(setAudienceCount)
+      .catch(() => setAudienceCount(null));
+  }, [user.id, audience]);
+
+  async function handleSend(event) {
+    event.preventDefault();
+    setError("");
+
+    const result = await Swal.fire({
+      icon: "warning",
+      title: copy.confirmTitle,
+      text: copy.confirmText(audienceCount ?? "?"),
+      showCancelButton: true,
+      confirmButtonText: copy.confirmBtn,
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#2f5bff"
+    });
+    if (!result.isConfirmed) return;
+
+    setSending(true);
+    try {
+      const response = await sendAdminAnnouncement({ adminUserId: user.id, subject, message, audience });
+      setSubject("");
+      setMessage("");
+      loadHistory();
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title:
+          language === "en"
+            ? `Sent to ${response.recipientCount} recipient(s)${response.failedCount ? `, ${response.failedCount} failed` : ""}.`
+            : `Envoyé à ${response.recipientCount} destinataire(s)${response.failedCount ? `, ${response.failedCount} échec(s)` : ""}.`,
+        showConfirmButton: false,
+        timer: 3500,
+        timerProgressBar: true,
+        customClass: { popup: "career-toast", title: "career-toast-title" }
+      });
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <section className="admin-announcements">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+
+      <form className="admin-create-form admin-announcement-form" onSubmit={handleSend}>
+        <label>
+          {copy.audience}
+          <select value={audience} onChange={(event) => setAudience(event.target.value)}>
+            {ADMIN_ANNOUNCEMENT_AUDIENCES.map((item) => (
+              <option key={item.id || "all"} value={item.id}>
+                {item.label[language] || item.label.fr}
+              </option>
+            ))}
+          </select>
+        </label>
+        {audienceCount !== null ? (
+          <p className="admin-announcement-count muted">
+            {audienceCount} {copy.recipients}
+          </p>
+        ) : null}
+
+        <label>
+          {copy.subject}
+          <input value={subject} onChange={(event) => setSubject(event.target.value)} required />
+        </label>
+
+        <label>
+          {copy.message}
+          <textarea
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            placeholder={copy.messagePlaceholder}
+            rows={8}
+            required
+          />
+        </label>
+
+        {error ? <p className="field-error">{error}</p> : null}
+
+        <button type="submit" className="btn-main ready" disabled={sending || !audienceCount}>
+          {sending ? <span className="btn-spinner" /> : null} {sending ? copy.sending : copy.send}
+        </button>
+      </form>
+
+      <h3 className="admin-announcement-history-title">{copy.history}</h3>
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{copy.colDate}</th>
+              <th>{copy.colSubject}</th>
+              <th>{copy.colAudience}</th>
+              <th>{copy.colRecipients}</th>
+              <th>{copy.colFailed}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.length ? (
+              history.map((item) => (
+                <tr key={item.id}>
+                  <td className="muted">{formatDate(item.createdAt)}</td>
+                  <td>{item.subject}</td>
+                  <td>
+                    <span className="tag">
+                      {ADMIN_ANNOUNCEMENT_AUDIENCES.find((a) => a.id === item.audience || (a.id === "" && item.audience === "all"))
+                        ?.label[language] || item.audience}
+                    </span>
+                  </td>
+                  <td className="muted">{item.recipientCount}</td>
+                  <td className={item.failedCount ? "admin-announcement-failed" : "muted"}>{item.failedCount}</td>
+                </tr>
+              ))
+            ) : (
+              <tr>
+                <td colSpan={5} className="admin-table-empty muted">
+                  {copy.noHistory}
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
@@ -2565,6 +6393,12 @@ function AccountDrawer({
   setLanguage,
   currency,
   setCurrency,
+  theme,
+  setTheme,
+  mode,
+  setMode,
+  density,
+  setDensity,
   activePanel,
   setActivePanel,
   onClose,
@@ -2603,6 +6437,7 @@ function AccountDrawer({
   const [deleteConfirm, setDeleteConfirm] = useState("");
   const [deleteSaving, setDeleteSaving] = useState(false);
   const [connectedMenuOpen, setConnectedMenuOpen] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const emails = user.emailAddresses?.length
     ? user.emailAddresses
     : [{ id: "primary", email: user.email, isPrimary: true, isVerified: true }];
@@ -2627,19 +6462,24 @@ function AccountDrawer({
         return;
       }
     }
-    if (profileAvatarFile) {
-      await onAvatarUpload(profileAvatarFile);
-      setProfileAvatarFile(null);
-    } else if (profileAvatarPreview === "") {
-      await onAvatarUpload(null);
+    setSavingProfile(true);
+    try {
+      if (profileAvatarFile) {
+        await onAvatarUpload(profileAvatarFile);
+        setProfileAvatarFile(null);
+      } else if (profileAvatarPreview === "") {
+        await onAvatarUpload(null);
+      }
+      await onSaveAccount({
+        firstName: profileForm.firstName,
+        lastName: profileForm.lastName,
+        username: profileForm.username
+      });
+      setEditingProfile(false);
+      setEditingUsername(false);
+    } finally {
+      setSavingProfile(false);
     }
-    await onSaveAccount({
-      firstName: profileForm.firstName,
-      lastName: profileForm.lastName,
-      username: profileForm.username
-    });
-    setEditingProfile(false);
-    setEditingUsername(false);
   }
 
   async function chooseProfileImage(file) {
@@ -2731,6 +6571,14 @@ function AccountDrawer({
           language: "Language",
           currency: "Currency",
           currencyHint: "Prices shown across the app (plans, pricing) are converted to your chosen currency using a fixed indicative rate.",
+          theme: "Color theme",
+          themeHint: "Changes the accent color used across buttons, links and highlights throughout the app.",
+          mode: "Appearance",
+          modeLight: "Light",
+          modeDark: "Dark",
+          density: "Density",
+          densityComfortable: "Comfortable",
+          densityCompact: "Compact",
           password: "Password",
           setPassword: "Set password",
           updatePassword: "Update password",
@@ -2782,6 +6630,14 @@ function AccountDrawer({
           language: "Langue",
           currency: "Devise",
           currencyHint: "Les prix affichés dans l'app (offres, tarifs) sont convertis dans ta devise avec un taux indicatif fixe.",
+          theme: "Thème de couleur",
+          themeHint: "Change la couleur d'accent utilisée pour les boutons, liens et éléments mis en avant dans toute l'app.",
+          mode: "Apparence",
+          modeLight: "Clair",
+          modeDark: "Sombre",
+          density: "Densité",
+          densityComfortable: "Confortable",
+          densityCompact: "Compact",
           password: "Mot de passe",
           setPassword: "Définir le mot de passe",
           updatePassword: "Mettre à jour le mot de passe",
@@ -2882,7 +6738,9 @@ function AccountDrawer({
                       </div>
                       <div className="account-form-actions">
                         <button type="button" className="btn-secondary" onClick={() => setEditingProfile(false)}>{copy.cancel}</button>
-                        <button className="btn-main">{copy.save}</button>
+                        <button className="btn-main" disabled={savingProfile}>
+                          {savingProfile ? <span className="btn-spinner" /> : null} {copy.save}
+                        </button>
                       </div>
                     </div>
                   ) : null}
@@ -3038,6 +6896,67 @@ function AccountDrawer({
                 </div>
               </div>
               <p className="preferences-hint">{copy.currencyHint}</p>
+
+              <div className="account-rows">
+                <div className="account-row account-row-preference account-row-theme">
+                  <span>{copy.theme}</span>
+                  <div className="theme-swatch-row">
+                    {THEME_PRESETS.map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        className={`theme-swatch ${theme === preset.id ? "active" : ""}`}
+                        style={{ "--swatch-color": preset.swatch }}
+                        onClick={() => setTheme(preset.id)}
+                        title={preset.label[language] || preset.label.fr}
+                        aria-label={preset.label[language] || preset.label.fr}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <p className="preferences-hint">{copy.themeHint}</p>
+
+              <div className="account-rows">
+                <div className="account-row account-row-preference">
+                  <span>{copy.mode}</span>
+                  <div className="currency-pills">
+                    <button
+                      type="button"
+                      className={`currency-pill ${mode === "light" ? "active" : ""}`}
+                      onClick={() => setMode("light")}
+                    >
+                      {copy.modeLight}
+                    </button>
+                    <button
+                      type="button"
+                      className={`currency-pill ${mode === "dark" ? "active" : ""}`}
+                      onClick={() => setMode("dark")}
+                    >
+                      {copy.modeDark}
+                    </button>
+                  </div>
+                </div>
+                <div className="account-row account-row-preference">
+                  <span>{copy.density}</span>
+                  <div className="currency-pills">
+                    <button
+                      type="button"
+                      className={`currency-pill ${density === "comfortable" ? "active" : ""}`}
+                      onClick={() => setDensity("comfortable")}
+                    >
+                      {copy.densityComfortable}
+                    </button>
+                    <button
+                      type="button"
+                      className={`currency-pill ${density === "compact" ? "active" : ""}`}
+                      onClick={() => setDensity("compact")}
+                    >
+                      {copy.densityCompact}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </>
           ) : (
             <>
@@ -3236,7 +7155,22 @@ function GoogleLogo() {
   );
 }
 
-function LandingPage({ copy, language, setLanguage, onLoginClick, onSignupClick }) {
+const PRODUCT_SECTION_IDS = ["section-features", "section-matching", "section-entretiens", "section-offres"];
+
+function LandingPage({
+  copy,
+  language,
+  setLanguage,
+  onLoginClick,
+  onSignupClick,
+  onPrivacyClick,
+  onTermsClick,
+  onCookiesClick,
+  onAboutClick,
+  onContactClick,
+  onPricingClick,
+  onSecurityClick
+}) {
   const previewItems =
     language === "en"
       ? [
@@ -3337,7 +7271,7 @@ function LandingPage({ copy, language, setLanguage, onLoginClick, onSignupClick 
       <header className="landing-nav">
         <div className="landing-brand">
           <span className="brand-mark" aria-hidden="true">
-            <UiIcon name="spark" />
+            <UiIcon name="matchmark" />
           </span>
           <strong>Career App</strong>
         </div>
@@ -3426,7 +7360,7 @@ function LandingPage({ copy, language, setLanguage, onLoginClick, onSignupClick 
           </div>
         </section>
 
-        <section className="ats-band">
+        <section className="ats-band" id="section-matching">
           <div>
             <span className="section-eyebrow">{copy.atsEyebrow}</span>
             <h2>
@@ -3479,7 +7413,7 @@ function LandingPage({ copy, language, setLanguage, onLoginClick, onSignupClick 
           </div>
         </section>
 
-        <section className="features-section">
+        <section className="features-section" id="section-features">
           <div className="section-heading">
             <h2>{copy.featuresTitle}</h2>
             <p>{copy.featuresText}</p>
@@ -3502,7 +7436,7 @@ function LandingPage({ copy, language, setLanguage, onLoginClick, onSignupClick 
           </div>
         </section>
 
-        <section className="steps-section">
+        <section className="steps-section" id="section-entretiens">
           <div className="section-heading">
             <h2>{copy.stepsTitle}</h2>
             <p>{copy.stepsText}</p>
@@ -3521,7 +7455,7 @@ function LandingPage({ copy, language, setLanguage, onLoginClick, onSignupClick 
           </div>
         </section>
 
-        <section className="career-section">
+        <section className="career-section" id="section-offres">
           <div className="career-section-head">
             <div>
               <span className="section-eyebrow">{language === "en" ? "Career paths" : "Parcours métiers"}</span>
@@ -3557,26 +7491,53 @@ function LandingPage({ copy, language, setLanguage, onLoginClick, onSignupClick 
         <div>
           <div className="landing-brand footer-brand">
             <span className="brand-mark" aria-hidden="true">
-              <UiIcon name="spark" />
+              <UiIcon name="matchmark" />
             </span>
             <strong>Career App</strong>
           </div>
           <p>{copy.footerText}</p>
         </div>
-        <FooterColumn title={copy.footerProduct} links={copy.linksProduct} />
-        <FooterColumn title={copy.footerCompany} links={copy.linksCompany} />
-        <FooterColumn title={copy.footerLegal} links={copy.linksLegal} />
+        <FooterColumn
+          title={copy.footerProduct}
+          links={copy.linksProduct}
+          onLinkClick={(_link, index) => {
+            if (index === 4) {
+              onPricingClick?.();
+              return;
+            }
+            document.getElementById(PRODUCT_SECTION_IDS[index])?.scrollIntoView({ behavior: "smooth", block: "start" });
+          }}
+        />
+        <FooterColumn
+          title={copy.footerCompany}
+          links={copy.linksCompany}
+          onLinkClick={(_link, index) => {
+            if (index === 0) onAboutClick?.();
+            if (index === 1) onContactClick?.();
+            if (index === 2) onContactClick?.();
+          }}
+        />
+        <FooterColumn
+          title={copy.footerLegal}
+          links={copy.linksLegal}
+          onLinkClick={(_link, index) => {
+            if (index === 0) onPrivacyClick?.();
+            if (index === 1) onTermsClick?.();
+            if (index === 2) onCookiesClick?.();
+            if (index === 3) onSecurityClick?.();
+          }}
+        />
       </footer>
     </div>
   );
 }
 
-function FooterColumn({ title, links }) {
+function FooterColumn({ title, links, onLinkClick }) {
   return (
     <div className="footer-column">
       <h3>{title}</h3>
-      {links.map((link) => (
-        <button type="button" key={link}>
+      {links.map((link, index) => (
+        <button type="button" key={link} onClick={() => onLinkClick?.(link, index)}>
           {link}
         </button>
       ))}
@@ -3584,21 +7545,63 @@ function FooterColumn({ title, links }) {
   );
 }
 
-function ConnectedFooter({ copy }) {
+function ConnectedFooter({
+  copy,
+  onPrivacyClick,
+  onTermsClick,
+  onCookiesClick,
+  onAboutClick,
+  onContactClick,
+  onPricingClick,
+  onSecurityClick
+}) {
+  const hasCompanyNav = Boolean(onAboutClick || onContactClick);
+
   return (
     <footer className="connected-footer">
       <div>
         <div className="landing-brand footer-brand">
           <span className="brand-mark" aria-hidden="true">
-            <UiIcon name="spark" />
+            <UiIcon name="matchmark" />
           </span>
           <strong>Career App</strong>
         </div>
         <p>{copy.footerText}</p>
       </div>
-      <FooterColumn title={copy.footerProduct} links={copy.linksProduct} />
-      <FooterColumn title={copy.footerCompany} links={copy.linksCompany} />
-      <FooterColumn title={copy.footerLegal} links={copy.linksLegal} />
+      <FooterColumn
+        title={copy.footerProduct}
+        links={copy.linksProduct}
+        onLinkClick={
+          onPricingClick
+            ? (_link, index) => {
+                if (index === 4) onPricingClick?.();
+              }
+            : undefined
+        }
+      />
+      <FooterColumn
+        title={copy.footerCompany}
+        links={copy.linksCompany}
+        onLinkClick={
+          hasCompanyNav
+            ? (_link, index) => {
+                if (index === 0) onAboutClick?.();
+                if (index === 1) onContactClick?.();
+                if (index === 2) onContactClick?.();
+              }
+            : undefined
+        }
+      />
+      <FooterColumn
+        title={copy.footerLegal}
+        links={copy.linksLegal}
+        onLinkClick={(_link, index) => {
+          if (index === 0) onPrivacyClick?.();
+          if (index === 1) onTermsClick?.();
+          if (index === 2) onCookiesClick?.();
+          if (index === 3) onSecurityClick?.();
+        }}
+      />
     </footer>
   );
 }
@@ -3679,6 +7682,808 @@ function GoogleSignInButton({ language, onCredential, showLastUsed = false }) {
   );
 }
 
+const PRIVACY_CONTACT_EMAIL = "support@career-app.example";
+const PRIVACY_LAST_UPDATED = { fr: "27 juillet 2026", en: "July 27, 2026" };
+
+function slugify(text) {
+  return text
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function LegalDocPage({
+  eyebrow,
+  title,
+  updated,
+  sections,
+  closing,
+  language,
+  setLanguage,
+  onBack,
+  onLoginClick,
+  onSignupClick,
+  landingCopy,
+  onPrivacyClick,
+  onTermsClick,
+  onCookiesClick,
+  onAboutClick,
+  onContactClick,
+  onPricingClick,
+  onSecurityClick,
+  initialSectionIndex
+}) {
+  const initialId = sections[initialSectionIndex] ? slugify(sections[initialSectionIndex].heading) : sections[0] ? slugify(sections[0].heading) : "";
+  const [activeId, setActiveId] = useState(initialId);
+
+  function handleTocClick(id) {
+    setActiveId(id);
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  useEffect(() => {
+    if (initialSectionIndex == null) return;
+    const id = sections[initialSectionIndex] ? slugify(sections[initialSectionIndex].heading) : "";
+    if (!id) return;
+    const timer = setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 60);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="landing-shell legal-shell">
+      <header className="landing-nav">
+        <div className="landing-brand">
+          <span className="brand-mark" aria-hidden="true">
+            <UiIcon name="matchmark" />
+          </span>
+          <strong>Career App</strong>
+        </div>
+        <div className="landing-actions">
+          <LanguageSwitch language={language} setLanguage={setLanguage} />
+          <button className="landing-link" type="button" onClick={onLoginClick}>
+            {language === "en" ? "Log in" : "Se connecter"}
+          </button>
+          <button className="landing-signup" type="button" onClick={onSignupClick}>
+            {language === "en" ? "Sign up" : "S'inscrire"}
+          </button>
+        </div>
+      </header>
+
+      <main className="legal-page">
+        <button type="button" className="legal-back" onClick={onBack}>
+          {language === "en" ? "← Back to home" : "← Retour à l'accueil"}
+        </button>
+
+        <p className="legal-eyebrow">{eyebrow}</p>
+        <h1 className="legal-doc-title">{title}</h1>
+        <p className="legal-doc-updated">{updated}</p>
+
+        <div className="legal-doc-layout">
+          <nav className="legal-toc" aria-label="Sommaire">
+            <span className="legal-toc-label">{language === "en" ? "On this page" : "Sur cette page"}</span>
+            {sections.map((section) => {
+              const id = slugify(section.heading);
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={activeId === id ? "active" : ""}
+                  onClick={() => handleTocClick(id)}
+                >
+                  {section.heading}
+                </button>
+              );
+            })}
+          </nav>
+
+          <div className="legal-doc-content">
+            {sections.map((section) => {
+              const id = slugify(section.heading);
+              return (
+                <section key={id} id={id} className="legal-doc-section">
+                  <h2>{section.heading}</h2>
+                  {section.paragraphs?.map((paragraph) => (
+                    <p key={paragraph}>{paragraph}</p>
+                  ))}
+                  {section.list ? (
+                    <ul className="legal-doc-list">
+                      {section.list.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {section.note ? <div className="legal-callout">{section.note}</div> : null}
+                </section>
+              );
+            })}
+
+            <div className="legal-doc-closing">
+              <p>{closing.body}</p>
+              <p>
+                <strong>{PRIVACY_CONTACT_EMAIL}</strong>
+              </p>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <ConnectedFooter
+        copy={landingCopy}
+        onPrivacyClick={onPrivacyClick}
+        onTermsClick={onTermsClick}
+        onCookiesClick={onCookiesClick}
+        onAboutClick={onAboutClick}
+        onContactClick={onContactClick}
+        onPricingClick={onPricingClick}
+        onSecurityClick={onSecurityClick}
+      />
+    </div>
+  );
+}
+
+function PrivacyPolicyPage({
+  language,
+  setLanguage,
+  onBack,
+  onLoginClick,
+  onSignupClick,
+  onNavigateLegal,
+  landingCopy,
+  focusCookies,
+  focusSecurity
+}) {
+  const isEn = language === "en";
+
+  const sections = isEn
+    ? [
+        {
+          heading: "What does this policy cover?",
+          paragraphs: [
+            "This page explains what personal data Career App collects when you use the platform, why we collect it, and the choices you have. It applies to every visitor and every registered account (candidates, schools, and recruitment agencies).",
+            "By creating an account, you acknowledge that you have read this page."
+          ]
+        },
+        {
+          heading: "What data do we collect?",
+          paragraphs: [
+            "When you register, we ask for your first name, last name, email address, and a password, which we store using salted cryptographic hashing — never in plain text.",
+            "When you use the CV analysis or matching tools, we process the content of the CVs you upload and the job offers you submit, purely to generate your results.",
+            "We also automatically record basic technical data (IP address, browser, device) and account security events (logins, password changes), kept for fraud prevention and to let you review your own account activity."
+          ]
+        },
+        {
+          heading: "Why do we process it?",
+          list: [
+            "To run the CV/offer matching engine and produce your compatibility score and suggestions.",
+            "To generate the cover letters and negotiation guidance you request.",
+            "To keep your account secure and let you sign in.",
+            "To send you account-related notifications, and — only if you have not opted out — occasional service announcements."
+          ]
+        },
+        {
+          heading: "Who else sees it?",
+          paragraphs: [
+            "We do not sell personal data, and we keep the list of parties who process it on our behalf as short as possible:"
+          ],
+          list: [
+            "An AI inference provider, to analyze the text of your CV and the job offers you submit and generate matching results.",
+            "Supabase, which hosts our application database.",
+            "Stripe, which processes subscription payments — we never see or store your card details.",
+            "Google, only if you actively choose to sign in with a Google account.",
+            "Our email delivery provider, to send verification codes and, if enabled, announcements."
+          ]
+        },
+        {
+          heading: "How do we protect it?",
+          list: [
+            "All traffic between your browser and our servers is encrypted (HTTPS/TLS).",
+            "Passwords are salted and hashed; they are never recoverable in plain text, by us or anyone else.",
+            "Access to production data is limited and logged."
+          ]
+        },
+        {
+          heading: "Do we use cookies?",
+          paragraphs: [
+            "We use a strictly necessary cookie to keep you signed in. We do not run third-party advertising or cross-site tracking cookies."
+          ]
+        },
+        {
+          heading: "What are your rights?",
+          paragraphs: ["You are always in control of your data. From your account settings, or by writing to us, you can:"],
+          list: [
+            "Request a copy of the personal data we hold about you.",
+            "Correct information that is inaccurate.",
+            "Delete your account and the data attached to it.",
+            "Export your data in a portable format."
+          ]
+        }
+      ]
+    : [
+        {
+          heading: "Que couvre cette politique ?",
+          paragraphs: [
+            "Cette page explique quelles données personnelles Career App collecte lorsque vous utilisez la plateforme, pourquoi nous les collectons, et les choix qui sont les vôtres. Elle s'applique à tout visiteur et à tout titulaire de compte (candidats, écoles et cabinets de recrutement).",
+            "En créant un compte, vous reconnaissez avoir pris connaissance de cette page."
+          ]
+        },
+        {
+          heading: "Quelles données collectons-nous ?",
+          paragraphs: [
+            "À l'inscription, nous demandons votre prénom, votre nom, votre adresse email et un mot de passe, que nous stockons via un hachage cryptographique salé — jamais en clair.",
+            "Lorsque vous utilisez les outils d'analyse de CV ou de matching, nous traitons le contenu des CV que vous téléchargez et des offres que vous soumettez, uniquement pour produire vos résultats.",
+            "Nous enregistrons également des données techniques basiques (adresse IP, navigateur, appareil) et des événements de sécurité du compte (connexions, changements de mot de passe), conservés pour prévenir la fraude et vous permettre de consulter l'activité de votre propre compte."
+          ]
+        },
+        {
+          heading: "Pourquoi les traitons-nous ?",
+          list: [
+            "Pour faire fonctionner le moteur de matching CV/offre et produire votre score de compatibilité et nos suggestions.",
+            "Pour générer les lettres de motivation et conseils de négociation que vous demandez.",
+            "Pour sécuriser votre compte et permettre votre connexion.",
+            "Pour vous envoyer des notifications liées à votre compte et, seulement si vous n'avez pas refusé, d'occasionnelles annonces de service."
+          ]
+        },
+        {
+          heading: "Qui y a accès ?",
+          paragraphs: [
+            "Nous ne vendons jamais de données personnelles, et nous limitons volontairement le nombre de partenaires qui les traitent pour notre compte :"
+          ],
+          list: [
+            "Un fournisseur d'inférence IA, pour analyser le texte de votre CV et des offres soumises et générer les résultats de matching.",
+            "Supabase, qui héberge notre base de données applicative.",
+            "Stripe, qui traite les paiements d'abonnement — nous ne voyons ni ne stockons jamais vos données bancaires.",
+            "Google, uniquement si vous choisissez activement de vous connecter avec un compte Google.",
+            "Notre prestataire d'envoi d'emails, pour les codes de vérification et, si activées, les annonces."
+          ]
+        },
+        {
+          heading: "Comment protégeons-nous vos données ?",
+          list: [
+            "Tout le trafic entre votre navigateur et nos serveurs est chiffré (HTTPS/TLS).",
+            "Les mots de passe sont salés et hachés ; ils ne sont récupérables en clair par personne, y compris nous.",
+            "L'accès aux données de production est restreint et journalisé."
+          ]
+        },
+        {
+          heading: "Utilisons-nous des cookies ?",
+          paragraphs: [
+            "Nous utilisons uniquement un cookie strictement nécessaire au maintien de votre connexion. Nous n'utilisons aucun cookie publicitaire ou de traçage tiers."
+          ]
+        },
+        {
+          heading: "Quels sont vos droits ?",
+          paragraphs: ["Vous gardez le contrôle de vos données. Depuis les paramètres de votre compte, ou en nous écrivant, vous pouvez :"],
+          list: [
+            "Demander une copie des données personnelles que nous détenons sur vous.",
+            "Corriger une information inexacte.",
+            "Supprimer votre compte et les données qui y sont attachées.",
+            "Exporter vos données dans un format réutilisable."
+          ]
+        }
+      ];
+
+  return (
+    <LegalDocPage
+      eyebrow={isEn ? "Legal" : "Juridique"}
+      title={isEn ? "Privacy Policy" : "Politique de Confidentialité"}
+      updated={isEn ? `Last updated: ${PRIVACY_LAST_UPDATED.en}` : `Dernière mise à jour : ${PRIVACY_LAST_UPDATED.fr}`}
+      sections={sections}
+      closing={{
+        body: isEn
+          ? "Questions about how your data is handled, or about exercising your rights? Write to us — we typically reply within a few business days."
+          : "Une question sur le traitement de vos données, ou sur l'exercice de vos droits ? Écrivez-nous — nous répondons en général sous quelques jours ouvrés."
+      }}
+      language={language}
+      setLanguage={setLanguage}
+      onBack={onBack}
+      onLoginClick={onLoginClick}
+      onSignupClick={onSignupClick}
+      landingCopy={landingCopy}
+      onPrivacyClick={() => onNavigateLegal?.("privacy")}
+      onTermsClick={() => onNavigateLegal?.("terms")}
+      onCookiesClick={() => onNavigateLegal?.("cookies")}
+      onAboutClick={() => onNavigateLegal?.("about")}
+      onContactClick={() => onNavigateLegal?.("contact")}
+      onPricingClick={() => onNavigateLegal?.("pricing")}
+      onSecurityClick={() => onNavigateLegal?.("security")}
+      initialSectionIndex={focusCookies ? 5 : focusSecurity ? 4 : undefined}
+    />
+  );
+}
+
+function TermsOfServicePage({ language, setLanguage, onBack, onLoginClick, onSignupClick, onNavigateLegal, landingCopy }) {
+  const isEn = language === "en";
+
+  const sections = isEn
+    ? [
+        {
+          heading: "What does agreeing to these terms mean?",
+          paragraphs: [
+            "These Terms of Service govern your use of Career App. Creating an account, or simply using the platform, means you accept them. If any part of them is unacceptable to you, please don't use the service."
+          ]
+        },
+        {
+          heading: "What does the service do — and not do?",
+          paragraphs: [
+            "Career App analyzes your CV against job offers, scores their compatibility, and can draft cover letters and negotiation guidance using AI.",
+            "These outputs are assistance, not guarantees. AI-generated content can contain mistakes, and we make no promise that using Career App will lead to an interview or a job offer. You are responsible for reviewing anything generated by the platform before you send it to a third party."
+          ]
+        },
+        {
+          heading: "What use is acceptable?",
+          paragraphs: ["When using the platform, you agree not to:"],
+          list: [
+            "Send spam or harass anyone using information obtained through the service.",
+            "Upload files containing malware or content that is illegal in your jurisdiction.",
+            "Attempt to bypass rate limits, security controls, or access data that isn't yours.",
+            "Share your login credentials with someone else or resell access to your account."
+          ]
+        },
+        {
+          heading: "How do tokens, plans and payments work?",
+          paragraphs: [
+            "Certain actions (generating a cover letter, starting a negotiation, running a CV analysis) consume tokens, granted according to your plan.",
+            "New accounts receive a set of free tokens to try the service; they are personal to your account and are not transferable or exchangeable for cash.",
+            "Paid plans are billed through Stripe, monthly or annually depending on what you select; current pricing is always visible on our pricing page before you subscribe.",
+            "Schools and recruitment agencies may issue license codes to members of their organization; a code can be revoked by the issuing organization or by us if it is misused.",
+            "Because subscription access is granted immediately on payment, charges are final once processed, except where the law gives you a right of withdrawal or in case of a proven fault on our part."
+          ]
+        },
+        {
+          heading: "Who owns what?",
+          paragraphs: [
+            "Your CV and personal data remain yours; using the platform only grants us a limited, temporary right to process them to deliver the analysis you ask for.",
+            "In turn, the Career App name, interface, source code, and matching logic belong to us. You may not copy, reverse-engineer, or redistribute them without our written permission."
+          ]
+        },
+        {
+          heading: "What is our liability?",
+          paragraphs: [
+            "The service is provided on an \"as available\" basis. To the extent permitted by law, we are not liable for indirect or consequential outcomes of using our results — for example, an unsuccessful interview or an approximation in an AI-generated document. Reviewing and validating generated content before you rely on it is your responsibility."
+          ]
+        },
+        {
+          heading: "What happens if an account is suspended or terms change?",
+          paragraphs: [
+            "We may suspend or close an account that breaches these terms. We may also update this page over time; the version published here is the one that applies, and we'll flag any change that materially affects your rights."
+          ]
+        },
+        {
+          heading: "Which law applies?",
+          paragraphs: [
+            "These terms are governed by French law, without prejudice to any mandatory consumer-protection rules of your place of residence. Disputes are handled by the courts with jurisdiction under applicable law."
+          ]
+        }
+      ]
+    : [
+        {
+          heading: "Que signifie accepter ces conditions ?",
+          paragraphs: [
+            "Ces Conditions Générales d'Utilisation régissent votre usage de Career App. Créer un compte, ou simplement utiliser la plateforme, vaut acceptation. Si l'une de ces clauses ne vous convient pas, merci de ne pas utiliser le service."
+          ]
+        },
+        {
+          heading: "Que fait le service — et que ne fait-il pas ?",
+          paragraphs: [
+            "Career App analyse votre CV au regard d'offres d'emploi, calcule un score de compatibilité, et peut rédiger des lettres de motivation et des conseils de négociation à l'aide de l'IA.",
+            "Ces résultats sont une aide, pas une garantie. Un contenu généré par IA peut contenir des erreurs, et nous ne promettons pas que l'usage de Career App mène à un entretien ou à une embauche. Il vous appartient de relire tout contenu généré avant de l'envoyer à un tiers."
+          ]
+        },
+        {
+          heading: "Quel usage est acceptable ?",
+          paragraphs: ["En utilisant la plateforme, vous vous engagez à ne pas :"],
+          list: [
+            "Envoyer des messages non sollicités ou harceler quiconque à l'aide d'informations obtenues via le service.",
+            "Téléverser des fichiers contenant un logiciel malveillant ou un contenu illégal dans votre juridiction.",
+            "Tenter de contourner nos limites d'utilisation, nos contrôles de sécurité, ou accéder à des données qui ne sont pas les vôtres.",
+            "Partager vos identifiants de connexion avec un tiers ou revendre l'accès à votre compte."
+          ]
+        },
+        {
+          heading: "Comment fonctionnent jetons, plans et paiements ?",
+          paragraphs: [
+            "Certaines actions (générer une lettre de motivation, démarrer une négociation, lancer une analyse de CV) consomment des jetons, accordés selon votre plan.",
+            "Les nouveaux comptes reçoivent un lot de jetons gratuits pour tester le service ; ils sont personnels à votre compte et ne sont ni transférables ni échangeables contre de l'argent.",
+            "Les plans payants sont facturés via Stripe, mensuellement ou annuellement selon votre choix ; le tarif en vigueur est toujours visible sur notre page tarifs avant toute souscription.",
+            "Les écoles et cabinets de recrutement peuvent émettre des codes de licence pour les membres de leur organisation ; un code peut être révoqué par l'organisation émettrice ou par nous-mêmes en cas d'usage abusif.",
+            "L'accès à l'abonnement étant accordé immédiatement après paiement, les sommes versées sont dues une fois le paiement validé, sauf disposition légale contraire vous ouvrant un droit de rétractation, ou en cas de faute avérée de notre part."
+          ]
+        },
+        {
+          heading: "À qui appartiennent les données et le service ?",
+          paragraphs: [
+            "Votre CV et vos données personnelles restent les vôtres ; l'usage de la plateforme nous accorde seulement un droit limité et temporaire de les traiter pour vous fournir l'analyse demandée.",
+            "À l'inverse, le nom Career App, son interface, son code source et sa logique de matching nous appartiennent. Vous ne pouvez ni les copier, ni les décompiler, ni les redistribuer sans notre autorisation écrite."
+          ]
+        },
+        {
+          heading: "Quelle est notre responsabilité ?",
+          paragraphs: [
+            "Le service est fourni « en l'état, selon disponibilité ». Dans la mesure permise par la loi, nous ne sommes pas responsables des conséquences indirectes de l'usage de nos résultats — par exemple un entretien manqué ou une approximation dans un document généré par IA. Il vous appartient de relire et de valider tout contenu généré avant de vous y fier."
+          ]
+        },
+        {
+          heading: "Que se passe-t-il en cas de suspension ou de modification ?",
+          paragraphs: [
+            "Nous pouvons suspendre ou clôturer un compte qui viole ces conditions. Nous pouvons également faire évoluer cette page dans le temps ; la version publiée ici fait foi, et nous signalerons tout changement affectant significativement vos droits."
+          ]
+        },
+        {
+          heading: "Quel droit s'applique ?",
+          paragraphs: [
+            "Ces conditions sont régies par le droit français, sans préjudice des règles impératives de protection des consommateurs de votre lieu de résidence. Les litiges relèvent des tribunaux compétents en application du droit applicable."
+          ]
+        }
+      ];
+
+  return (
+    <LegalDocPage
+      eyebrow={isEn ? "Legal" : "Juridique"}
+      title={isEn ? "Terms of Service" : "Conditions Générales d'Utilisation"}
+      updated={isEn ? `Last updated: ${PRIVACY_LAST_UPDATED.en}` : `Dernière mise à jour : ${PRIVACY_LAST_UPDATED.fr}`}
+      sections={sections}
+      closing={{
+        body: isEn
+          ? "Questions about these terms? Write to us — we typically reply within a few business days."
+          : "Une question sur ces conditions ? Écrivez-nous — nous répondons en général sous quelques jours ouvrés."
+      }}
+      language={language}
+      setLanguage={setLanguage}
+      onBack={onBack}
+      onLoginClick={onLoginClick}
+      onSignupClick={onSignupClick}
+      landingCopy={landingCopy}
+      onPrivacyClick={() => onNavigateLegal?.("privacy")}
+      onTermsClick={() => onNavigateLegal?.("terms")}
+      onCookiesClick={() => onNavigateLegal?.("cookies")}
+      onAboutClick={() => onNavigateLegal?.("about")}
+      onContactClick={() => onNavigateLegal?.("contact")}
+      onPricingClick={() => onNavigateLegal?.("pricing")}
+      onSecurityClick={() => onNavigateLegal?.("security")}
+    />
+  );
+}
+
+function InfoPage({
+  eyebrow,
+  title,
+  subtitle,
+  children,
+  language,
+  setLanguage,
+  onBack,
+  onLoginClick,
+  onSignupClick,
+  landingCopy,
+  onPrivacyClick,
+  onTermsClick,
+  onCookiesClick,
+  onAboutClick,
+  onContactClick,
+  onPricingClick,
+  onSecurityClick
+}) {
+  return (
+    <div className="landing-shell legal-shell">
+      <header className="landing-nav">
+        <div className="landing-brand">
+          <span className="brand-mark" aria-hidden="true">
+            <UiIcon name="matchmark" />
+          </span>
+          <strong>Career App</strong>
+        </div>
+        <div className="landing-actions">
+          <LanguageSwitch language={language} setLanguage={setLanguage} />
+          <button className="landing-link" type="button" onClick={onLoginClick}>
+            {language === "en" ? "Log in" : "Se connecter"}
+          </button>
+          <button className="landing-signup" type="button" onClick={onSignupClick}>
+            {language === "en" ? "Sign up" : "S'inscrire"}
+          </button>
+        </div>
+      </header>
+
+      <main className="legal-page info-page">
+        <button type="button" className="legal-back" onClick={onBack}>
+          {language === "en" ? "← Back to home" : "← Retour à l'accueil"}
+        </button>
+
+        <p className="legal-eyebrow">{eyebrow}</p>
+        <h1 className="legal-doc-title info-title">{title}</h1>
+        {subtitle ? <p className="info-subtitle">{subtitle}</p> : null}
+
+        {children}
+      </main>
+
+      <ConnectedFooter
+        copy={landingCopy}
+        onPrivacyClick={onPrivacyClick}
+        onTermsClick={onTermsClick}
+        onCookiesClick={onCookiesClick}
+        onAboutClick={onAboutClick}
+        onContactClick={onContactClick}
+        onPricingClick={onPricingClick}
+        onSecurityClick={onSecurityClick}
+      />
+    </div>
+  );
+}
+
+function AboutPage({ language, setLanguage, onBack, onLoginClick, onSignupClick, onNavigateLegal, landingCopy }) {
+  const isEn = language === "en";
+
+  const copy = isEn
+    ? {
+        eyebrow: "About",
+        title: "About Career App",
+        subtitle: "The AI copilot that helps you present yourself well and target the right opportunities.",
+        missionTitle: "Our mission",
+        missionBody:
+          "Job hunting shouldn't mean guessing what a recruiter wants to read. Career App was built to give every candidate the same tools a well-coached applicant already has: a clear read on how their CV stacks up against a role, the missing keywords worth adding, and a way to rehearse before the interview.",
+        howTitle: "What's inside",
+        howItems: [
+          { title: "CV Optimizer", text: "Upload a CV and a job offer to get a compatibility score, missing keywords, and concrete rewrite suggestions." },
+          { title: "Job Matching", text: "See how a set of offers rank against your profile, so you spend time on the ones worth applying to." },
+          { title: "Interview Coach", text: "Practice with role-specific questions and structured feedback before the real thing." },
+          { title: "Cover letters & negotiation", text: "Generate a first draft tailored to the offer, and get guidance when it's time to talk salary." }
+        ],
+        valuesTitle: "How we operate",
+        valuesItems: [
+          "Privacy by design: your CV is processed to serve you, never sold, and you can delete it at any time.",
+          "Transparent pricing: a token-based system with a free allowance, no hidden fees.",
+          "AI as a copilot, not a substitute: every result is a suggestion for you to review, not an automatic decision."
+        ],
+        ctaTitle: "Ready to try it?",
+        ctaBody: "Create an account and run your first CV analysis in a couple of minutes.",
+        ctaButton: "Get started for free"
+      }
+    : {
+        eyebrow: "À propos",
+        title: "À propos de Career App",
+        subtitle: "Le copilote IA qui vous aide à bien vous présenter et à cibler les bonnes opportunités.",
+        missionTitle: "Notre mission",
+        missionBody:
+          "Chercher un emploi ne devrait pas se résumer à deviner ce qu'un recruteur a envie de lire. Career App a été conçu pour donner à chaque candidat les mêmes outils qu'un candidat bien accompagné : une lecture claire de la compatibilité entre son CV et un poste, les mots-clés à ajouter, et un moyen de s'entraîner avant l'entretien.",
+        howTitle: "Ce que vous y trouverez",
+        howItems: [
+          { title: "CV Optimizer", text: "Importez un CV et une offre pour obtenir un score de compatibilité, les mots-clés manquants et des suggestions de réécriture concrètes." },
+          { title: "Job Matching", text: "Comparez plusieurs offres avec votre profil pour concentrer vos efforts sur celles qui en valent la peine." },
+          { title: "Interview Coach", text: "Entraînez-vous avec des questions adaptées au poste et un retour structuré avant le vrai entretien." },
+          { title: "Lettres & négociation", text: "Générez un premier brouillon de lettre de motivation adapté à l'offre, et obtenez des conseils au moment de négocier votre salaire." }
+        ],
+        valuesTitle: "Comment nous travaillons",
+        valuesItems: [
+          "Confidentialité par conception : votre CV est traité pour vous servir, jamais vendu, et vous pouvez le supprimer à tout moment.",
+          "Tarification transparente : un système de jetons avec un quota gratuit, sans frais cachés.",
+          "L'IA comme copilote, jamais comme substitut : chaque résultat est une suggestion à relire, pas une décision automatique."
+        ],
+        ctaTitle: "Prêt à essayer ?",
+        ctaBody: "Créez un compte et lancez votre première analyse de CV en quelques minutes.",
+        ctaButton: "Commencer gratuitement"
+      };
+
+  return (
+    <InfoPage
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      subtitle={copy.subtitle}
+      language={language}
+      setLanguage={setLanguage}
+      onBack={onBack}
+      onLoginClick={onLoginClick}
+      onSignupClick={onSignupClick}
+      landingCopy={landingCopy}
+      onPrivacyClick={() => onNavigateLegal?.("privacy")}
+      onTermsClick={() => onNavigateLegal?.("terms")}
+      onCookiesClick={() => onNavigateLegal?.("cookies")}
+      onAboutClick={() => onNavigateLegal?.("about")}
+      onContactClick={() => onNavigateLegal?.("contact")}
+      onPricingClick={() => onNavigateLegal?.("pricing")}
+      onSecurityClick={() => onNavigateLegal?.("security")}
+    >
+      <section className="info-section">
+        <h2>{copy.missionTitle}</h2>
+        <p>{copy.missionBody}</p>
+      </section>
+
+      <section className="info-section">
+        <h2>{copy.howTitle}</h2>
+        <div className="info-card-grid">
+          {copy.howItems.map((item) => (
+            <div key={item.title} className="info-card">
+              <strong>{item.title}</strong>
+              <p>{item.text}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="info-section">
+        <h2>{copy.valuesTitle}</h2>
+        <ul className="legal-doc-list">
+          {copy.valuesItems.map((item) => (
+            <li key={item}>{item}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="info-cta">
+        <div>
+          <h2>{copy.ctaTitle}</h2>
+          <p>{copy.ctaBody}</p>
+        </div>
+        <button type="button" className="landing-signup" onClick={onSignupClick}>
+          {copy.ctaButton}
+        </button>
+      </section>
+    </InfoPage>
+  );
+}
+
+function ContactPage({ language, setLanguage, onBack, onLoginClick, onSignupClick, onNavigateLegal, landingCopy }) {
+  const isEn = language === "en";
+
+  const copy = isEn
+    ? {
+        eyebrow: "Contact",
+        title: "Get in touch",
+        subtitle: "Pick the right inbox below and we'll get back to you within a few business days.",
+        cards: [
+          {
+            title: "General support",
+            text: "Questions about your account, a CV analysis, or a bug you've run into.",
+            email: "support@career-app.example"
+          },
+          {
+            title: "Privacy & data rights",
+            text: "Access, correction, deletion, or export requests for your personal data.",
+            email: "privacy@career-app.example"
+          },
+          {
+            title: "Schools & recruitment agencies",
+            text: "Partnership requests, license codes, or questions about a team plan.",
+            email: "partners@career-app.example"
+          }
+        ]
+      }
+    : {
+        eyebrow: "Contact",
+        title: "Nous contacter",
+        subtitle: "Choisissez la bonne adresse ci-dessous, nous répondons en général sous quelques jours ouvrés.",
+        cards: [
+          {
+            title: "Support général",
+            text: "Questions sur votre compte, une analyse de CV, ou un bug rencontré.",
+            email: "support@career-app.example"
+          },
+          {
+            title: "Confidentialité & données",
+            text: "Demandes d'accès, de rectification, de suppression ou d'export de vos données personnelles.",
+            email: "privacy@career-app.example"
+          },
+          {
+            title: "Écoles & cabinets de recrutement",
+            text: "Demandes de partenariat, codes de licence, ou questions sur une offre équipe.",
+            email: "partners@career-app.example"
+          }
+        ]
+      };
+
+  return (
+    <InfoPage
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      subtitle={copy.subtitle}
+      language={language}
+      setLanguage={setLanguage}
+      onBack={onBack}
+      onLoginClick={onLoginClick}
+      onSignupClick={onSignupClick}
+      landingCopy={landingCopy}
+      onPrivacyClick={() => onNavigateLegal?.("privacy")}
+      onTermsClick={() => onNavigateLegal?.("terms")}
+      onCookiesClick={() => onNavigateLegal?.("cookies")}
+      onAboutClick={() => onNavigateLegal?.("about")}
+      onContactClick={() => onNavigateLegal?.("contact")}
+      onPricingClick={() => onNavigateLegal?.("pricing")}
+      onSecurityClick={() => onNavigateLegal?.("security")}
+    >
+      <div className="info-card-grid info-contact-grid">
+        {copy.cards.map((card) => (
+          <div key={card.title} className="info-card">
+            <strong>{card.title}</strong>
+            <p>{card.text}</p>
+            <a href={`mailto:${card.email}`} className="info-contact-email">
+              {card.email}
+            </a>
+          </div>
+        ))}
+      </div>
+    </InfoPage>
+  );
+}
+
+function PublicPricingPage({ language, setLanguage, onBack, onLoginClick, onSignupClick, onNavigateLegal, landingCopy, currency = "EUR" }) {
+  const isEn = language === "en";
+  const copy = isEn
+    ? { eyebrow: "Pricing", title: "Plans & pricing", subtitle: "Every plan currently in effect on Career App — no surprises." }
+    : { eyebrow: "Tarifs", title: "Plans & tarifs", subtitle: "Toutes les grilles tarifaires en vigueur sur Career App — sans surprise." };
+  const pricingCopy = APP_COPY[language]?.pricing || APP_COPY.fr.pricing;
+
+  return (
+    <InfoPage
+      eyebrow={copy.eyebrow}
+      title={copy.title}
+      subtitle={copy.subtitle}
+      language={language}
+      setLanguage={setLanguage}
+      onBack={onBack}
+      onLoginClick={onLoginClick}
+      onSignupClick={onSignupClick}
+      landingCopy={landingCopy}
+      onPrivacyClick={() => onNavigateLegal?.("privacy")}
+      onTermsClick={() => onNavigateLegal?.("terms")}
+      onCookiesClick={() => onNavigateLegal?.("cookies")}
+      onAboutClick={() => onNavigateLegal?.("about")}
+      onContactClick={() => onNavigateLegal?.("contact")}
+      onPricingClick={() => onNavigateLegal?.("pricing")}
+      onSecurityClick={() => onNavigateLegal?.("security")}
+    >
+      {PLAN_SEGMENTS.map((segment) => (
+        <section key={segment} className="info-section">
+          <h2>
+            {segment === "candidate"
+              ? pricingCopy.segmentCandidate
+              : segment === "agency"
+              ? pricingCopy.segmentAgency
+              : pricingCopy.segmentSchool}
+          </h2>
+          <div className="pricing-grid">
+            {PLANS.filter((plan) => plan.segment === segment).map((plan) => {
+              const price = formatPlanPrice(plan, "monthly", language, pricingCopy, currency);
+              return (
+                <article key={plan.id} className={`pricing-card ${plan.highlighted ? "recommended" : ""}`}>
+                  {plan.badge ? <span className="pricing-badge">{plan.badge[language] || plan.badge.fr}</span> : null}
+                  <h3>{plan.name[language] || plan.name.fr}</h3>
+                  <p className="muted">{plan.tagline[language] || plan.tagline.fr}</p>
+                  <div className="pricing-price">
+                    <strong>{price.amount}</strong>
+                    <span>{price.unit}</span>
+                  </div>
+                  <ul className="pricing-feature-list">
+                    {(plan.features[language] || plan.features.fr).map((feature) => (
+                      <li key={feature}>{feature}</li>
+                    ))}
+                  </ul>
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+
+      <section className="info-cta">
+        <div>
+          <h2>{isEn ? "Ready to start?" : "Prêt à commencer ?"}</h2>
+          <p>
+            {isEn
+              ? "Create a free account, no card required."
+              : "Crée un compte gratuit, sans carte bancaire."}
+          </p>
+        </div>
+        <button type="button" className="landing-signup" onClick={onSignupClick}>
+          {isEn ? "Sign up for free" : "S'inscrire gratuitement"}
+        </button>
+      </section>
+    </InfoPage>
+  );
+}
+
 function AuthScreen({
   onLogin,
   onRequestLoginCode,
@@ -3695,6 +8500,7 @@ function AuthScreen({
   landingCopy
 }) {
   const [showLanding, setShowLanding] = useState(true);
+  const [legalPage, setLegalPage] = useState(null);
   const [lastAuthMethod] = useState(getLastAuthMethod);
 
   const [mode, setMode] = useState("login");
@@ -3717,6 +8523,17 @@ function AuthScreen({
     password: ""
   });
   const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [googleProcessing, setGoogleProcessing] = useState(false);
+
+  async function handleGoogleCredential(credential) {
+    setGoogleProcessing(true);
+    try {
+      await onGoogleLogin(credential);
+    } finally {
+      setGoogleProcessing(false);
+    }
+  }
 
   const signupUsernameError = signupForm.username ? getUsernameValidation(signupForm.username, language) : "";
 
@@ -3779,6 +8596,7 @@ function AuthScreen({
     if (mode === "login") {
       if (loginStep === "identifier") {
         if (!loginForm.identifier.trim()) return;
+        setIsSubmitting(true);
         try {
           const result = await onRequestLoginCode({ identifier: loginForm.identifier });
           setVerificationEmail(result.email || loginForm.identifier);
@@ -3787,16 +8605,28 @@ function AuthScreen({
           setLoginStep("code");
         } catch (_error) {
           // Error already surfaced via the inline auth error state.
+        } finally {
+          setIsSubmitting(false);
         }
         return;
       }
       if (loginStep === "code") {
         const code = loginCode.join("");
         if (code.length !== 6) return;
-        onLogin({ identifier: loginForm.identifier, code });
+        setIsSubmitting(true);
+        try {
+          await onLogin({ identifier: loginForm.identifier, code });
+        } finally {
+          setIsSubmitting(false);
+        }
         return;
       }
-      onLogin(loginForm);
+      setIsSubmitting(true);
+      try {
+        await onLogin(loginForm);
+      } finally {
+        setIsSubmitting(false);
+      }
       return;
     }
 
@@ -3808,6 +8638,7 @@ function AuthScreen({
         return;
       }
 
+      setIsSubmitting(true);
       try {
         const result = await onSignup(buildSignupPayload());
         setVerificationEmail(result.verification?.email || signupForm.email);
@@ -3816,16 +8647,21 @@ function AuthScreen({
         setSignupPhase("code");
       } catch (_error) {
         // Error already surfaced via the inline auth error state.
+      } finally {
+        setIsSubmitting(false);
       }
       return;
     }
 
     const code = loginCode.join("");
     if (code.length !== 6) return;
+    setIsSubmitting(true);
     try {
       await onVerifySignupCode({ identifier: signupForm.email, code });
     } catch (_error) {
       // Error already surfaced via the inline auth error state.
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -3866,6 +8702,32 @@ function AuthScreen({
     }
   }
 
+  if (legalPage) {
+    const sharedProps = {
+      language,
+      setLanguage,
+      onBack: () => setLegalPage(null),
+      onLoginClick: () => {
+        setLegalPage(null);
+        switchMode("login");
+      },
+      onSignupClick: () => {
+        setLegalPage(null);
+        switchMode("signup");
+      },
+      onNavigateLegal: (page) => setLegalPage(page),
+      landingCopy
+    };
+
+    if (legalPage === "privacy") return <PrivacyPolicyPage {...sharedProps} />;
+    if (legalPage === "cookies") return <PrivacyPolicyPage {...sharedProps} focusCookies />;
+    if (legalPage === "security") return <PrivacyPolicyPage {...sharedProps} focusSecurity />;
+    if (legalPage === "terms") return <TermsOfServicePage {...sharedProps} />;
+    if (legalPage === "about") return <AboutPage {...sharedProps} />;
+    if (legalPage === "contact") return <ContactPage {...sharedProps} />;
+    if (legalPage === "pricing") return <PublicPricingPage {...sharedProps} />;
+  }
+
   return (
     <div className="auth-modal-page">
       <LandingPage
@@ -3874,6 +8736,13 @@ function AuthScreen({
         setLanguage={setLanguage}
         onLoginClick={() => switchMode("login")}
         onSignupClick={() => switchMode("signup")}
+        onPrivacyClick={() => setLegalPage("privacy")}
+        onTermsClick={() => setLegalPage("terms")}
+        onCookiesClick={() => setLegalPage("cookies")}
+        onAboutClick={() => setLegalPage("about")}
+        onContactClick={() => setLegalPage("contact")}
+        onPricingClick={() => setLegalPage("pricing")}
+        onSecurityClick={() => setLegalPage("security")}
       />
 
       {!showLanding ? (
@@ -3930,7 +8799,18 @@ function AuthScreen({
           <>
             {loginStep === "identifier" ? (
               <>
-                <GoogleSignInButton language={language} onCredential={onGoogleLogin} showLastUsed={lastAuthMethod === "google"} />
+                <div className="google-btn-wrap-relative">
+                  <GoogleSignInButton
+                    language={language}
+                    onCredential={handleGoogleCredential}
+                    showLastUsed={lastAuthMethod === "google"}
+                  />
+                  {googleProcessing ? (
+                    <div className="google-btn-loading-overlay">
+                      <span className="btn-spinner dark" />
+                    </div>
+                  ) : null}
+                </div>
 
                 <div className="auth-separator">
                   <span>{language === "en" ? "or" : "ou"}</span>
@@ -4039,7 +8919,14 @@ function AuthScreen({
           </div>
         ) : (
           <>
-            <GoogleSignInButton language={language} onCredential={onGoogleLogin} />
+            <div className="google-btn-wrap-relative">
+              <GoogleSignInButton language={language} onCredential={handleGoogleCredential} />
+              {googleProcessing ? (
+                <div className="google-btn-loading-overlay">
+                  <span className="btn-spinner dark" />
+                </div>
+              ) : null}
+            </div>
 
             <div className="auth-separator">
               <span>{language === "en" ? "or" : "ou"}</span>
@@ -4143,7 +9030,8 @@ function AuthScreen({
         <div className="auth-helper">{helper}</div>
 
         <div className="auth-actions">
-          <button className="btn-main" type="submit">
+          <button className="btn-main" type="submit" disabled={isSubmitting}>
+            {isSubmitting ? <span className="btn-spinner" /> : null}{" "}
             {mode === "login"
               ? loginStep === "identifier" || loginStep === "code"
                 ? copy.continue
@@ -5212,6 +10100,8 @@ function ProfilePage({
   const copy = APP_COPY[language]?.profile || APP_COPY.fr.profile;
   const [profileForm, setProfileForm] = useState(() => profileToForm(user.profile));
   const [accountForm, setAccountForm] = useState(() => accountToForm(user));
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingAccount, setSavingAccount] = useState(false);
 
   useEffect(() => {
     setProfileForm(profileToForm(user.profile));
@@ -5226,19 +10116,29 @@ function ProfilePage({
     setAccountForm((prev) => ({ ...prev, [key]: value }));
   }
 
-  function submitProfile(event) {
+  async function submitProfile(event) {
     event.preventDefault();
-    onSaveProfile({
-      ...profileForm,
-      experienceYears: Number(profileForm.experienceYears || 0),
-      skills: profileForm.skills,
-      languages: profileForm.languages
-    });
+    setSavingProfile(true);
+    try {
+      await onSaveProfile({
+        ...profileForm,
+        experienceYears: Number(profileForm.experienceYears || 0),
+        skills: profileForm.skills,
+        languages: profileForm.languages
+      });
+    } finally {
+      setSavingProfile(false);
+    }
   }
 
-  function submitAccount(event) {
+  async function submitAccount(event) {
     event.preventDefault();
-    onSaveAccount(buildAccountPatch(accountForm));
+    setSavingAccount(true);
+    try {
+      await onSaveAccount(buildAccountPatch(accountForm));
+    } finally {
+      setSavingAccount(false);
+    }
   }
 
   return (
@@ -5343,8 +10243,8 @@ function ProfilePage({
             />
           </label>
 
-          <button className="btn-main" type="submit">
-            {copy.saveProfile}
+          <button className="btn-main" type="submit" disabled={savingProfile}>
+            {savingProfile ? <span className="btn-spinner" /> : null} {copy.saveProfile}
           </button>
         </form>
 
@@ -5380,8 +10280,8 @@ function ProfilePage({
 
           <RoleSpecificFields form={accountForm} updateField={updateAccountField} language={language} />
 
-          <button className="btn-main" type="submit">
-            {copy.saveAccount}
+          <button className="btn-main" type="submit" disabled={savingAccount}>
+            {savingAccount ? <span className="btn-spinner" /> : null} {copy.saveAccount}
           </button>
         </form>
 
@@ -5792,7 +10692,17 @@ function allowedPricingSegmentsForRole(roleType) {
   return ["candidate"];
 }
 
-function PricingPage({ user, premium, language, currency, stripeEnabled, onActivatePlan, onStripeCheckout, onRedeemCode }) {
+function PricingPage({
+  user,
+  premium,
+  language,
+  currency,
+  stripeEnabled,
+  onActivatePlan,
+  onStripeCheckout,
+  onRedeemCode,
+  pendingPlanAction
+}) {
   const copy = APP_COPY[language]?.pricing || APP_COPY.fr.pricing;
   const allowedSegments = allowedPricingSegmentsForRole(user?.roleType);
   const visibleSegments = PRICING_SEGMENTS.filter((item) => allowedSegments.includes(item.id));
@@ -5893,13 +10803,14 @@ function PricingPage({ user, premium, language, currency, stripeEnabled, onActiv
               <button
                 type="button"
                 className={`btn-main ${plan.highlighted ? "ready" : ""}`}
-                disabled={isCurrentPlan}
+                disabled={isCurrentPlan || Boolean(pendingPlanAction)}
                 onClick={() =>
                   stripeEnabled && plan.grantsPremium
                     ? onStripeCheckout(plan.id, billingCycle)
                     : onActivatePlan(plan.id, billingCycle)
                 }
               >
+                {pendingPlanAction === plan.id ? <span className="btn-spinner" /> : null}{" "}
                 {isCurrentPlan ? copy.currentPlan : copy.activate}
               </button>
             </article>
@@ -5919,13 +10830,13 @@ function PricingPage({ user, premium, language, currency, stripeEnabled, onActiv
           <button
             type="button"
             className="btn-main ready"
-            disabled={!licenseCode.trim()}
+            disabled={!licenseCode.trim() || Boolean(pendingPlanAction)}
             onClick={() => {
               onRedeemCode(licenseCode);
               setLicenseCode("");
             }}
           >
-            {copy.licenseCodeSubmit}
+            {pendingPlanAction === "license" ? <span className="btn-spinner" /> : null} {copy.licenseCodeSubmit}
           </button>
         </div>
       </div>
@@ -6213,7 +11124,234 @@ const LETTER_TEMPLATES = [
   { id: "minimal", label: { fr: "Minimaliste", en: "Minimal" }, icon: "docMinimal" }
 ];
 
-const LETTER_TONE_ICONS = { formal: "briefcase", enthusiastic: "spark", direct: "chevron" };
+const LETTER_TONE_ICONS = { formal: "shield", enthusiastic: "spark", direct: "share" };
+
+const EMAIL_CONFIDENCE_COPY = {
+  smtp_confirmed: { fr: "Confirmé par le serveur mail", en: "Confirmed by the mail server" },
+  pattern_only: { fr: "Suggestion probable (non vérifiée)", en: "Likely suggestion (unverified)" },
+  smtp_rejected: { fr: "Rejeté par le serveur mail", en: "Rejected by the mail server" }
+};
+
+function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onConsumeToken }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Email Scout",
+          subtitle: "Guess a professional email address from a name and a company — free, pattern-based.",
+          disclaimer:
+            "We generate the most common email patterns and check that the domain can receive mail. We only confirm real deliverability when the mail server responds during the search (not guaranteed) — never a fabricated score.",
+          company: "Company name",
+          companyPlaceholder: "e.g. Google",
+          domain: "Or domain directly (optional)",
+          domainPlaceholder: "e.g. google.com",
+          firstName: "First name",
+          firstNamePlaceholder: "e.g. Jean",
+          lastName: "Last name",
+          lastNamePlaceholder: "e.g. Dupont",
+          submit: "Find email (1 token)",
+          searching: "Searching…",
+          noTokens: "You're out of tokens. Upgrade your plan to keep using Email Scout.",
+          domainNoMxTitle: "Domain doesn't accept email",
+          domainNoMx: "This domain doesn't appear to accept email — double-check the company name or domain.",
+          bestMatch: "Most likely email",
+          otherSuggestions: "Other suggestions",
+          copy: "Copy",
+          copied: "Copied!",
+          emptyTitle: "No search yet",
+          empty: "Fill in the form to get email suggestions."
+        }
+      : {
+          title: "Email Scout",
+          subtitle: "Devine une adresse email professionnelle à partir d'un nom et d'une entreprise — gratuit, basé sur des motifs.",
+          disclaimer:
+            "On génère les motifs d'email les plus courants et on vérifie que le domaine peut recevoir des emails. On ne confirme une vraie livrabilité que lorsque le serveur mail répond pendant la recherche (non garanti) — jamais un score inventé.",
+          company: "Nom de l'entreprise",
+          companyPlaceholder: "ex : Google",
+          domain: "Ou domaine directement (optionnel)",
+          domainPlaceholder: "ex : google.com",
+          firstName: "Prénom",
+          firstNamePlaceholder: "ex : Jean",
+          lastName: "Nom",
+          lastNamePlaceholder: "ex : Dupont",
+          submit: "Trouver l'email (1 jeton)",
+          searching: "Recherche…",
+          noTokens: "Tu n'as plus de jetons. Passe à un plan supérieur pour continuer à utiliser Email Scout.",
+          domainNoMxTitle: "Domaine sans email",
+          domainNoMx: "Ce domaine ne semble pas accepter d'emails — vérifie le nom de l'entreprise ou le domaine.",
+          bestMatch: "Email le plus probable",
+          otherSuggestions: "Autres suggestions",
+          copy: "Copier",
+          copied: "Copié !",
+          emptyTitle: "Aucune recherche",
+          empty: "Remplis le formulaire pour obtenir des suggestions d'email."
+        };
+
+  const [companyName, setCompanyName] = useState("");
+  const [domain, setDomain] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [isSearching, setIsSearching] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState(null);
+  const [copiedEmail, setCopiedEmail] = useState("");
+
+  const outOfTokens = tokensBalance < 999 && tokensBalance <= 0;
+  const canSubmit = firstName.trim() && lastName.trim() && (companyName.trim() || domain.trim());
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!canSubmit || isSearching) return;
+    if (outOfTokens) {
+      onGoToTarifs();
+      return;
+    }
+    setError("");
+    setIsSearching(true);
+    setResult(null);
+    try {
+      const data = await findEmail({
+        userId,
+        companyName: companyName.trim(),
+        domain: domain.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim()
+      });
+      setResult(data);
+      await onConsumeToken();
+    } catch (err) {
+      setError(err.message || "Erreur de recherche.");
+    } finally {
+      setIsSearching(false);
+    }
+  }
+
+  function handleCopy(email) {
+    navigator.clipboard?.writeText(email);
+    setCopiedEmail(email);
+    setTimeout(() => setCopiedEmail(""), 1800);
+  }
+
+  return (
+    <section className="email-finder-page">
+      <header className="module-header feature-page-header">
+        <span className="feature-page-header-icon">
+          <UiIcon name="network" />
+        </span>
+        <div>
+          <h2>{copy.title}</h2>
+          <p>{copy.subtitle}</p>
+        </div>
+      </header>
+
+      <div className="email-finder-callout">
+        <span className="email-finder-callout-icon">
+          <UiIcon name="shield" />
+        </span>
+        <p>{copy.disclaimer}</p>
+      </div>
+
+      <div className="email-finder-grid">
+        <form className="email-finder-form" onSubmit={handleSubmit}>
+          <label>
+            {copy.company}
+            <div className="email-finder-input-wrap">
+              <UiIcon name="briefcase" />
+              <input
+                value={companyName}
+                onChange={(event) => setCompanyName(event.target.value)}
+                placeholder={copy.companyPlaceholder}
+              />
+            </div>
+          </label>
+          <label>
+            {copy.domain}
+            <div className="email-finder-input-wrap">
+              <UiIcon name="globe" />
+              <input value={domain} onChange={(event) => setDomain(event.target.value)} placeholder={copy.domainPlaceholder} />
+            </div>
+          </label>
+          <div className="email-finder-name-row">
+            <label>
+              {copy.firstName}
+              <div className="email-finder-input-wrap">
+                <UiIcon name="profile" />
+                <input
+                  value={firstName}
+                  onChange={(event) => setFirstName(event.target.value)}
+                  placeholder={copy.firstNamePlaceholder}
+                  required
+                />
+              </div>
+            </label>
+            <label>
+              {copy.lastName}
+              <div className="email-finder-input-wrap">
+                <UiIcon name="profile" />
+                <input
+                  value={lastName}
+                  onChange={(event) => setLastName(event.target.value)}
+                  placeholder={copy.lastNamePlaceholder}
+                  required
+                />
+              </div>
+            </label>
+          </div>
+
+          {error ? <p className="field-error">{error}</p> : null}
+          {outOfTokens ? <p className="field-hint">{copy.noTokens}</p> : null}
+
+          <button type="submit" className="btn-main ready" disabled={!canSubmit || isSearching}>
+            {isSearching ? <span className="btn-spinner" /> : null} {isSearching ? copy.searching : copy.submit}
+          </button>
+        </form>
+
+        <div className="email-finder-results">
+          {!result ? (
+            <SchoolEmptyState icon="network" title={copy.emptyTitle} hint={copy.empty} />
+          ) : !result.domainHasMx ? (
+            <SchoolEmptyState icon="alert" title={copy.domainNoMxTitle} hint={copy.domainNoMx} />
+          ) : (
+            <>
+              {result.best ? (
+                <div className="email-finder-best">
+                  <span className="email-finder-best-label">{copy.bestMatch}</span>
+                  <div className="email-finder-email-row">
+                    <strong>{result.best.email}</strong>
+                    <button type="button" onClick={() => handleCopy(result.best.email)}>
+                      {copiedEmail === result.best.email ? copy.copied : copy.copy}
+                    </button>
+                  </div>
+                  <span className={`tag email-confidence-${result.best.confidence}`}>
+                    {EMAIL_CONFIDENCE_COPY[result.best.confidence]?.[language] || result.best.confidence}
+                  </span>
+                </div>
+              ) : null}
+
+              {result.items?.length > 1 ? (
+                <div className="email-finder-alternates">
+                  <span className="email-finder-best-label">{copy.otherSuggestions}</span>
+                  {result.items
+                    .filter((item) => item.email !== result.best?.email)
+                    .map((item) => (
+                      <div key={item.email} className="email-finder-alt-row">
+                        <span>{item.email}</span>
+                        <span className={`tag email-confidence-${item.confidence}`}>
+                          {EMAIL_CONFIDENCE_COPY[item.confidence]?.[language] || item.confidence}
+                        </span>
+                        <button type="button" onClick={() => handleCopy(item.email)}>
+                          {copiedEmail === item.email ? copy.copied : copy.copy}
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              ) : null}
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
 
 function CoverLetterPage({ language, candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
   const copy = APP_COPY[language]?.coverLetter || APP_COPY.fr.coverLetter;
@@ -6297,9 +11435,14 @@ function CoverLetterPage({ language, candidate, offer, tokensBalance, onGoToTari
 
   return (
     <section className="cover-letter-page">
-      <header className="module-header">
-        <h2>{copy.title}</h2>
-        <p>{copy.subtitle}</p>
+      <header className="module-header feature-page-header">
+        <span className="feature-page-header-icon">
+          <UiIcon name="mail" />
+        </span>
+        <div>
+          <h2>{copy.title}</h2>
+          <p>{copy.subtitle}</p>
+        </div>
       </header>
 
       <div className="cover-letter-config-card">
@@ -6402,7 +11545,7 @@ function CoverLetterPage({ language, candidate, offer, tokensBalance, onGoToTari
   );
 }
 
-function SalaryNegotiationPage({ language, currency = "EUR", candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
+function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
   const copy = APP_COPY[language]?.negotiation || APP_COPY.fr.negotiation;
   const currencyOption = getCurrencyOption(currency);
   const [targetSalary, setTargetSalary] = useState("");
@@ -6414,6 +11557,92 @@ function SalaryNegotiationPage({ language, currency = "EUR", candidate, offer, t
   const [input, setInput] = useState("");
   const [summary, setSummary] = useState(null);
   const [error, setError] = useState("");
+  const [salaryReference, setSalaryReference] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [conversationId, setConversationId] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId) return undefined;
+    listNegotiationConversations(userId)
+      .then((items) => {
+        if (!cancelled) setConversations(items || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  function conversationTitle() {
+    return offer?.title ? `${offer.title}${offer.location ? ` · ${offer.location}` : ""}` : copy.untitled;
+  }
+
+  function buildPayload(nextMessages, nextSalaryReference, nextSummary) {
+    return {
+      messages: nextMessages,
+      salaryReference: nextSalaryReference,
+      targetSalary,
+      offer,
+      summary: nextSummary || null
+    };
+  }
+
+  async function persistConversation(nextMessages, nextSalaryReference, nextSummary) {
+    if (!userId) return;
+    const payload = buildPayload(nextMessages, nextSalaryReference, nextSummary);
+    try {
+      if (conversationId) {
+        await updateNegotiationConversation({ userId, conversationId, payload });
+        setConversations((prev) =>
+          prev.map((item) => (item.id === conversationId ? { ...item, ...payload, updatedAt: nowIsoClient() } : item))
+        );
+      } else {
+        const created = await saveNegotiationConversation({ userId, title: conversationTitle(), payload });
+        setConversationId(created.id);
+        setConversations((prev) => [{ ...created }, ...prev]);
+      }
+    } catch (_err) {
+      // La sauvegarde de l'historique est secondaire : la négociation en cours reste utilisable même si elle échoue.
+    }
+  }
+
+  function nowIsoClient() {
+    return new Date().toISOString();
+  }
+
+  function handleNewConversation() {
+    setStarted(false);
+    setMessages([]);
+    setSalaryReference(null);
+    setSummary(null);
+    setTargetSalary("");
+    setConversationId(null);
+    setError("");
+  }
+
+  function handleResumeConversation(conv) {
+    setConversationId(conv.id);
+    setMessages(conv.messages || []);
+    setSalaryReference(conv.salaryReference || null);
+    setSummary(conv.summary || null);
+    setTargetSalary(conv.targetSalary || "");
+    setStarted(true);
+    setError("");
+  }
+
+  async function handleDeleteConversation(event, conv) {
+    event.stopPropagation();
+    if (!userId) return;
+    if (typeof window !== "undefined" && !window.confirm(copy.deleteConfirm)) return;
+    try {
+      await deleteNegotiationConversation({ userId, conversationId: conv.id });
+      setConversations((prev) => prev.filter((item) => item.id !== conv.id));
+      if (conversationId === conv.id) handleNewConversation();
+    } catch (_err) {
+      // Non bloquant.
+    }
+  }
 
   const hasContext = Boolean(candidate && offer && (offer.title || offer.skills?.length));
   const outOfTokens = tokensBalance < 999 && tokensBalance <= 0;
@@ -6458,9 +11687,12 @@ function SalaryNegotiationPage({ language, currency = "EUR", candidate, offer, t
         finish: false,
         currencyLabel: currencyOption.label
       });
-      setMessages([{ type: "ai", text: result.reply }, { type: "feedback", text: `${copy.tip}: ${result.tip}` }]);
+      const nextMessages = [{ type: "ai", text: result.reply }, { type: "feedback", text: `${copy.tip}: ${result.tip}` }];
+      setMessages(nextMessages);
+      setSalaryReference(result.salaryReference || null);
       await onConsumeToken();
       setStarted(true);
+      await persistConversation(nextMessages, result.salaryReference || null, null);
     } catch (err) {
       setError(err.message || "Erreur de démarrage.");
     } finally {
@@ -6483,9 +11715,12 @@ function SalaryNegotiationPage({ language, currency = "EUR", candidate, offer, t
         history: historyPayload(withUser),
         targetSalary: targetSalaryLabel,
         finish: false,
-        currencyLabel: currencyOption.label
+        currencyLabel: currencyOption.label,
+        salaryReference
       });
-      setMessages([...withUser, { type: "ai", text: result.reply }, { type: "feedback", text: `${copy.tip}: ${result.tip}` }]);
+      const nextMessages = [...withUser, { type: "ai", text: result.reply }, { type: "feedback", text: `${copy.tip}: ${result.tip}` }];
+      setMessages(nextMessages);
+      await persistConversation(nextMessages, salaryReference, null);
     } catch (err) {
       setError(err.message || "Erreur de réponse.");
     } finally {
@@ -6507,6 +11742,7 @@ function SalaryNegotiationPage({ language, currency = "EUR", candidate, offer, t
         currencyLabel: currencyOption.label
       });
       setSummary(result);
+      await persistConversation(messages, salaryReference, result);
     } catch (err) {
       setError(err.message || "Erreur de bilan.");
     } finally {
@@ -6528,70 +11764,134 @@ function SalaryNegotiationPage({ language, currency = "EUR", candidate, offer, t
     );
   }
 
+  const historySidebar = (
+    <aside className="negotiation-history">
+      <button type="button" className="negotiation-new-btn" onClick={handleNewConversation}>
+        <UiIcon name="plus" /> {copy.newConversation}
+      </button>
+      <span className="negotiation-history-label">{copy.history}</span>
+      {conversations.length ? (
+        <ul className="negotiation-history-list">
+          {conversations.map((conv) => (
+            <li
+              key={conv.id}
+              className={`negotiation-history-item${conv.id === conversationId ? " active" : ""}`}
+              onClick={() => handleResumeConversation(conv)}
+            >
+              <span className="negotiation-history-title">{conv.title || copy.untitled}</span>
+              <button
+                type="button"
+                className="negotiation-history-delete"
+                onClick={(event) => handleDeleteConversation(event, conv)}
+                aria-label={copy.deleteConversation}
+              >
+                <UiIcon name="trash" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="negotiation-history-empty">{copy.noHistory}</p>
+      )}
+    </aside>
+  );
+
   if (!started) {
     return (
-      <section className="negotiation-start">
-        <NegotiationIllustration />
-        <h2>{copy.title}</h2>
-        <p>{copy.subtitle}</p>
-        <label className="negotiation-target">
-          <span>{copy.targetLabel}</span>
-          <div className="negotiation-target-input">
-            <input
-              type="text"
-              inputMode="numeric"
-              value={targetSalaryDisplay}
-              onChange={handleTargetSalaryChange}
-              placeholder={copy.targetPlaceholder}
-            />
-            <span className="negotiation-target-suffix">
-              {currencyOption.symbol} {language === "en" ? "/ yr" : "/ an"}
-            </span>
-          </div>
-        </label>
-        {error ? <p className="field-error">{error}</p> : null}
-        <button type="button" className="btn-main ready" onClick={handleStart} disabled={isStarting}>
-          {isStarting ? (
-            <>
-              <span className="btn-spinner" /> {copy.starting}
-            </>
-          ) : (
-            copy.start
-          )}
-        </button>
-      </section>
+      <div className="negotiation-layout">
+        {historySidebar}
+        <section className="negotiation-start">
+          <NegotiationIllustration />
+          <h2>{copy.title}</h2>
+          <p>{copy.subtitle}</p>
+          <label className="negotiation-target">
+            <span>{copy.targetLabel}</span>
+            <div className="negotiation-target-input">
+              <input
+                type="text"
+                inputMode="numeric"
+                value={targetSalaryDisplay}
+                onChange={handleTargetSalaryChange}
+                placeholder={copy.targetPlaceholder}
+              />
+              <span className="negotiation-target-suffix">
+                {currencyOption.symbol} {language === "en" ? "/ yr" : "/ an"}
+              </span>
+            </div>
+          </label>
+          {error ? <p className="field-error">{error}</p> : null}
+          <button type="button" className="btn-main ready" onClick={handleStart} disabled={isStarting}>
+            {isStarting ? (
+              <>
+                <span className="btn-spinner" /> {copy.starting}
+              </>
+            ) : (
+              copy.start
+            )}
+          </button>
+        </section>
+      </div>
     );
   }
 
   if (summary) {
     return (
-      <section className="negotiation-summary advice-card">
-        <h3>{copy.summary}</h3>
-        <p>{summary.summary}</p>
-        <div className="three-cols">
-          <div>
-            <h5>{copy.strengths}</h5>
-            <ul>
-              {(summary.strengths || []).map((point, idx) => (
-                <li key={`s-${idx}`}>{point}</li>
-              ))}
-            </ul>
+      <div className="negotiation-layout">
+        {historySidebar}
+        <section className="negotiation-summary advice-card">
+          <h3>{copy.summary}</h3>
+          <p>{summary.summary}</p>
+          <div className="three-cols">
+            <div>
+              <h5>{copy.strengths}</h5>
+              <ul>
+                {(summary.strengths || []).map((point, idx) => (
+                  <li key={`s-${idx}`}>{point}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h5>{copy.improvements}</h5>
+              <ul>
+                {(summary.improvements || []).map((point, idx) => (
+                  <li key={`i-${idx}`}>{point}</li>
+                ))}
+              </ul>
+            </div>
           </div>
-          <div>
-            <h5>{copy.improvements}</h5>
-            <ul>
-              {(summary.improvements || []).map((point, idx) => (
-                <li key={`i-${idx}`}>{point}</li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
+        </section>
+      </div>
     );
   }
 
   return (
-    <section className="negotiation-page">
+    <div className="negotiation-layout">
+      {historySidebar}
+      <section className="negotiation-page">
+      {salaryReference ? (
+        <div className="salary-reference-banner">
+          <UiIcon name="chart" />
+          <span>
+            {language === "en" ? "Real market range: " : "Fourchette réelle de marché : "}
+            <strong>
+              {formatAmountInCurrency(salaryReference.min, currency)} – {formatAmountInCurrency(salaryReference.max, currency)}
+            </strong>{" "}
+            {language === "en" ? "based on" : "basée sur"}{" "}
+            {salaryReference.sources.map((source) => source.name).join(" + ")}
+            {language === "en" ? " listings." : "."}
+          </span>
+        </div>
+      ) : (
+        <div className="salary-reference-banner muted">
+          <UiIcon name="alert" />
+          <span>
+            {language === "en"
+              ? "No real market data found for this role — figures below are AI estimates only."
+              : "Aucune donnée de marché réelle trouvée pour ce poste — les montants ci-dessous sont des estimations IA uniquement."}
+          </span>
+        </div>
+      )}
+
       <div className="chat card">
         <div className="chat-stream negotiation-stream">
           {messages.map((msg, idx) => {
@@ -6643,7 +11943,8 @@ function SalaryNegotiationPage({ language, currency = "EUR", candidate, offer, t
           )}
         </button>
       </div>
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -6675,13 +11976,18 @@ function CvHistoryPage({ cvHistory, latestMatch, language }) {
   return (
     <section className="cv-history-page">
       <div className="card block history-head">
-        <div>
-          <h2>{language === "en" ? "CV history" : "Historique CV"}</h2>
-          <p className="muted">
-            {language === "en"
-              ? "All imported CVs are kept here with their extracted data."
-              : "Tous les CV importés sont conservés ici avec leurs données extraites."}
-          </p>
+        <div className="feature-page-header">
+          <span className="feature-page-header-icon">
+            <UiIcon name="history" />
+          </span>
+          <div>
+            <h2>{language === "en" ? "CV history" : "Historique CV"}</h2>
+            <p className="muted">
+              {language === "en"
+                ? "All imported CVs are kept here with their extracted data."
+                : "Tous les CV importés sont conservés ici avec leurs données extraites."}
+            </p>
+          </div>
         </div>
         <div className="history-count-badge">
           <strong>{cvHistory.length}</strong>

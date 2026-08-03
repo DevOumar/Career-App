@@ -3,6 +3,8 @@ import crypto from "crypto";
 import express from "express";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
+import dns from "node:dns/promises";
+import net from "node:net";
 import mammoth from "mammoth";
 import nodemailer from "nodemailer";
 import path from "path";
@@ -22,6 +24,7 @@ import {
   resolveStripeMode,
   resolveStripePriceEnvVar
 } from "./stripeService.js";
+import { getRealSalaryReference } from "./salaryDataService.js";
 
 const BASE_PORT = Number(process.env.PORT || 8787);
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
@@ -35,11 +38,29 @@ const ACCOUNT_TYPES = new Set([
   "company",
   "school",
   "coach",
-  "other"
+  "other",
+  "admin"
 ]);
 
 const CANDIDATE_TYPES = new Set(["candidate", "student"]);
 const RECRUITER_TYPES = new Set(["recruiter_firm", "recruiter_internal"]);
+
+const ADMIN_MODULE_IDS = new Set([
+  "dashboard",
+  "accounts",
+  "finance",
+  "activity",
+  "licenses",
+  "aiSamples",
+  "settings",
+  "announcements",
+  "pricing"
+]);
+
+function sanitizeAdminModules(input) {
+  if (!Array.isArray(input)) return [];
+  return [...new Set(input.filter((item) => ADMIN_MODULE_IDS.has(item)))];
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -411,6 +432,15 @@ await db.exec(`
     payload_json TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS negotiation_conversations (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS match_feedback (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -426,6 +456,48 @@ await db.exec(`
     plan_id TEXT NOT NULL,
     seats_total INTEGER NOT NULL,
     seats_used INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS school_invitations (
+    id TEXT PRIMARY KEY,
+    school_user_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    license_code TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    redeemed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS platform_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS announcements (
+    id TEXT PRIMARY KEY,
+    admin_user_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    audience TEXT NOT NULL,
+    recipient_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS transactions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    plan_id TEXT NOT NULL,
+    billing_cycle TEXT NOT NULL,
+    listed_amount NUMERIC NOT NULL DEFAULT 0,
+    amount_collected NUMERIC NOT NULL DEFAULT 0,
+    currency TEXT NOT NULL DEFAULT 'EUR',
+    source TEXT NOT NULL,
+    license_code TEXT,
+    stripe_customer_id TEXT,
+    stripe_subscription_id TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -452,6 +524,9 @@ await db.exec(`
   ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data_url TEXT NOT NULL DEFAULT '';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT NOT NULL DEFAULT '';
+  ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS revoked INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS revoked_at TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_modules_json TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT '';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip_address TEXT NOT NULL DEFAULT '';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at TEXT NOT NULL DEFAULT '';
@@ -686,6 +761,54 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
 </html>`;
 
   return { subject, text, html };
+}
+
+let cachedMailTransporter = null;
+
+function getMailTransporter() {
+  if (!SMTP_USER || !SMTP_PASS) return null;
+  if (!cachedMailTransporter) {
+    cachedMailTransporter = nodemailer.createTransport({
+      host: SMTP_HOST,
+      port: SMTP_PORT,
+      secure: SMTP_SECURE,
+      auth: { user: SMTP_USER, pass: SMTP_PASS }
+    });
+  }
+  return cachedMailTransporter;
+}
+
+function buildAnnouncementEmail({ subject, message, firstName }) {
+  const greeting = firstName ? `Bonjour ${firstName},` : "Bonjour,";
+  const paragraphs = String(message || "")
+    .split(/\n{2,}/)
+    .map((p) => `<p style="margin:0 0 14px;line-height:1.6;color:#1f2634;">${p.replace(/\n/g, "<br/>")}</p>`)
+    .join("");
+
+  const html = `
+    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
+      <h2 style="color:#2f5bff;margin:0 0 18px;">Career App</h2>
+      <p style="margin:0 0 14px;color:#1f2634;">${greeting}</p>
+      ${paragraphs}
+      <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career App</p>
+    </div>`;
+
+  const text = `${greeting}\n\n${message}\n\n— L'équipe Career App`;
+
+  return { subject, html, text };
+}
+
+async function resolveAnnouncementAudience(audience) {
+  if (audience && !ACCOUNT_TYPES.has(audience)) {
+    const error = new Error("Audience inconnue.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const query = audience
+    ? "SELECT id, first_name, email FROM users WHERE role_type = $1"
+    : "SELECT id, first_name, email FROM users WHERE role_type <> 'admin'";
+  const { rows } = await db.query(query, audience ? [audience] : []);
+  return rows;
 }
 
 async function sendVerificationEmail({ to, code, firstName, purpose = "login" }) {
@@ -1652,7 +1775,15 @@ async function negotiationReplyWithAi(candidate, offer, history, options = {}) {
     `Exprime systematiquement tous les montants en ${currencyLabel}, jamais dans une autre devise. ` +
     "Reponds uniquement en JSON.";
 
+  const salaryReference = options.salaryReference;
+  const salaryReferenceBlock = salaryReference
+    ? `REFERENCE SALARIALE REELLE DE MARCHE (sources: ${salaryReference.sources.map((s) => s.name).join(", ")}): ` +
+      `entre ${salaryReference.min} et ${salaryReference.max} ${salaryReference.currency} par an. ` +
+      "Base-toi sur cette fourchette reelle pour rester credible, ne propose pas un montant hors de cette plage sans le justifier explicitement.\n\n"
+    : "AUCUNE REFERENCE SALARIALE DE MARCHE REELLE DISPONIBLE. Reste prudent(e) et generique sur les montants precis, sans pretendre citer une donnee de marche.\n\n";
+
   const contextBlock =
+    salaryReferenceBlock +
     `PROFIL CANDIDAT:\n${JSON.stringify(candidate).slice(0, 8000)}\n\n` +
     `OFFRE:\n${JSON.stringify(offer).slice(0, 8000)}\n\n` +
     (targetSalary ? `PRETENTION SALARIALE DU CANDIDAT: ${targetSalary}\n\n` : "") +
@@ -2355,6 +2486,49 @@ async function getUserRowById(userId) {
   return rows[0] || null;
 }
 
+async function requireAdmin(adminUserId) {
+  const admin = await getUserRowById(adminUserId);
+  if (!admin || admin.role_type !== "admin") {
+    const error = new Error("Accès administrateur requis.");
+    error.statusCode = 403;
+    throw error;
+  }
+  return admin;
+}
+
+const PLATFORM_SETTING_DEFAULTS = {
+  google_signin_enabled: "true",
+  stripe_enabled: "true"
+};
+
+const platformSettingsCache = new Map();
+
+async function loadPlatformSettings() {
+  const { rows } = await db.query("SELECT key, value FROM platform_settings");
+  platformSettingsCache.clear();
+  for (const row of rows) {
+    platformSettingsCache.set(row.key, row.value);
+  }
+}
+
+function getPlatformSetting(key) {
+  if (platformSettingsCache.has(key)) return platformSettingsCache.get(key);
+  return PLATFORM_SETTING_DEFAULTS[key] ?? null;
+}
+
+function getPlatformSettingBool(key) {
+  return getPlatformSetting(key) === "true";
+}
+
+async function setPlatformSetting(key, value) {
+  await db.query(
+    `INSERT INTO platform_settings (key, value, updated_at) VALUES ($1,$2,$3)
+     ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = EXCLUDED.updated_at`,
+    [key, value, nowIso()]
+  );
+  platformSettingsCache.set(key, value);
+}
+
 async function getUserRowByEmail(email) {
   const { rows } = await db.query("SELECT * FROM users WHERE email = $1 LIMIT 1", [normalizeEmail(email)]);
   return rows[0] || null;
@@ -2532,6 +2706,7 @@ function toPublicUser(userRow, relations) {
     updatedAt: userRow.updated_at,
     roleType: accountType,
     googleLinked: Boolean(userRow.google_id),
+    adminModules: accountType === "admin" ? parseJsonField(userRow.admin_modules_json, []) : undefined,
     avatarDataUrl,
     profile,
     subscription,
@@ -2832,7 +3007,8 @@ app.get("/api/health", async (_req, res) => {
     aiProvider: AI_PROVIDER,
     aiModel: AI_MODEL || null,
     aiKeyConfigured: Boolean(aiExtractionConfig()?.apiKey),
-    stripeEnabled: Boolean(stripe)
+    stripeEnabled: Boolean(stripe) && getPlatformSettingBool("stripe_enabled"),
+    googleSignInEnabled: Boolean(googleOAuthClient) && getPlatformSettingBool("google_signin_enabled")
   });
 });
 
@@ -2851,6 +3027,9 @@ app.post("/api/auth/register", async (req, res) => {
     const password = String(req.body.password || "");
 
     const accountType = sanitizeAccountType(req.body.accountType || "candidate");
+    if (accountType === "admin") {
+      return res.status(403).json({ error: "Inscription non autorisée pour ce type de compte." });
+    }
     const onboardingPayload = sanitizeOnboardingPayload(accountType, req.body.onboarding || {});
 
     if (!email.includes("@")) {
@@ -2951,6 +3130,9 @@ app.post("/api/auth/google", async (req, res) => {
   try {
     if (!googleOAuthClient) {
       return res.status(500).json({ error: "Connexion Google non configurée sur le serveur." });
+    }
+    if (!getPlatformSettingBool("google_signin_enabled")) {
+      return res.status(503).json({ error: "La connexion Google est temporairement désactivée." });
     }
     const credential = coerceString(req.body?.credential);
     if (!credential) {
@@ -3550,6 +3732,7 @@ app.delete("/api/account", async (req, res) => {
     await db.query("DELETE FROM user_email_addresses WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM cvs WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM match_runs WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM negotiation_conversations WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_candidate_profiles WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_recruiter_profiles WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_org_profiles WHERE user_id = $1", [userId]);
@@ -3678,7 +3861,7 @@ function generateLicenseCode() {
   return code;
 }
 
-async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeIds = null) {
+async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeIds = null, source = "instant") {
   const cycle = billingCycle === "annual" ? "annual" : plan.monthlyPrice == null ? "annual" : "monthly";
   const startedAt = nowIso();
   const renewalDays = cycle === "annual" ? 365 : 30;
@@ -3700,12 +3883,38 @@ async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeId
     nowIso(),
     userId
   ]);
+
+  const listedAmount = cycle === "annual" ? plan.annualPrice || 0 : plan.monthlyPrice || 0;
+  const amountCollected = source === "stripe" ? listedAmount : 0;
+  await db.query(
+    `INSERT INTO transactions (
+      id, user_id, plan_id, billing_cycle, listed_amount, amount_collected, currency, source,
+      license_code, stripe_customer_id, stripe_subscription_id, created_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+    [
+      `txn-${crypto.randomUUID()}`,
+      userId,
+      plan.id,
+      cycle,
+      listedAmount,
+      amountCollected,
+      "EUR",
+      source,
+      licenseCode || null,
+      stripeIds?.stripeCustomerId || null,
+      stripeIds?.stripeSubscriptionId || null,
+      nowIso()
+    ]
+  );
 }
 
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {
     if (!stripe) {
       return res.status(503).json({ error: "Paiement Stripe non configuré côté serveur." });
+    }
+    if (!getPlatformSettingBool("stripe_enabled")) {
+      return res.status(503).json({ error: "Le paiement Stripe est temporairement désactivé." });
     }
 
     const userId = coerceString(req.body?.userId);
@@ -3769,7 +3978,7 @@ app.post("/api/plans/activate", async (req, res) => {
       return res.status(400).json({ error: "Plan inconnu." });
     }
 
-    await applyPlanToUser(userId, plan, billingCycle, null);
+    await applyPlanToUser(userId, plan, billingCycle, null, null, "instant");
 
     const licenseCode = plan.seats ? await generateLicenseCodeForPlan(userId, plan) : null;
 
@@ -3801,6 +4010,10 @@ app.post("/api/plans/redeem", async (req, res) => {
       return res.status(404).json({ error: "Code de licence introuvable." });
     }
 
+    if (Number(licenseRow.revoked)) {
+      return res.status(410).json({ error: "Ce code de licence a été révoqué." });
+    }
+
     const plan = getPlanById(licenseRow.plan_id);
     if (!plan) {
       return res.status(400).json({ error: "Plan associé au code introuvable." });
@@ -3814,7 +4027,11 @@ app.post("/api/plans/redeem", async (req, res) => {
         return res.status(409).json({ error: "Ce code de licence a atteint son nombre maximum d'utilisateurs." });
       }
       await db.query("UPDATE license_codes SET seats_used = seats_used + 1 WHERE code = $1", [code]);
-      await applyPlanToUser(userId, plan, null, code);
+      await applyPlanToUser(userId, plan, null, code, null, "license_redeem");
+      await db.query(
+        "UPDATE school_invitations SET status = 'redeemed', redeemed_at = $1 WHERE license_code = $2 AND email = $3 AND status = 'pending'",
+        [nowIso(), code, normalizeEmail(user.email)]
+      );
     }
 
     const updatedUser = await getUserRowById(userId);
@@ -3822,6 +4039,1194 @@ app.post("/api/plans/redeem", async (req, res) => {
     return res.json({ user: await getPublicUserById(userId), premium });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/overview", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const { rows: roleCounts } = await db.query(
+      "SELECT role_type, COUNT(*)::int AS count FROM users GROUP BY role_type"
+    );
+    const { rows: cvCountRows } = await db.query("SELECT COUNT(*)::int AS count FROM cvs");
+    const { rows: matchCountRows } = await db.query("SELECT COUNT(*)::int AS count FROM match_runs");
+    const { rows: signupRows } = await db.query(
+      "SELECT COUNT(*)::int AS count FROM users WHERE created_at >= $1",
+      [new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()]
+    );
+    const { rows: userRows } = await db.query("SELECT role_type, subscription_json, created_at FROM users");
+
+    const planCounts = {};
+    const planCountsByRole = {};
+    for (const row of userRows) {
+      const subscription = parseJsonField(row.subscription_json, {});
+      const planId = subscription.planId || "candidate_discovery";
+      planCounts[planId] = (planCounts[planId] || 0) + 1;
+      if (!planCountsByRole[row.role_type]) planCountsByRole[row.role_type] = {};
+      planCountsByRole[row.role_type][planId] = (planCountsByRole[row.role_type][planId] || 0) + 1;
+    }
+
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const weekCount = 8;
+    const now = Date.now();
+    const buckets = Array.from({ length: weekCount }, (_, index) => {
+      const weeksAgo = weekCount - 1 - index;
+      const start = now - (weeksAgo + 1) * WEEK_MS;
+      const end = now - weeksAgo * WEEK_MS;
+      return { start, end, count: 0 };
+    });
+    for (const row of userRows) {
+      const createdAt = new Date(row.created_at).getTime();
+      if (Number.isNaN(createdAt)) continue;
+      const bucket = buckets.find((item) => createdAt >= item.start && createdAt < item.end);
+      if (bucket) bucket.count += 1;
+    }
+    const signupsTrend = buckets.map((bucket) => ({
+      weekStart: new Date(bucket.start).toISOString(),
+      count: bucket.count
+    }));
+
+    return res.json({
+      usersByRole: Object.fromEntries(roleCounts.map((row) => [row.role_type, row.count])),
+      totalCvs: cvCountRows[0]?.count || 0,
+      totalMatchRuns: matchCountRows[0]?.count || 0,
+      signupsLast30Days: signupRows[0]?.count || 0,
+      planCounts,
+      planCountsByRole,
+      signupsTrend
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/users", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const search = coerceString(req.query?.search).toLowerCase();
+    const roleType = coerceString(req.query?.roleType);
+
+    const { rows } = await db.query(
+      "SELECT id, first_name, last_name, email, role_type, avatar_data_url, created_at, subscription_json, admin_modules_json FROM users ORDER BY created_at DESC LIMIT 200"
+    );
+
+    const filtered = rows.filter((row) => {
+      if (roleType && row.role_type !== roleType) return false;
+      if (!search) return true;
+      const haystack = `${row.first_name} ${row.last_name} ${row.email}`.toLowerCase();
+      return haystack.includes(search);
+    });
+
+    return res.json({
+      items: filtered.map((row) => {
+        const subscription = parseJsonField(row.subscription_json, {});
+        return {
+          id: row.id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          email: row.email,
+          roleType: row.role_type,
+          avatarDataUrl: row.avatar_data_url || "",
+          planId: subscription.planId || null,
+          billingCycle: subscription.billingCycle || null,
+          createdAt: row.created_at,
+          adminModules: row.role_type === "admin" ? sanitizeAdminModules(parseJsonField(row.admin_modules_json, [])) : undefined
+        };
+      })
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/org-accounts", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const roleType = coerceString(req.query?.roleType);
+    if (roleType !== "school" && roleType !== "recruiter_firm") {
+      return res.status(400).json({ error: "roleType doit être 'school' ou 'recruiter_firm'." });
+    }
+
+    const { rows: orgRows } = await db.query(
+      "SELECT id, first_name, last_name, email, avatar_data_url, created_at FROM users WHERE role_type = $1 ORDER BY created_at DESC",
+      [roleType]
+    );
+    const { rows: codeRows } = await db.query(
+      "SELECT code, owner_user_id, plan_id, seats_total, seats_used FROM license_codes"
+    );
+    const { rows: memberRows } = await db.query(
+      "SELECT id, first_name, last_name, email, role_type, avatar_data_url, created_at, subscription_json FROM users"
+    );
+    const profileTable = roleType === "school" ? "user_org_profiles" : "user_recruiter_profiles";
+    const { rows: profileRows } = await db.query(
+      `SELECT user_id, organization_name FROM ${profileTable}`
+    );
+    const orgNameByUser = Object.fromEntries(profileRows.map((row) => [row.user_id, row.organization_name]));
+
+    const codesByOwner = {};
+    for (const code of codeRows) {
+      if (!codesByOwner[code.owner_user_id]) codesByOwner[code.owner_user_id] = [];
+      codesByOwner[code.owner_user_id].push(code);
+    }
+
+    const items = orgRows.map((org) => {
+      const orgCodes = codesByOwner[org.id] || [];
+      const codeSet = new Set(orgCodes.map((code) => code.code));
+      const members = memberRows
+        .filter((member) => {
+          const subscription = parseJsonField(member.subscription_json, {});
+          return subscription.licenseCode && codeSet.has(subscription.licenseCode);
+        })
+        .map((member) => ({
+          id: member.id,
+          firstName: member.first_name,
+          lastName: member.last_name,
+          email: member.email,
+          roleType: member.role_type,
+          avatarDataUrl: member.avatar_data_url || "",
+          createdAt: member.created_at
+        }));
+
+      return {
+        id: org.id,
+        firstName: org.first_name,
+        lastName: org.last_name,
+        avatarDataUrl: org.avatar_data_url || "",
+        organizationName: orgNameByUser[org.id] || "",
+        email: org.email,
+        createdAt: org.created_at,
+        licenseCodes: orgCodes.map((code) => ({
+          code: code.code,
+          planId: code.plan_id,
+          seatsTotal: code.seats_total,
+          seatsUsed: code.seats_used
+        })),
+        members
+      };
+    });
+
+    return res.json({ items });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/activity-log", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const search = coerceString(req.query?.search).toLowerCase();
+    const eventType = coerceString(req.query?.eventType);
+
+    const { rows: eventRows } = await db.query(
+      "SELECT * FROM account_security_events ORDER BY created_at DESC LIMIT 500"
+    );
+    const userIds = [...new Set(eventRows.map((row) => row.user_id))];
+    const { rows: userRows } = userIds.length
+      ? await db.query(
+          "SELECT id, first_name, last_name, email, avatar_data_url FROM users WHERE id = ANY($1)",
+          [userIds]
+        )
+      : { rows: [] };
+    const userById = Object.fromEntries(userRows.map((row) => [row.id, row]));
+
+    const filtered = eventRows.filter((row) => {
+      if (eventType && row.event_type !== eventType) return false;
+      if (!search) return true;
+      const actor = userById[row.user_id];
+      const haystack = `${actor?.first_name || ""} ${actor?.last_name || ""} ${actor?.email || ""} ${row.event_type} ${row.ip_address}`.toLowerCase();
+      return haystack.includes(search);
+    });
+
+    const eventTypeCounts = {};
+    for (const row of eventRows) {
+      eventTypeCounts[row.event_type] = (eventTypeCounts[row.event_type] || 0) + 1;
+    }
+
+    return res.json({
+      items: filtered.map((row) => {
+        const actor = userById[row.user_id];
+        return {
+          id: row.id,
+          userId: row.user_id,
+          userFirstName: actor?.first_name || "",
+          userLastName: actor?.last_name || "",
+          userEmail: actor?.email || row.user_id,
+          userAvatarDataUrl: actor?.avatar_data_url || "",
+          eventType: row.event_type,
+          metadata: parseJsonField(row.metadata_json, {}),
+          ipAddress: row.ip_address,
+          userAgent: row.user_agent,
+          createdAt: row.created_at
+        };
+      }),
+      total: eventRows.length,
+      eventTypeCounts
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/license-codes", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const search = coerceString(req.query?.search).toLowerCase();
+
+    const { rows: codeRows } = await db.query("SELECT * FROM license_codes ORDER BY created_at DESC LIMIT 500");
+    const ownerIds = [...new Set(codeRows.map((row) => row.owner_user_id))];
+    const { rows: ownerRows } = ownerIds.length
+      ? await db.query(
+          "SELECT id, first_name, last_name, email, role_type, avatar_data_url FROM users WHERE id = ANY($1)",
+          [ownerIds]
+        )
+      : { rows: [] };
+    const ownerById = Object.fromEntries(ownerRows.map((row) => [row.id, row]));
+
+    const filtered = codeRows.filter((row) => {
+      if (!search) return true;
+      const owner = ownerById[row.owner_user_id];
+      const haystack = `${row.code} ${owner?.first_name || ""} ${owner?.last_name || ""} ${owner?.email || ""} ${row.plan_id}`.toLowerCase();
+      return haystack.includes(search);
+    });
+
+    return res.json({
+      items: filtered.map((row) => {
+        const owner = ownerById[row.owner_user_id];
+        return {
+          code: row.code,
+          ownerId: row.owner_user_id,
+          ownerFirstName: owner?.first_name || "",
+          ownerLastName: owner?.last_name || "",
+          ownerEmail: owner?.email || "",
+          ownerRoleType: owner?.role_type || "",
+          ownerAvatarDataUrl: owner?.avatar_data_url || "",
+          planId: row.plan_id,
+          seatsTotal: row.seats_total,
+          seatsUsed: row.seats_used,
+          revoked: Boolean(Number(row.revoked)),
+          createdAt: row.created_at
+        };
+      })
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/license-codes/revoke", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const code = coerceString(req.body?.code).toUpperCase();
+    const { rows } = await db.query("SELECT * FROM license_codes WHERE code = $1", [code]);
+    if (!rows[0]) {
+      return res.status(404).json({ error: "Code de licence introuvable." });
+    }
+
+    await db.query("UPDATE license_codes SET revoked = 1, revoked_at = $1 WHERE code = $2", [nowIso(), code]);
+    await logSecurityEvent(req, adminUserId, "admin_license_code_revoked", { code });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/license-codes/restore", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const code = coerceString(req.body?.code).toUpperCase();
+    const { rows } = await db.query("SELECT * FROM license_codes WHERE code = $1", [code]);
+    if (!rows[0]) {
+      return res.status(404).json({ error: "Code de licence introuvable." });
+    }
+
+    await db.query("UPDATE license_codes SET revoked = 0, revoked_at = '' WHERE code = $1", [code]);
+    await logSecurityEvent(req, adminUserId, "admin_license_code_restored", { code });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/settings", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    return res.json({
+      googleSignInEnabled: getPlatformSettingBool("google_signin_enabled"),
+      googleConfigured: Boolean(googleOAuthClient),
+      stripeEnabled: getPlatformSettingBool("stripe_enabled"),
+      stripeConfigured: Boolean(stripe)
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/settings", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const key = coerceString(req.body?.key);
+    const value = Boolean(req.body?.value);
+    if (!Object.prototype.hasOwnProperty.call(PLATFORM_SETTING_DEFAULTS, key)) {
+      return res.status(400).json({ error: "Paramètre inconnu." });
+    }
+
+    await setPlatformSetting(key, value ? "true" : "false");
+    await logSecurityEvent(req, adminUserId, "admin_setting_changed", { key, value });
+
+    return res.json({
+      googleSignInEnabled: getPlatformSettingBool("google_signin_enabled"),
+      googleConfigured: Boolean(googleOAuthClient),
+      stripeEnabled: getPlatformSettingBool("stripe_enabled"),
+      stripeConfigured: Boolean(stripe)
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/announcements/audience-count", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const audience = coerceString(req.query?.audience);
+    const recipients = await resolveAnnouncementAudience(audience);
+    return res.json({ count: recipients.length });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/announcements", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const { rows } = await db.query("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 100");
+    return res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        subject: row.subject,
+        message: row.message,
+        audience: row.audience,
+        recipientCount: row.recipient_count,
+        failedCount: row.failed_count,
+        createdAt: row.created_at
+      }))
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/announcements/send", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const subject = coerceString(req.body?.subject);
+    const message = coerceString(req.body?.message);
+    const audience = coerceString(req.body?.audience);
+
+    if (!subject || !message) {
+      return res.status(400).json({ error: "Objet et message requis." });
+    }
+
+    const transporter = getMailTransporter();
+    if (!transporter) {
+      return res.status(503).json({ error: "SMTP non configuré côté serveur : impossible d'envoyer des emails." });
+    }
+
+    const recipients = await resolveAnnouncementAudience(audience);
+    if (!recipients.length) {
+      return res.status(400).json({ error: "Aucun destinataire pour cette audience." });
+    }
+
+    let failedCount = 0;
+    for (const recipient of recipients) {
+      const built = buildAnnouncementEmail({ subject, message, firstName: recipient.first_name });
+      try {
+        await transporter.sendMail({
+          from: MAIL_FROM || `"${MAIL_FROM_NAME}" <${MAIL_FROM_ADDRESS || SMTP_USER}>`,
+          to: recipient.email,
+          subject: built.subject,
+          text: built.text,
+          html: built.html
+        });
+      } catch (sendError) {
+        failedCount += 1;
+        console.warn(`Echec envoi annonce a ${recipient.email}: ${sendError.message}`);
+      }
+    }
+
+    const id = `ann-${crypto.randomUUID()}`;
+    await db.query(
+      `INSERT INTO announcements (id, admin_user_id, subject, message, audience, recipient_count, failed_count, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [id, adminUserId, subject, message, audience || "all", recipients.length, failedCount, nowIso()]
+    );
+    await logSecurityEvent(req, adminUserId, "admin_announcement_sent", {
+      audience: audience || "all",
+      recipientCount: recipients.length,
+      failedCount
+    });
+
+    return res.json({ ok: true, recipientCount: recipients.length, failedCount });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/ai-samples", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const search = coerceString(req.query?.search).toLowerCase();
+
+    const { rows: runRows } = await db.query(
+      "SELECT id, user_id, created_at, payload_json FROM match_runs ORDER BY created_at DESC LIMIT 300"
+    );
+    const userIds = [...new Set(runRows.map((row) => row.user_id))];
+    const { rows: userRows } = userIds.length
+      ? await db.query(
+          "SELECT id, first_name, last_name, email, avatar_data_url FROM users WHERE id = ANY($1)",
+          [userIds]
+        )
+      : { rows: [] };
+    const userById = Object.fromEntries(userRows.map((row) => [row.id, row]));
+
+    const items = runRows
+      .map((row) => {
+        const payload = parseJsonField(row.payload_json, {});
+        const owner = userById[row.user_id];
+        return {
+          id: row.id,
+          userId: row.user_id,
+          userFirstName: owner?.first_name || "",
+          userLastName: owner?.last_name || "",
+          userEmail: owner?.email || "",
+          userAvatarDataUrl: owner?.avatar_data_url || "",
+          jobTitle: payload.jobReview?.title || "",
+          jobCompany: payload.jobReview?.company || "",
+          score: payload.matchInsights?.score ?? null,
+          strengths: Array.isArray(payload.matchInsights?.strengths) ? payload.matchInsights.strengths : [],
+          missingKeywords: Array.isArray(payload.matchInsights?.missingKeywords) ? payload.matchInsights.missingKeywords : [],
+          culturalFit: payload.matchInsights?.culturalFit || null,
+          recommendation: payload.matchInsights?.recommendation || "",
+          createdAt: row.created_at
+        };
+      })
+      .filter((item) => {
+        if (!search) return true;
+        const haystack = `${item.userFirstName} ${item.userLastName} ${item.userEmail} ${item.jobTitle} ${item.jobCompany}`.toLowerCase();
+        return haystack.includes(search);
+      });
+
+    return res.json({ items, total: runRows.length });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/finance", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const source = coerceString(req.query?.source);
+    const search = coerceString(req.query?.search).toLowerCase();
+
+    const { rows: txnRows } = await db.query(
+      "SELECT * FROM transactions ORDER BY created_at DESC LIMIT 500"
+    );
+    const userIds = [...new Set(txnRows.map((row) => row.user_id))];
+    const { rows: userRows } = userIds.length
+      ? await db.query(
+          `SELECT id, first_name, last_name, email, role_type, avatar_data_url FROM users WHERE id = ANY($1)`,
+          [userIds]
+        )
+      : { rows: [] };
+    const userById = Object.fromEntries(userRows.map((row) => [row.id, row]));
+
+    const filtered = txnRows.filter((row) => {
+      if (source && row.source !== source) return false;
+      if (!search) return true;
+      const owner = userById[row.user_id];
+      const haystack = `${owner?.first_name || ""} ${owner?.last_name || ""} ${owner?.email || ""} ${row.plan_id}`.toLowerCase();
+      return haystack.includes(search);
+    });
+
+    const items = filtered.map((row) => {
+      const owner = userById[row.user_id];
+      return {
+        id: row.id,
+        userId: row.user_id,
+        userFirstName: owner?.first_name || "",
+        userLastName: owner?.last_name || "",
+        userEmail: owner?.email || "",
+        userRoleType: owner?.role_type || "",
+        userAvatarDataUrl: owner?.avatar_data_url || "",
+        planId: row.plan_id,
+        billingCycle: row.billing_cycle,
+        listedAmount: Number(row.listed_amount),
+        amountCollected: Number(row.amount_collected),
+        currency: row.currency,
+        source: row.source,
+        licenseCode: row.license_code,
+        createdAt: row.created_at
+      };
+    });
+
+    const totalRevenueCollected = txnRows.reduce((sum, row) => sum + Number(row.amount_collected), 0);
+    const totalListedValue = txnRows.reduce((sum, row) => sum + Number(row.listed_amount), 0);
+
+    const revenueByPlan = {};
+    const countBySource = {};
+    for (const row of txnRows) {
+      revenueByPlan[row.plan_id] = (revenueByPlan[row.plan_id] || 0) + Number(row.amount_collected);
+      countBySource[row.source] = (countBySource[row.source] || 0) + 1;
+    }
+
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const weekCount = 8;
+    const now = Date.now();
+    const buckets = Array.from({ length: weekCount }, (_, index) => {
+      const weeksAgo = weekCount - 1 - index;
+      const start = now - (weeksAgo + 1) * WEEK_MS;
+      const end = now - weeksAgo * WEEK_MS;
+      return { start, end, amount: 0 };
+    });
+    for (const row of txnRows) {
+      const createdAt = new Date(row.created_at).getTime();
+      if (Number.isNaN(createdAt)) continue;
+      const bucket = buckets.find((item) => createdAt >= item.start && createdAt < item.end);
+      if (bucket) bucket.amount += Number(row.amount_collected);
+    }
+    const revenueTrend = buckets.map((bucket) => ({
+      weekStart: new Date(bucket.start).toISOString(),
+      amount: Math.round(bucket.amount * 100) / 100
+    }));
+
+    return res.json({
+      items,
+      totalTransactions: txnRows.length,
+      totalRevenueCollected: Math.round(totalRevenueCollected * 100) / 100,
+      totalListedValue: Math.round(totalListedValue * 100) / 100,
+      revenueByPlan,
+      countBySource,
+      revenueTrend
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/users", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    requireFields(req.body, ["firstName", "lastName", "email", "password", "accountType"]);
+    const firstName = coerceString(req.body.firstName);
+    const lastName = coerceString(req.body.lastName);
+    const email = normalizeEmail(req.body.email);
+    const password = String(req.body.password || "");
+    const accountType = sanitizeAccountType(req.body.accountType);
+    const planId = coerceString(req.body.planId);
+    const billingCycle = coerceString(req.body.billingCycle);
+    const organizationName = coerceString(req.body.organizationName);
+    const schoolName = coerceString(req.body.schoolName);
+    const website = coerceString(req.body.website);
+    const adminModules = sanitizeAdminModules(req.body.adminModules);
+
+    if (accountType === "other") {
+      return res.status(400).json({ error: "Type de compte invalide pour une création par l'admin." });
+    }
+    if (!email.includes("@")) {
+      return res.status(400).json({ error: "Email invalide." });
+    }
+    if (password.length < 8) {
+      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractères." });
+    }
+    if ((accountType === "school" || accountType === "recruiter_firm") && !organizationName) {
+      return res.status(400).json({
+        error: accountType === "school" ? "Le nom de l'école est requis." : "Le nom du cabinet est requis."
+      });
+    }
+
+    const existingUser = await getUserRowByAnyEmail(email);
+    if (existingUser) {
+      return res.status(409).json({ error: "Un compte existe déjà avec cet email." });
+    }
+
+    const id = `usr-${crypto.randomUUID()}`;
+    const createdAt = nowIso();
+    const passwordRecord = createPasswordRecord(password);
+    const username = await buildUniqueUsername(firstName, lastName, email);
+    const detailsByType = {
+      school: { organizationName, website },
+      recruiter_firm: { organizationName, website },
+      student: { schoolName },
+      candidate: { schoolName }
+    };
+    const onboardingPayload = sanitizeOnboardingPayload(accountType, { details: detailsByType[accountType] || {} });
+    const seededProfile = applyOnboardingToProfile(
+      { ...DEFAULT_PROFILE },
+      onboardingPayload.accountType,
+      onboardingPayload.details
+    );
+
+    await db.query(
+      `INSERT INTO users (
+        id, first_name, last_name, email, username, password_hash, password_salt, created_at,
+        updated_at, role_type, avatar_data_url, profile_json, subscription_json, admin_modules_json
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [
+        id,
+        firstName,
+        lastName,
+        email,
+        username,
+        passwordRecord.hash,
+        passwordRecord.salt,
+        createdAt,
+        createdAt,
+        onboardingPayload.accountType,
+        "",
+        JSON.stringify(seededProfile),
+        JSON.stringify({ plan: "free", status: "active", startedAt: createdAt, renewalAt: null }),
+        JSON.stringify(adminModules)
+      ]
+    );
+
+    if (accountType !== "admin") {
+      await upsertUserAccount(id, onboardingPayload.accountType, onboardingPayload.base, "");
+      await upsertRoleDetails(id, onboardingPayload.accountType, onboardingPayload.details);
+    }
+    await db.query(
+      `INSERT INTO user_email_addresses (id, user_id, email, is_primary, is_verified, created_at, updated_at)
+       VALUES ($1,$2,$3,1,1,$4,$5)`,
+      [`eml-${crypto.randomUUID()}`, id, email, createdAt, createdAt]
+    );
+
+    let licenseCode = null;
+    if (planId) {
+      const plan = getPlanById(planId);
+      if (!plan) {
+        return res.status(400).json({ error: "Plan inconnu." });
+      }
+      await applyPlanToUser(id, plan, billingCycle, null, null, "admin_created");
+      if (plan.seats) {
+        licenseCode = await generateLicenseCodeForPlan(id, plan);
+      }
+    }
+
+    return res.status(201).json({ user: await getPublicUserById(id), licenseCode });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/users/update", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const targetUserId = coerceString(req.body?.userId);
+    const target = await getUserRowById(targetUserId);
+    if (!target) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+    const firstName = coerceString(req.body?.firstName) || target.first_name;
+    const lastName = coerceString(req.body?.lastName) || target.last_name;
+
+    if (target.role_type === "admin") {
+      const adminModules = sanitizeAdminModules(req.body?.adminModules);
+      await db.query(
+        "UPDATE users SET first_name = $1, last_name = $2, admin_modules_json = $3, updated_at = $4 WHERE id = $5",
+        [firstName, lastName, JSON.stringify(adminModules), nowIso(), targetUserId]
+      );
+      await logSecurityEvent(req, adminUserId, "admin_user_updated", { targetUserId });
+      return res.json({ user: await getPublicUserById(targetUserId) });
+    }
+
+    const organizationName = coerceString(req.body?.organizationName);
+    const website = coerceString(req.body?.website);
+    const planId = coerceString(req.body?.planId);
+    const billingCycle = coerceString(req.body?.billingCycle);
+
+    await db.query("UPDATE users SET first_name = $1, last_name = $2, updated_at = $3 WHERE id = $4", [
+      firstName,
+      lastName,
+      nowIso(),
+      targetUserId
+    ]);
+
+    if (organizationName && (target.role_type === "school" || target.role_type === "recruiter_firm")) {
+      const table = target.role_type === "school" ? "user_org_profiles" : "user_recruiter_profiles";
+      await db.query(`UPDATE ${table} SET organization_name = $1, website = $2, updated_at = $3 WHERE user_id = $4`, [
+        organizationName,
+        website,
+        nowIso(),
+        targetUserId
+      ]);
+    }
+
+    if (planId) {
+      const plan = getPlanById(planId);
+      if (!plan) {
+        return res.status(400).json({ error: "Plan inconnu." });
+      }
+      await applyPlanToUser(targetUserId, plan, billingCycle, null, null, "admin_created");
+    }
+
+    await logSecurityEvent(req, adminUserId, "admin_user_updated", { targetUserId });
+    return res.json({ user: await getPublicUserById(targetUserId) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/users/delete", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const targetUserId = coerceString(req.body?.userId);
+    const confirmation = coerceString(req.body?.confirmation);
+
+    const target = await getUserRowById(targetUserId);
+    if (!target) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+    if (target.role_type === "admin") {
+      return res.status(403).json({ error: "Impossible de supprimer un compte administrateur." });
+    }
+    if (confirmation !== target.email) {
+      return res.status(400).json({ error: "Confirmation invalide : saisis exactement l'email du compte à supprimer." });
+    }
+
+    await logSecurityEvent(req, adminUserId, "admin_user_deleted", { targetUserId, email: target.email });
+    await db.query("DELETE FROM sessions WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM email_verification_codes WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM user_email_addresses WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM cvs WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM match_runs WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM match_feedback WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM negotiation_conversations WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM user_candidate_profiles WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM user_recruiter_profiles WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM user_org_profiles WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM user_accounts WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM license_codes WHERE owner_user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM users WHERE id = $1", [targetUserId]);
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+async function requireSchoolOwner(userId) {
+  const school = await getUserRowById(userId);
+  if (!school || school.role_type !== "school") {
+    const error = new Error("Accès établissement requis.");
+    error.statusCode = 403;
+    throw error;
+  }
+  return school;
+}
+
+async function getSchoolLicenseCodeRows(schoolUserId) {
+  const { rows } = await db.query("SELECT * FROM license_codes WHERE owner_user_id = $1 ORDER BY created_at DESC", [
+    schoolUserId
+  ]);
+  return rows;
+}
+
+async function getSchoolStudentRows(schoolUserId) {
+  const codeRows = await getSchoolLicenseCodeRows(schoolUserId);
+  const codeSet = new Set(codeRows.map((row) => row.code));
+  if (!codeSet.size) return [];
+  const { rows: allUsers } = await db.query(
+    "SELECT id, first_name, last_name, email, avatar_data_url, created_at, subscription_json FROM users WHERE role_type = 'student' OR role_type = 'candidate'"
+  );
+  return allUsers.filter((row) => {
+    const subscription = parseJsonField(row.subscription_json, {});
+    return subscription.licenseCode && codeSet.has(subscription.licenseCode);
+  });
+}
+
+app.get("/api/school/overview", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    await requireSchoolOwner(userId);
+
+    const students = await getSchoolStudentRows(userId);
+    const codeRows = await getSchoolLicenseCodeRows(userId);
+    const studentIds = students.map((row) => row.id);
+
+    const seatsTotal = codeRows.reduce((sum, row) => sum + Number(row.seats_total || 0), 0);
+    const seatsUsed = codeRows.reduce((sum, row) => sum + Number(row.seats_used || 0), 0);
+
+    const { rows: cvRows } = studentIds.length
+      ? await db.query("SELECT user_id, created_at FROM cvs WHERE user_id = ANY($1)", [studentIds])
+      : { rows: [] };
+    const { rows: matchRows } = studentIds.length
+      ? await db.query("SELECT user_id, created_at, payload_json FROM match_runs WHERE user_id = ANY($1)", [studentIds])
+      : { rows: [] };
+
+    const activeStudentIds = new Set([...cvRows.map((row) => row.user_id), ...matchRows.map((row) => row.user_id)]);
+    const activationRate = studentIds.length ? Math.round((activeStudentIds.size / studentIds.length) * 100) : 0;
+
+    const scores = matchRows
+      .map((row) => parseJsonField(row.payload_json, {})?.matchInsights?.score)
+      .filter((score) => typeof score === "number");
+    const avgScore = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : null;
+
+    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const lastActivityByStudent = {};
+    for (const row of [...cvRows, ...matchRows]) {
+      const time = new Date(row.created_at).getTime();
+      if (!lastActivityByStudent[row.user_id] || time > lastActivityByStudent[row.user_id]) {
+        lastActivityByStudent[row.user_id] = time;
+      }
+    }
+    const inactiveStudents = students.filter((student) => {
+      const lastActivity = lastActivityByStudent[student.id];
+      return !lastActivity || lastActivity < thirtyDaysAgo;
+    }).length;
+
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const weekCount = 8;
+    const now = Date.now();
+    const buckets = Array.from({ length: weekCount }, (_, index) => {
+      const weeksAgo = weekCount - 1 - index;
+      const start = now - (weeksAgo + 1) * WEEK_MS;
+      const end = now - weeksAgo * WEEK_MS;
+      return { start, end, count: 0 };
+    });
+    for (const student of students) {
+      const createdAt = new Date(student.created_at).getTime();
+      if (Number.isNaN(createdAt)) continue;
+      const bucket = buckets.find((item) => createdAt >= item.start && createdAt < item.end);
+      if (bucket) bucket.count += 1;
+    }
+    const signupsTrend = buckets.map((bucket) => ({
+      weekStart: new Date(bucket.start).toISOString(),
+      count: bucket.count
+    }));
+
+    return res.json({
+      totalStudents: students.length,
+      seatsTotal,
+      seatsUsed,
+      activationRate,
+      totalCvs: cvRows.length,
+      totalMatchRuns: matchRows.length,
+      avgScore,
+      inactiveStudents,
+      signupsTrend
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/school/students", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    await requireSchoolOwner(userId);
+
+    const search = coerceString(req.query?.search).toLowerCase();
+    const students = await getSchoolStudentRows(userId);
+    const studentIds = students.map((row) => row.id);
+
+    const { rows: cvRows } = studentIds.length
+      ? await db.query("SELECT user_id, created_at FROM cvs WHERE user_id = ANY($1)", [studentIds])
+      : { rows: [] };
+    const { rows: matchRows } = studentIds.length
+      ? await db.query("SELECT user_id, created_at, payload_json FROM match_runs WHERE user_id = ANY($1) ORDER BY created_at DESC", [
+          studentIds
+        ])
+      : { rows: [] };
+
+    const lastActivityByStudent = {};
+    for (const row of [...cvRows, ...matchRows]) {
+      const time = new Date(row.created_at).getTime();
+      if (!lastActivityByStudent[row.user_id] || time > lastActivityByStudent[row.user_id]) {
+        lastActivityByStudent[row.user_id] = time;
+      }
+    }
+    const latestScoreByStudent = {};
+    for (const row of matchRows) {
+      if (latestScoreByStudent[row.user_id] !== undefined) continue;
+      const score = parseJsonField(row.payload_json, {})?.matchInsights?.score;
+      latestScoreByStudent[row.user_id] = typeof score === "number" ? score : null;
+    }
+
+    const filtered = students.filter((row) => {
+      if (!search) return true;
+      const haystack = `${row.first_name} ${row.last_name} ${row.email}`.toLowerCase();
+      return haystack.includes(search);
+    });
+
+    return res.json({
+      items: filtered.map((row) => {
+        const subscription = parseJsonField(row.subscription_json, {});
+        const lastActivity = lastActivityByStudent[row.id] ? new Date(lastActivityByStudent[row.id]).toISOString() : null;
+        return {
+          id: row.id,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          email: row.email,
+          avatarDataUrl: row.avatar_data_url || "",
+          createdAt: row.created_at,
+          licenseCode: subscription.licenseCode || null,
+          lastActivity,
+          active: Boolean(lastActivity && new Date(lastActivity).getTime() >= Date.now() - 30 * 24 * 60 * 60 * 1000),
+          latestScore: latestScoreByStudent[row.id] ?? null
+        };
+      })
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/school/students/remove", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    await requireSchoolOwner(userId);
+
+    const studentId = coerceString(req.body?.studentId);
+    const students = await getSchoolStudentRows(userId);
+    const target = students.find((row) => row.id === studentId);
+    if (!target) {
+      return res.status(404).json({ error: "Étudiant introuvable pour cet établissement." });
+    }
+
+    const subscription = parseJsonField(target.subscription_json, {});
+    const freePlan = getPlanById("candidate_discovery");
+    await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [
+      JSON.stringify({
+        plan: "free",
+        status: "active",
+        planId: freePlan?.id || null,
+        billingCycle: null,
+        startedAt: nowIso(),
+        renewalAt: null,
+        licenseCode: null,
+        credits: freePlan?.credits ?? 0
+      }),
+      nowIso(),
+      studentId
+    ]);
+
+    if (subscription.licenseCode) {
+      await db.query("UPDATE license_codes SET seats_used = GREATEST(0, seats_used - 1) WHERE code = $1", [
+        subscription.licenseCode
+      ]);
+    }
+
+    await logSecurityEvent(req, userId, "school_student_removed", { studentId });
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/school/license", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    await requireSchoolOwner(userId);
+
+    const codeRows = await getSchoolLicenseCodeRows(userId);
+
+    return res.json({
+      items: codeRows.map((row) => ({
+        code: row.code,
+        planId: row.plan_id,
+        seatsTotal: row.seats_total,
+        seatsUsed: row.seats_used,
+        revoked: Boolean(Number(row.revoked)),
+        createdAt: row.created_at
+      }))
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/school/insights", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    await requireSchoolOwner(userId);
+
+    const students = await getSchoolStudentRows(userId);
+    const studentIds = students.map((row) => row.id);
+
+    const { rows: matchRows } = studentIds.length
+      ? await db.query("SELECT user_id, payload_json FROM match_runs WHERE user_id = ANY($1)", [studentIds])
+      : { rows: [] };
+
+    const scoreBuckets = { "0-39": 0, "40-59": 0, "60-79": 0, "80-100": 0 };
+    const keywordCounts = {};
+    const latestScoreByStudent = new Map();
+
+    for (const row of matchRows) {
+      const insights = parseJsonField(row.payload_json, {})?.matchInsights || {};
+      if (typeof insights.score === "number") {
+        latestScoreByStudent.set(row.user_id, insights.score);
+      }
+      const keywords = Array.isArray(insights.missingKeywords) ? insights.missingKeywords : [];
+      for (const keyword of keywords) {
+        const key = String(keyword).trim();
+        if (!key) continue;
+        keywordCounts[key] = (keywordCounts[key] || 0) + 1;
+      }
+    }
+
+    for (const score of latestScoreByStudent.values()) {
+      if (score < 40) scoreBuckets["0-39"] += 1;
+      else if (score < 60) scoreBuckets["40-59"] += 1;
+      else if (score < 80) scoreBuckets["60-79"] += 1;
+      else scoreBuckets["80-100"] += 1;
+    }
+
+    const topMissingKeywords = Object.entries(keywordCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([keyword, count]) => ({ keyword, count }));
+
+    const studentById = Object.fromEntries(students.map((row) => [row.id, row]));
+    const ranking = [...latestScoreByStudent.entries()]
+      .map(([studentId, score]) => ({ student: studentById[studentId], score }))
+      .filter((entry) => entry.student)
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => ({
+        id: entry.student.id,
+        firstName: entry.student.first_name,
+        lastName: entry.student.last_name,
+        email: entry.student.email,
+        avatarDataUrl: entry.student.avatar_data_url || "",
+        score: entry.score
+      }));
+
+    return res.json({ scoreBuckets, topMissingKeywords, ranking });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/school/invitations", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    await requireSchoolOwner(userId);
+
+    const { rows } = await db.query(
+      "SELECT * FROM school_invitations WHERE school_user_id = $1 ORDER BY created_at DESC LIMIT 300",
+      [userId]
+    );
+
+    return res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        email: row.email,
+        licenseCode: row.license_code,
+        status: row.status,
+        createdAt: row.created_at,
+        redeemedAt: row.redeemed_at
+      }))
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/school/invitations/send", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const school = await requireSchoolOwner(userId);
+
+    const email = normalizeEmail(req.body?.email);
+    if (!email.includes("@")) {
+      return res.status(400).json({ error: "Email invalide." });
+    }
+
+    const codeRows = await getSchoolLicenseCodeRows(userId);
+    const activeCode = codeRows.find((row) => !Number(row.revoked) && Number(row.seats_used) < Number(row.seats_total));
+    if (!activeCode) {
+      return res.status(400).json({ error: "Aucun siège disponible sur votre licence." });
+    }
+
+    const existingUser = await getUserRowByAnyEmail(email);
+    if (existingUser) {
+      return res.status(409).json({ error: "Un compte existe déjà avec cet email." });
+    }
+
+    const { rows: orgProfileRows } = await db.query(
+      "SELECT organization_name FROM user_org_profiles WHERE user_id = $1",
+      [userId]
+    );
+    const organizationName = orgProfileRows[0]?.organization_name || school.first_name;
+
+    const id = `inv-${crypto.randomUUID()}`;
+    await db.query(
+      `INSERT INTO school_invitations (id, school_user_id, email, license_code, status, created_at, redeemed_at)
+       VALUES ($1,$2,$3,$4,'pending',$5,NULL)`,
+      [id, userId, email, activeCode.code, nowIso()]
+    );
+
+    const transporter = getMailTransporter();
+    if (transporter) {
+      const html = `
+        <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
+          <h2 style="color:#2f5bff;margin:0 0 18px;">Career App</h2>
+          <p style="margin:0 0 14px;color:#1f2634;">Bonjour,</p>
+          <p style="margin:0 0 14px;line-height:1.6;color:#1f2634;">
+            ${organizationName} vous invite à rejoindre Career App pour optimiser votre CV et préparer vos candidatures.
+          </p>
+          <p style="margin:0 0 14px;color:#1f2634;">Votre code de licence : <strong>${activeCode.code}</strong></p>
+          <p style="margin:0 0 14px;color:#1f2634;">Créez votre compte puis renseignez ce code depuis la page Tarifs pour activer votre accès gratuitement.</p>
+          <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career App</p>
+        </div>`;
+      const text = `Bonjour,\n\n${organizationName} vous invite à rejoindre Career App.\nVotre code de licence : ${activeCode.code}\nCréez votre compte puis renseignez ce code depuis la page Tarifs.\n\n— L'équipe Career App`;
+      const recipient = AUTH_EMAIL_TO || email;
+      try {
+        await transporter.sendMail({ from: MAIL_FROM, to: recipient, subject: "Invitation Career App", html, text });
+      } catch (_error) {
+        // Invitation is still recorded even if the email delivery fails.
+      }
+    }
+
+    await logSecurityEvent(req, userId, "school_invitation_sent", { email, licenseCode: activeCode.code });
+
+    return res.status(201).json({ ok: true, licenseCode: activeCode.code });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
@@ -3875,6 +5280,179 @@ app.post("/api/tokens/consume", async (req, res) => {
     return res.json({ user: await getPublicUserById(userId), premium, consumed: amount });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+function slugifyForEmail(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function companyNameToDomain(companyName) {
+  const slug = String(companyName || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/\b(sa|sas|sarl|inc|ltd|llc|corp|co)\b/g, "")
+    .replace(/[^a-z0-9]+/g, "");
+  return slug ? `${slug}.com` : "";
+}
+
+function generateEmailCandidates(firstName, lastName, domain) {
+  const f = slugifyForEmail(firstName);
+  const l = slugifyForEmail(lastName);
+  if (!f || !l || !domain) return [];
+  const patterns = [
+    { id: "first.last", email: `${f}.${l}@${domain}` },
+    { id: "flast", email: `${f[0]}${l}@${domain}` },
+    { id: "first", email: `${f}@${domain}` },
+    { id: "firstlast", email: `${f}${l}@${domain}` },
+    { id: "first_last", email: `${f}_${l}@${domain}` },
+    { id: "last.first", email: `${l}.${f}@${domain}` }
+  ];
+  const seen = new Set();
+  return patterns.filter((pattern) => {
+    if (seen.has(pattern.email)) return false;
+    seen.add(pattern.email);
+    return true;
+  });
+}
+
+/**
+ * Best-effort SMTP RCPT TO probe, no API key required. Many hosts block
+ * outbound port 25 and many mail servers accept-all at this stage (catch-all),
+ * so a "timeout"/"unknown" outcome is common and expected — callers must treat
+ * it as inconclusive, never as a false positive.
+ */
+function probeSmtp(email, mxHost, { timeoutMs = 4000 } = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let step = 0;
+    let buffer = "";
+    const heloDomain = "careerapp.local";
+    const mailFrom = "verify@careerapp.local";
+
+    const socket = net.createConnection({ host: mxHost, port: 25 });
+    socket.setTimeout(timeoutMs);
+
+    function finish(status) {
+      if (settled) return;
+      settled = true;
+      try {
+        socket.destroy();
+      } catch (_error) {
+        // socket already closing
+      }
+      resolve({ status });
+    }
+
+    socket.on("timeout", () => finish("timeout"));
+    socket.on("error", () => finish("error"));
+
+    socket.on("data", (chunk) => {
+      buffer += chunk.toString("utf8");
+      const lines = buffer.split("\r\n").filter(Boolean);
+      const last = lines[lines.length - 1] || "";
+      if (!/^\d{3}[ -]/.test(last)) return;
+      if (/^\d{3}-/.test(last)) return;
+      const code = parseInt(last.slice(0, 3), 10);
+      buffer = "";
+
+      if (step === 0) {
+        if (code === 220) {
+          socket.write(`HELO ${heloDomain}\r\n`);
+          step = 1;
+        } else {
+          finish("error");
+        }
+      } else if (step === 1) {
+        if (code === 250) {
+          socket.write(`MAIL FROM:<${mailFrom}>\r\n`);
+          step = 2;
+        } else {
+          finish("error");
+        }
+      } else if (step === 2) {
+        if (code === 250) {
+          socket.write(`RCPT TO:<${email}>\r\n`);
+          step = 3;
+        } else {
+          finish("error");
+        }
+      } else if (step === 3) {
+        if (code === 250) finish("accepted");
+        else if (code >= 550 && code < 560) finish("rejected");
+        else finish("unknown");
+      }
+    });
+  });
+}
+
+app.post("/api/email-finder/search", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const companyName = coerceString(req.body?.companyName);
+    const domainOverride = coerceString(req.body?.domain)
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/\/.*$/, "");
+    const firstName = coerceString(req.body?.firstName);
+    const lastName = coerceString(req.body?.lastName);
+
+    if (!userId || !firstName || !lastName || (!companyName && !domainOverride)) {
+      return res.status(400).json({ error: "userId, prénom, nom et entreprise (ou domaine) requis." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const domain = domainOverride || companyNameToDomain(companyName);
+    if (!domain) {
+      return res.status(400).json({ error: "Impossible de déterminer un nom de domaine à partir de l'entreprise." });
+    }
+
+    let mxRecords = [];
+    try {
+      mxRecords = await dns.resolveMx(domain);
+      mxRecords.sort((a, b) => a.priority - b.priority);
+    } catch (_error) {
+      mxRecords = [];
+    }
+    const domainHasMx = mxRecords.length > 0;
+
+    const candidates = generateEmailCandidates(firstName, lastName, domain);
+    if (!candidates.length) {
+      return res.status(400).json({ error: "Prénom et nom requis pour générer des suggestions." });
+    }
+
+    let results = candidates.map((candidate) => ({ ...candidate, confidence: "pattern_only" }));
+
+    if (domainHasMx) {
+      const mxHost = mxRecords[0].exchange;
+      const probes = await Promise.allSettled(candidates.map((candidate) => probeSmtp(candidate.email, mxHost)));
+      results = candidates.map((candidate, index) => {
+        const outcome = probes[index].status === "fulfilled" ? probes[index].value : { status: "error" };
+        let confidence = "pattern_only";
+        if (outcome.status === "accepted") confidence = "smtp_confirmed";
+        else if (outcome.status === "rejected") confidence = "smtp_rejected";
+        return { ...candidate, confidence };
+      });
+    }
+
+    const confidenceOrder = { smtp_confirmed: 0, pattern_only: 1, smtp_rejected: 2 };
+    const ranked = [...results].sort((a, b) => confidenceOrder[a.confidence] - confidenceOrder[b.confidence]);
+    const best = ranked.find((item) => item.confidence !== "smtp_rejected") || ranked[0] || null;
+
+    await logSecurityEvent(req, userId, "email_finder_search", { companyName, domain, firstName, lastName });
+
+    return res.json({ domain, domainHasMx, best, items: ranked });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
@@ -4006,10 +5584,27 @@ app.post("/api/negotiation/reply", async (req, res) => {
     const language = req.body?.language === "en" ? "en" : "fr";
     const currencyLabel = req.body?.currencyLabel;
 
+    let salaryReference = req.body?.salaryReference && typeof req.body.salaryReference === "object"
+      ? req.body.salaryReference
+      : null;
+    if (!salaryReference && !history.length && !finish) {
+      try {
+        salaryReference = await getRealSalaryReference({ title: offer.title, location: offer.location });
+      } catch (_referenceError) {
+        salaryReference = null;
+      }
+    }
+
     let result = null;
     let provider = "local";
     try {
-      result = await negotiationReplyWithAi(candidate, offer, history, { targetSalary, finish, language, currencyLabel });
+      result = await negotiationReplyWithAi(candidate, offer, history, {
+        targetSalary,
+        finish,
+        language,
+        currencyLabel,
+        salaryReference
+      });
       if (result) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
     } catch (aiError) {
       result = null;
@@ -4017,9 +5612,120 @@ app.post("/api/negotiation/reply", async (req, res) => {
     }
 
     const fallback = finish ? localNegotiationSummary(language) : localNegotiationReply(language);
-    return res.json({ ...(result || fallback), provider });
+    return res.json({ ...(result || fallback), provider, salaryReference });
   } catch (error) {
     return res.status(400).json({ error: error.message || "Reponse de negociation impossible." });
+  }
+});
+
+app.get("/api/negotiation/conversations", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+
+    const { rows } = await db.query(
+      "SELECT id, title, created_at, updated_at, payload_json FROM negotiation_conversations WHERE user_id = $1 ORDER BY updated_at DESC",
+      [userId]
+    );
+
+    const items = rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      ...parseJsonField(row.payload_json, {})
+    }));
+
+    return res.json({ items });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/negotiation/conversations", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const payload = req.body?.payload;
+    const title = coerceString(req.body?.title) || "Négociation";
+
+    if (!userId || !payload) {
+      return res.status(400).json({ error: "userId et payload requis." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const id = `nego-${crypto.randomUUID()}`;
+    const createdAt = nowIso();
+
+    await db.query(
+      `INSERT INTO negotiation_conversations (id, user_id, title, created_at, updated_at, payload_json)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, userId, title, createdAt, createdAt, JSON.stringify(payload)]
+    );
+
+    return res.status(201).json({
+      conversation: { id, userId, title, createdAt, updatedAt: createdAt, ...payload }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.put("/api/negotiation/conversations/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const conversationId = coerceString(req.params.id);
+    const payload = req.body?.payload;
+    const title = coerceString(req.body?.title);
+
+    if (!userId || !conversationId || !payload) {
+      return res.status(400).json({ error: "userId, id et payload requis." });
+    }
+
+    const { rows } = await db.query(
+      "SELECT id FROM negotiation_conversations WHERE id = $1 AND user_id = $2",
+      [conversationId, userId]
+    );
+    if (!rows[0]) {
+      return res.status(404).json({ error: "Conversation introuvable." });
+    }
+
+    const updatedAt = nowIso();
+    if (title) {
+      await db.query(
+        "UPDATE negotiation_conversations SET payload_json = $1, updated_at = $2, title = $3 WHERE id = $4",
+        [JSON.stringify(payload), updatedAt, title, conversationId]
+      );
+    } else {
+      await db.query(
+        "UPDATE negotiation_conversations SET payload_json = $1, updated_at = $2 WHERE id = $3",
+        [JSON.stringify(payload), updatedAt, conversationId]
+      );
+    }
+
+    return res.json({ ok: true, updatedAt });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.delete("/api/negotiation/conversations/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    const conversationId = coerceString(req.params.id);
+    if (!userId || !conversationId) {
+      return res.status(400).json({ error: "userId et id requis." });
+    }
+
+    await db.query("DELETE FROM negotiation_conversations WHERE id = $1 AND user_id = $2", [conversationId, userId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
@@ -4240,6 +5946,8 @@ app.get("/api/matches/feedback", async (req, res) => {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
   }
 });
+
+await loadPlatformSettings();
 
 const serverStart = await startServer(app);
 

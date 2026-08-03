@@ -88,10 +88,17 @@ export async function applyStripeWebhookEvent(
         return { handled: false, reason: "unknown_plan" };
       }
 
-      await applyPlanToUser(userId, plan, billingCycle, null, {
-        stripeCustomerId: session.customer || null,
-        stripeSubscriptionId: session.subscription || null
-      });
+      await applyPlanToUser(
+        userId,
+        plan,
+        billingCycle,
+        null,
+        {
+          stripeCustomerId: session.customer || null,
+          stripeSubscriptionId: session.subscription || null
+        },
+        "stripe"
+      );
 
       let licenseCode = null;
       if (plan.seats && generateLicenseCodeForPlan) {

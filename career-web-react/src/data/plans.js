@@ -22,14 +22,16 @@ export const PLANS = [
         "Score de matching",
         "1 CV enregistré",
         "Lettre de motivation IA",
-        "Simulateur de négociation salariale"
+        "Simulateur de négociation salariale",
+        "Email Scout (recherche d'email pro)"
       ],
       en: [
         "CV & Job analysis (AI)",
         "Matching score",
         "1 saved CV",
         "AI cover letter",
-        "Salary negotiation simulator"
+        "Salary negotiation simulator",
+        "Email Scout (pro email finder)"
       ]
     }
   },
@@ -50,8 +52,8 @@ export const PLANS = [
     highlighted: false,
     badge: null,
     features: {
-      fr: ["30 jetons d'analyse", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Support standard"],
-      en: ["30 analysis tokens", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Standard support"]
+      fr: ["30 jetons d'analyse", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
+      en: ["30 analysis tokens", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
     }
   },
   {
@@ -76,6 +78,7 @@ export const PLANS = [
         "Simulateur d'entretiens illimité",
         "Lettre de motivation IA illimitée",
         "Simulateur de négociation salariale illimité",
+        "Email Scout illimité (recherche d'email pro)",
         "Suggestions de réseautage avancées",
         "Support prioritaire"
       ],
@@ -84,6 +87,7 @@ export const PLANS = [
         "Unlimited interview simulator",
         "Unlimited AI cover letter",
         "Unlimited salary negotiation simulator",
+        "Unlimited Email Scout (pro email finder)",
         "Advanced networking suggestions",
         "Priority support"
       ]
