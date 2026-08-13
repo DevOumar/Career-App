@@ -25,7 +25,7 @@
   "hugging face",
   "pytorch",
   "tensorflow",
-  "spark",
+  "data engineering",
   "docker",
   "kubernetes",
   "mlflow",
@@ -62,4 +62,6 @@ export const EDUCATION_LEVELS = [
   "ingenieur",
   "doctorat"
 ];
+
+
 

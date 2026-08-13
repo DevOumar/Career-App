@@ -496,6 +496,13 @@ export async function updateAdminUser(payload) {
   });
 }
 
+export async function updateAdminUserStatus({ adminUserId, userId, status }) {
+  return request("/admin/users/status", {
+    method: "POST",
+    body: { adminUserId, userId, status }
+  });
+}
+
 export async function deleteAdminUser({ adminUserId, userId, confirmation }) {
   return request("/admin/users/delete", {
     method: "POST",
@@ -533,6 +540,40 @@ export async function getAdminAiSamples(adminUserId, { search = "" } = {}) {
   return request(`/admin/ai-samples?${params.toString()}`);
 }
 
+export async function getAdminAiMonitoring(adminUserId) {
+  const params = new URLSearchParams({ adminUserId });
+  return request(`/admin/ai-monitoring?${params.toString()}`);
+}
+
+export async function getAdminCvs(adminUserId, { search = "", status = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search, status });
+  return request(`/admin/cvs?${params.toString()}`);
+}
+
+export async function deleteAdminCv({ adminUserId, cvId }) {
+  return request(`/admin/cvs/${encodeURIComponent(cvId)}`, {
+    method: "DELETE",
+    body: { adminUserId }
+  });
+}
+
+export async function reanalyzeAdminCv({ adminUserId, cvId }) {
+  return request(`/admin/cvs/${encodeURIComponent(cvId)}/reanalyze`, {
+    method: "POST",
+    body: { adminUserId }
+  });
+}
+
+export async function getAdminMatches(adminUserId, { search = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search });
+  return request(`/admin/matches?${params.toString()}`);
+}
+
+export async function getAdminQuality(adminUserId, { search = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search });
+  return request(`/admin/quality?${params.toString()}`);
+}
+
 export async function getAdminSettings(adminUserId) {
   const params = new URLSearchParams({ adminUserId });
   return request(`/admin/settings?${params.toString()}`);
@@ -557,10 +598,10 @@ export async function getAdminAnnouncements(adminUserId) {
   return data.items;
 }
 
-export async function sendAdminAnnouncement({ adminUserId, subject, message, audience }) {
+export async function sendAdminAnnouncement({ adminUserId, subject, message, audience, attachment }) {
   return request("/admin/announcements/send", {
     method: "POST",
-    body: { adminUserId, subject, message, audience }
+    body: { adminUserId, subject, message, audience, attachment }
   });
 }
 
@@ -603,5 +644,62 @@ export async function sendSchoolInvitation(userId, email) {
   return request("/school/invitations/send", {
     method: "POST",
     body: { userId, email }
+  });
+}
+
+export async function getSchoolProfile(userId) {
+  return request(`/school/profile?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function updateSchoolProfile(userId, profile) {
+  return request("/school/profile", {
+    method: "PUT",
+    body: { userId, profile }
+  });
+}
+
+export async function getSchoolNotifications(userId, language = "fr") {
+  return request(`/school/notifications?userId=${encodeURIComponent(userId)}&language=${encodeURIComponent(language)}`);
+}
+
+export async function markSchoolNotificationsRead(userId) {
+  return request("/school/notifications/read", {
+    method: "POST",
+    body: { userId }
+  });
+}
+
+export async function getSchoolPromotions(userId) {
+  return request(`/school/promotions?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function createSchoolPromotion(userId, payload) {
+  return request("/school/promotions", {
+    method: "POST",
+    body: { userId, ...payload }
+  });
+}
+
+export async function deleteSchoolPromotion(userId, promotionId) {
+  return request(`/school/promotions/${encodeURIComponent(promotionId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function updateSchoolPromotionStudent(userId, promotionId, studentId, action = "add") {
+  return request(`/school/promotions/${encodeURIComponent(promotionId)}/students`, {
+    method: "POST",
+    body: { userId, studentId, action }
+  });
+}
+
+export async function getSchoolReports(userId) {
+  return request(`/school/reports?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function generateSchoolReport(userId, period = "monthly") {
+  return request("/school/reports/generate", {
+    method: "POST",
+    body: { userId, period }
   });
 }

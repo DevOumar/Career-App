@@ -26,12 +26,16 @@ import {
   createAdminUser,
   deleteAdminUser,
   getAdminActivityLog,
+  getAdminAiMonitoring,
   getAdminAiSamples,
+  getAdminCvs,
   getAdminFinance,
   getAdminLicenseCodes,
+  getAdminMatches,
   getAdminOrgAccounts,
   getAdminOverview,
   getAdminNotifications,
+  getAdminQuality,
   getApiBase,
   getPlanOverrides,
   getAdminPlans,
@@ -44,8 +48,11 @@ import {
   getAdminAnnouncementAudienceCount,
   getAdminAnnouncements,
   sendAdminAnnouncement,
+  deleteAdminCv,
+  reanalyzeAdminCv,
   updateAdminSetting,
   updateAdminUser,
+  updateAdminUserStatus,
   linkGoogleAccount,
   listAdminUsers,
   getSchoolOverview,
@@ -54,6 +61,16 @@ import {
   getSchoolLicense,
   getSchoolInsights,
   getSchoolInvitations,
+  getSchoolNotifications,
+  markSchoolNotificationsRead,
+  getSchoolProfile,
+  updateSchoolProfile,
+  getSchoolPromotions,
+  createSchoolPromotion,
+  deleteSchoolPromotion,
+  updateSchoolPromotionStudent,
+  getSchoolReports,
+  generateSchoolReport,
   sendSchoolInvitation,
   listOffers,
   listUserCvs,
@@ -378,8 +395,8 @@ const AUTH_COPY = {
     titleAccent: "meilleures offres",
     intro: "Onboarding intelligent, matching CV, recommandations et coaching entretien dans une vraie expérience SaaS.",
     create: "Créer le compte",
-    role: "Choisir ton rôle",
-    activate: "Activer ton parcours",
+    role: "Choisir votre rôle",
+    activate: "Activer votre parcours",
     email: "Email",
     password: "Mot de passe",
     firstName: "Prénom",
@@ -484,7 +501,7 @@ const APP_COPY = {
     },
     security: {
       title: "Sécurité du compte",
-      text: "Change ton mot de passe de connexion.",
+      text: "Changez votre mot de passe de connexion.",
       current: "Mot de passe actuel",
       next: "Nouveau mot de passe",
       confirm: "Confirmation",
@@ -493,10 +510,10 @@ const APP_COPY = {
     home: {
       userFallback: "Utilisateur",
       eyebrow: "Assistant carrière nouvelle génération",
-      titleA: "Décroche le poste qui te correspond,",
+      titleA: "Décrochez le poste qui vous correspond,",
       titleB: "avec un parcours",
       titleAccent: "guidé par la data",
-      intro: "Importe ton CV, colle une offre, et laisse l'IA calculer ton score de match, tes mots-clés manquants et ton fit culturel — avant de t'entraîner à l'entretien.",
+      intro: "Importez votre CV, collez une offre, et laissez l'IA calculer votre score de match, vos mots-clés manquants et votre fit culturel avant de vous entraîner à l'entretien.",
       start: "Commencer",
       tickerLabel: "Informations personnalisées",
       welcome: "Bienvenue",
@@ -506,7 +523,7 @@ const APP_COPY = {
       noMatch: "Aucun matching lancé pour le moment",
       latestMatch: "Dernier matching",
       objective: "Objectif",
-      addTarget: "Ajoute ton rôle cible dans Profil",
+      addTarget: "Ajoutez votre rôle cible dans Profil",
       planLabel: "Plan",
       tokens: "jetons",
       unlimitedTokens: "illimité",
@@ -514,15 +531,15 @@ const APP_COPY = {
       importedCv: "CV importé(s)",
       noCv: "Aucun CV importé",
       workflow: [
-        { number: "01", title: "Importer", text: "Ton CV et l'offre visée" },
+        { number: "01", title: "Importer", text: "Votre CV et l'offre visée" },
         { number: "02", title: "Analyser", text: "Score IA, mots-clés manquants, fit culturel" },
         { number: "03", title: "Passer à l'action", text: "Recommandations, réseautage, CV optimisé en PDF" },
         { number: "04", title: "S'entraîner", text: "Simulateur d'entretiens avec feedback" }
       ]
     },
     import: {
-      title: "Importer ton CV",
-      text: "Télécharge ton CV, vérifie les informations extraites, puis colle l'offre cible pour lancer le matching.",
+      title: "Importer votre CV",
+      text: "Téléchargez votre CV, vérifiez les informations extraites, puis collez l'offre cible pour lancer le matching.",
       steps: [
         { title: "Télécharger CV", text: "Extraction automatique" },
         { title: "Réviser le profil", text: "Infos modifiables" },
@@ -530,11 +547,11 @@ const APP_COPY = {
         { title: "Analyse", text: "Match & Optimisation" }
       ],
       uploadTitle: "Téléchargez votre CV",
-      uploadText: "Nous extrayons les informations pour préparer ton profil candidat.",
+      uploadText: "Nous extrayons les informations pour préparer votre profil candidat.",
       analysingTitle: "Analyse de votre CV...",
       analysingText: "Cela prend généralement 10-20 secondes.",
       reviewTitle: "Révision de l'extraction",
-      reviewText: "Vérifie et corrige les informations avant de les enregistrer.",
+      reviewText: "Vérifiez et corrigez les informations avant de les enregistrer.",
       reimport: "Réimporter le CV",
       saveContinue: "Enregistrer & continuer",
       personalInfo: "Informations personnelles",
@@ -551,10 +568,10 @@ const APP_COPY = {
       addCertification: "Ajouter certification",
       addInterest: "Ajouter intérêt",
       jobTitle: "Poste visé",
-      jobText: "Colle la description complète du poste ci-dessous.",
+      jobText: "Collez la description complète du poste ci-dessous.",
       jobDescription: "Description du poste",
       jobSummaryTitle: "Résumé du poste",
-      jobSummaryText: "Vérifie les détails extraits avant de lancer l'analyse.",
+      jobSummaryText: "Vérifiez les détails extraits avant de lancer l'analyse.",
       technicalSkills: "Compétences techniques",
       softSkills: "Soft skills",
       backToEdit: "Retour à l'édition",
@@ -569,14 +586,14 @@ const APP_COPY = {
       emptyHistory: "Aucun CV enregistré.",
       offerTitle: "Coller l'offre cible",
       offerText: "Le matching se base sur cette offre et compare aussi des offres marketplace.",
-      offerPlaceholder: "Colle l'offre d'emploi complète ici...",
+      offerPlaceholder: "Collez l'offre d'emploi complète ici...",
       chars: "caractères",
       ready: "Prêt",
       minimum: "Minimum 50 caractères",
       analysing: "Analyse en cours...",
       analyse: "Analyser mon profil",
       matchingTitle: "Analyse du matching en cours...",
-      matchingText: "L'IA compare ton profil à l'offre. Cela prend généralement 10-20 secondes.",
+      matchingText: "L'IA compare votre profil à l'offre. Cela prend généralement 10-20 secondes.",
       matchScoreLabel: "Score de compatibilité",
       matchStrengths: "Points forts",
       matchMissingKeywords: "Mots-clés manquants",
@@ -588,12 +605,12 @@ const APP_COPY = {
       matchFeedbackQuestion: "Cette analyse vous a-t-elle été utile ?",
       matchFeedbackYes: "Oui",
       matchFeedbackNo: "Non",
-      matchFeedbackThanks: "Merci pour ton retour !",
+      matchFeedbackThanks: "Merci pour votre retour !",
       matchNetworkingTitle: "Opportunités Réseautage",
-      matchNetworkingText: "Connecte-toi avec des employés chez {company} pour augmenter tes chances.",
+      matchNetworkingText: "Connectez-vous avec des employés chez {company} pour augmenter vos chances.",
       matchNetworkingButton: "Trouver des contacts dans l'entreprise",
       matchNetworkingSearching: "Préparation des recherches...",
-      matchNetworkingEmpty: "Career App n'a pas accès à un annuaire LinkedIn : voici des recherches ciblées à lancer toi-même en un clic.",
+      matchNetworkingEmpty: "Career App n'a pas accès à un annuaire LinkedIn : voici des recherches ciblées à lancer vous-même en un clic.",
       matchNetworkingOpenLinkedin: "Chercher sur LinkedIn",
       matchNetworkingRoleLabel: "Personnes au poste visé",
       matchNetworkingRecruiterLabel: "Recruteurs",
@@ -605,7 +622,7 @@ const APP_COPY = {
       matchShareCopied: "Résumé copié dans le presse-papiers.",
       matchDownloadPdf: "Télécharger PDF",
       matchCvPreviewTitle: "Aperçu CV Optimisé",
-      matchCvPreviewEmpty: "Importe et révise ton CV pour voir un aperçu ici.",
+      matchCvPreviewEmpty: "Importez et révisez votre CV pour voir un aperçu ici.",
       cvPreviewSummary: "Résumé professionnel",
       cvPreviewExperience: "Expérience",
       cvPreviewEducation: "Formation",
@@ -706,7 +723,7 @@ const APP_COPY = {
       licenseCodeTitle: "Vous avez reçu un code de licence ?",
       licenseCodePlaceholder: "Ex : LIC-XXXX-XXXX",
       licenseCodeSubmit: "Activer",
-      licenseCodeHint: "Ton établissement ou ton cabinet t'a transmis un code ? Active-le ici pour débloquer ton offre."
+      licenseCodeHint: "Votre établissement ou votre cabinet vous a transmis un code ? Activez-le ici pour débloquer votre offre."
     },
     roleQuiz: {
       step1Title: "Quel poste visez-vous ?",
@@ -744,15 +761,15 @@ const APP_COPY = {
     interview: {
       modelAnswer: "Réponse modèle",
       hint: "Astuce d'entretien",
-      placeholder: "Ta réponse...",
+      placeholder: "Votre réponse...",
       send: "Envoyer",
       report: "Bilan coaching",
       good: "Ce qui est bien",
       improve: "À améliorer",
       keyAdvice: "Conseil clé",
-      lockedTitle: "Prépare tes entretiens comme un pro",
+      lockedTitle: "Préparez vos entretiens comme un pro",
       lockedText:
-        "Le simulateur d'entretiens IA (feedback en direct, questions RH/technique/comportementale, conseils personnalisés) fait partie de l'offre Trajectoire Pro. Passe au plan adapté pour t'entraîner sans limite avant le grand jour.",
+        "Le simulateur d'entretiens IA (feedback en direct, questions RH/technique/comportementale, conseils personnalisés) fait partie de l'offre Trajectoire Pro. Passez au plan adapté pour vous entraîner sans limite avant le grand jour.",
       lockedFeatures: [
         "Simulateur d'entretiens illimité",
         "Feedback immédiat sur chaque réponse",
@@ -762,8 +779,8 @@ const APP_COPY = {
     },
     coverLetter: {
       title: "Lettre de motivation IA",
-      subtitle: "Une lettre unique, écrite à partir de ton vrai profil et de l'offre visée.",
-      toneLabel: "Choisis un ton",
+      subtitle: "Une lettre unique, écrite à partir de votre vrai profil et de l'offre visée.",
+      toneLabel: "Choisissez un ton",
       toneFormal: "Formel",
       toneEnthusiastic: "Enthousiaste",
       toneDirect: "Direct",
@@ -777,7 +794,7 @@ const APP_COPY = {
       copied: "Copié !",
       download: "Télécharger en PDF",
       empty: "Importe un CV et analyse une offre pour débloquer ce module.",
-      noTokens: "Tu n'as plus de jetons. Passe à un plan supérieur pour générer ta lettre.",
+      noTokens: "Vous n'avez plus de jetons. Passez à un plan supérieur pour générer votre lettre.",
       generating: "Rédaction en cours...",
       history: "Lettres",
       newConversation: "Nouvelle lettre",
@@ -789,12 +806,12 @@ const APP_COPY = {
     },
     negotiation: {
       title: "Simulateur de négociation salariale",
-      subtitle: "Entraîne-toi face à un recruteur IA réaliste avant l'entretien décisif.",
+      subtitle: "Entraînez-vous face à un recruteur IA réaliste avant l'entretien décisif.",
       targetLabel: "Prétention salariale visée (optionnel)",
       targetPlaceholder: "Ex : 42 000",
       start: "Démarrer la négociation (1 jeton)",
       starting: "Connexion au recruteur...",
-      placeholder: "Ta réponse au recruteur...",
+      placeholder: "Votre réponse au recruteur...",
       send: "Envoyer",
       tip: "Conseil coaching",
       finish: "Terminer & voir mon bilan",
@@ -803,7 +820,7 @@ const APP_COPY = {
       strengths: "Points forts",
       improvements: "Axes d'amélioration",
       empty: "Importe un CV et analyse une offre pour débloquer ce module.",
-      noTokens: "Tu n'as plus de jetons. Passe à un plan supérieur pour démarrer une négociation.",
+      noTokens: "Vous n'avez plus de jetons. Passez à un plan supérieur pour démarrer une négociation.",
       history: "Conversations",
       newConversation: "Nouvelle négociation",
       resumeHint: "Reprends une négociation déjà commencée.",
@@ -1196,7 +1213,7 @@ function withInitials(user) {
 }
 
 function getAvatarSource(user) {
-  return user?.avatarDataUrl || user?.account?.avatarDataUrl || "";
+  return user?.avatarDataUrl || user?.account?.avatarDataUrl || user?.account?.details?.avatarDataUrl || user?.profile?.avatarDataUrl || "";
 }
 
 function mergeProfileFromCv(currentProfile, parsedCv) {
@@ -1216,6 +1233,40 @@ function readFileAsDataUrl(file) {
     reader.onload = () => resolve(String(reader.result || ""));
     reader.onerror = () => reject(new Error("Impossible de lire cette image."));
     reader.readAsDataURL(file);
+  });
+}
+
+async function resizeImageFileToDataUrl(file, maxSize = 512, quality = 0.86) {
+  const source = await readFileAsDataUrl(file);
+  if (typeof Image === "undefined" || typeof document === "undefined") {
+    return source;
+  }
+
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => {
+      const width = image.naturalWidth || image.width;
+      const height = image.naturalHeight || image.height;
+      if (!width || !height) {
+        resolve(source);
+        return;
+      }
+
+      const scale = Math.min(1, maxSize / Math.max(width, height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(width * scale));
+      canvas.height = Math.max(1, Math.round(height * scale));
+      const context = canvas.getContext("2d");
+      if (!context) {
+        resolve(source);
+        return;
+      }
+
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    image.onerror = () => resolve(source);
+    image.src = source;
   });
 }
 
@@ -1242,7 +1293,7 @@ function getFriendlyErrorMessage(error, language = "fr") {
   const networkFallback =
     language === "en"
       ? "Can't reach the server. Check your internet connection and try again in a moment."
-      : "Impossible de contacter le serveur. Vérifie ta connexion internet et réessaie dans quelques instants.";
+      : "Impossible de contacter le serveur. Vérifiez votre connexion internet et réessayez dans quelques instants.";
 
   if (!message) return fallback;
 
@@ -1426,12 +1477,6 @@ function UiIcon({ name, className = "" }) {
         />
       </>
     ),
-    spark: (
-      <path
-        d="M10 2.5l1.3 3.14L14.5 7l-3.2 1.36L10 11.5 8.7 8.36 5.5 7l3.2-1.36L10 2.5zm5 7l.7 1.7 1.8.8-1.8.8-.7 1.7-.7-1.7-1.8-.8 1.8-.8.7-1.7zM4.5 11l.9 2.18 2.2.95-2.2.95-.9 2.17-.9-2.17-2.2-.95 2.2-.95.9-2.18z"
-        fill="currentColor"
-      />
-    ),
     chat: (
       <path
         d="M4.5 4h11A1.5 1.5 0 0117 5.5v7a1.5 1.5 0 01-1.5 1.5H9l-3.2 2.2a.5.5 0 01-.78-.41V14H4.5A1.5 1.5 0 013 12.5v-7A1.5 1.5 0 014.5 4z"
@@ -1570,12 +1615,24 @@ function UiIcon({ name, className = "" }) {
         <rect x="4" y="2.5" width="12" height="15" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
         <path d="M7.5 9h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
       </>
+    ),
+    file: (
+      <>
+        <path d="M5 3.25h6.4L15 6.85v9.4A1.75 1.75 0 0113.25 18h-6.5A1.75 1.75 0 015 16.25v-13z" fill="none" stroke="currentColor" strokeWidth="1.35" />
+        <path d="M11.25 3.6v3.15h3.15M7.5 10.25h5M7.5 13h5M7.5 15.75h3" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round" />
+      </>
+    ),
+    settings: (
+      <path
+        d="M10 2.75a.75.75 0 01.72.54l.3 1.03c.38.12.74.27 1.08.45l.95-.52a.75.75 0 01.9.13l1.67 1.67a.75.75 0 01.13.9l-.52.95c.18.34.33.7.45 1.08l1.03.3a.75.75 0 01.54.72v2.36a.75.75 0 01-.54.72l-1.03.3c-.12.38-.27.74-.45 1.08l.52.95a.75.75 0 01-.13.9l-1.67 1.67a.75.75 0 01-.9.13l-.95-.52c-.34.18-.7.33-1.08.45l-.3 1.03a.75.75 0 01-.72.54H7.64a.75.75 0 01-.72-.54l-.3-1.03a6.3 6.3 0 01-1.08-.45l-.95.52a.75.75 0 01-.9-.13L2.02 16.3a.75.75 0 01-.13-.9l.52-.95a6.3 6.3 0 01-.45-1.08l-1.03-.3a.75.75 0 01-.54-.72V10a.75.75 0 01.54-.72l1.03-.3c.12-.38.27-.74.45-1.08l-.52-.95a.75.75 0 01.13-.9l1.67-1.67a.75.75 0 01.9-.13l.95.52c.34-.18.7-.33 1.08-.45l.3-1.03a.75.75 0 01.72-.54H10zm-1.18 6.07a2.5 2.5 0 103.54 3.54 2.5 2.5 0 00-3.54-3.54z"
+        fill="currentColor"
+      />
     )
   };
 
   return (
     <svg className={className} viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-      {map[name] || map.spark}
+      {map[name] || map.chart}
     </svg>
   );
 }
@@ -1669,7 +1726,7 @@ export default function App() {
   const canAnalyse = Boolean(latestCv && offerText.trim().length > 50 && !isAnalysing);
   const tokensBalance =
     user?.subscription?.credits ?? getPlanById("candidate_discovery")?.credits ?? 0;
-  const tokensDisplay = tokensBalance >= 999 ? "∞" : tokensBalance;
+  const tokensDisplay = tokensBalance >= 999 ? "8" : tokensBalance;
 
   const profileCompleteness = useMemo(() => {
     if (!user) return 0;
@@ -2167,7 +2224,7 @@ export default function App() {
       }
 
       setAvatarUploading(true);
-      const avatarDataUrl = await readFileAsDataUrl(file);
+      const avatarDataUrl = await resizeImageFileToDataUrl(file);
       const updated = await updateUserAvatar(user.id, avatarDataUrl);
       setSession({ user: updated.user, premium: updated.premium });
       setPremium(updated.premium);
@@ -2303,7 +2360,7 @@ export default function App() {
         setPageMessage(
           language === "en"
             ? `Plan activated. Your license code to share: ${updated.licenseCode}`
-            : `Plan activé. Ton code de licence à partager : ${updated.licenseCode}`
+            : `Plan activé. Votre code de licence à partager : ${updated.licenseCode}`
         );
       } else {
         setPageMessage(language === "en" ? "Plan activated." : "Plan activé.");
@@ -2366,7 +2423,7 @@ export default function App() {
       setPageMessage(
         language === "en"
           ? "You're out of tokens. Choose a plan to keep analyzing job offers."
-          : "Tu n'as plus de jetons. Choisis un plan pour continuer à analyser des offres."
+          : "Vous n'avez plus de jetons. Choisissez un plan pour continuer à analyser des offres."
       );
       return;
     }
@@ -2407,7 +2464,7 @@ export default function App() {
       setPageMessage(
         language === "en"
           ? "Analysis completed. You can open Analysis, Jobs, CV+, and Interviews."
-          : "Analyse terminée. Tu peux ouvrir Analyse, Offres, CV+ et Entretiens."
+          : "Analyse terminée. Vous pouvez ouvrir Analyse, Offres, CV+ et Entretiens."
       );
     } catch (error) {
       setProcessingError(getFriendlyErrorMessage(error, language));
@@ -2607,7 +2664,6 @@ export default function App() {
                 {getAccountLabel(user.roleType, language)} · {user.subscription?.plan === "premium" ? "Premium" : "Free"}
               </span>
             </div>
-            <span className="menu-caret">▾</span>
           </button>
 
           {userMenuOpen ? (
@@ -2822,9 +2878,13 @@ const ADMIN_ACCOUNT_TYPES = [
 const ADMIN_MODULE_DEFS = [
   { id: "dashboard", icon: "chart" },
   { id: "accounts", icon: "profile" },
+  { id: "adminCvs", icon: "save" },
+  { id: "adminMatches", icon: "matchmark" },
+  { id: "quality", icon: "shield" },
+  { id: "aiMonitoring", icon: "chart" },
   { id: "finance", icon: "scale" },
   { id: "licenses", icon: "save" },
-  { id: "aiSamples", icon: "spark" },
+  { id: "aiSamples", icon: "shield" },
   { id: "settings", icon: "globe" },
   { id: "announcements", icon: "mail" },
   { id: "activity", icon: "history" },
@@ -2840,6 +2900,10 @@ function getAllowedAdminModules(user) {
 const ADMIN_MODULE_LABELS = {
   dashboard: { fr: "Dashboard", en: "Dashboard" },
   accounts: { fr: "Gestion de compte", en: "Account management" },
+  adminCvs: { fr: "CV importés", en: "Uploaded CVs" },
+  adminMatches: { fr: "Offres analysées", en: "Analyzed jobs" },
+  quality: { fr: "Qualité extraction", en: "Extraction quality" },
+  aiMonitoring: { fr: "Monitoring IA", en: "AI monitoring" },
   finance: { fr: "Gestion de finance", en: "Finance management" },
   activity: { fr: "Journal d'activité", en: "Activity log" },
   licenses: { fr: "Codes de licence", en: "License codes" },
@@ -2898,6 +2962,7 @@ function AdminApp({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen] = useState(false);
+  const [routeLoading, setRouteLoading] = useState(false);
   const notifRef = useRef(null);
   const userMenuRef = useRef(null);
   const searchBoxRef = useRef(null);
@@ -3006,6 +3071,10 @@ function AdminApp({
           dashboard: "Dashboard",
           pricing: "Pricing",
           accounts: "Account management",
+          adminCvs: "Uploaded CVs",
+          adminMatches: "Analyzed jobs",
+          quality: "Extraction quality",
+          aiMonitoring: "AI monitoring",
           finance: "Finance management",
           activity: "Activity log",
           licenses: "License codes",
@@ -3021,6 +3090,10 @@ function AdminApp({
           dashboard: "Dashboard",
           pricing: "Tarifs",
           accounts: "Gestion de compte",
+          adminCvs: "CV importés",
+          adminMatches: "Offres analysées",
+          quality: "Qualité extraction",
+          aiMonitoring: "Monitoring IA",
           finance: "Gestion de finance",
           activity: "Journal d'activité",
           licenses: "Codes de licence",
@@ -3032,6 +3105,7 @@ function AdminApp({
           role: "Administrateur",
           secured: "Sécurisé par"
         };
+  const getAdminModuleLabel = (id) => copy[id] || ADMIN_MODULE_LABELS[id]?.[language] || ADMIN_MODULE_LABELS[id]?.fr || id;
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -3057,10 +3131,39 @@ function AdminApp({
     }
   }, [tab]);
 
+  useEffect(() => {
+    setRouteLoading(true);
+    const timer = window.setTimeout(() => setRouteLoading(false), 360);
+    return () => window.clearTimeout(timer);
+  }, [tab]);
+
   function openAccountSettings() {
     setAccountPanel("account");
     setAccountDrawerOpen(true);
     setUserMenuOpen(false);
+  }
+
+  function renderAdminPage() {
+    if (tab === "dashboard" && allowedModules.includes("dashboard")) return <AdminDashboardPage user={user} language={language} />;
+    if (tab === "accounts" && allowedModules.includes("accounts")) {
+      return <AdminAccountsPage user={user} language={language} currency={currency} initialSearch={accountsSearch} />;
+    }
+    if (tab === "adminCvs" && allowedModules.includes("adminCvs")) return <AdminCvsPage user={user} language={language} />;
+    if (tab === "adminMatches" && allowedModules.includes("adminMatches")) return <AdminMatchesPage user={user} language={language} />;
+    if (tab === "quality" && allowedModules.includes("quality")) return <AdminQualityPage user={user} language={language} />;
+    if (tab === "aiMonitoring" && allowedModules.includes("aiMonitoring")) return <AdminAiMonitoringPage user={user} language={language} />;
+    if (tab === "finance" && allowedModules.includes("finance")) {
+      return <AdminFinancePage user={user} language={language} currency={currency} initialSearch={financeSearch} />;
+    }
+    if (tab === "activity" && allowedModules.includes("activity")) return <AdminActivityLogPage user={user} language={language} />;
+    if (tab === "licenses" && allowedModules.includes("licenses")) {
+      return <AdminLicenseCodesPage user={user} language={language} initialSearch={licenseSearch} />;
+    }
+    if (tab === "aiSamples" && allowedModules.includes("aiSamples")) return <AdminAiSamplesPage user={user} language={language} />;
+    if (tab === "settings" && allowedModules.includes("settings")) return <AdminSettingsPage user={user} language={language} />;
+    if (tab === "announcements" && allowedModules.includes("announcements")) return <AdminAnnouncementsPage user={user} language={language} />;
+    if (tab === "pricing" && allowedModules.includes("pricing")) return <AdminPricingPage user={user} language={language} currency={currency} />;
+    return <AdminPageLoader language={language} />;
   }
 
   return (
@@ -3223,7 +3326,6 @@ function AdminApp({
               </strong>
               <span>{copy.role}</span>
             </div>
-            <span className="menu-caret">▾</span>
           </button>
 
           {userMenuOpen ? (
@@ -3259,6 +3361,24 @@ function AdminApp({
 
       <div className="admin-body">
         <aside className={`admin-sidebar-vertical ${sidebarOpen ? "" : "collapsed"}`}>
+          <div className="admin-sidebar-user">
+            <AvatarCircle user={user} />
+            <strong>
+              {user.firstName} {user.lastName}
+            </strong>
+            <span>{copy.role}</span>
+            <div className="admin-sidebar-user-actions">
+              <button type="button" title={copy.accountSettings} onClick={openAccountSettings}>
+                <UiIcon name="profile" />
+              </button>
+              <button type="button" title={copy.announcements} onClick={() => setTab("announcements")}>
+                <UiIcon name="mail" />
+              </button>
+              <button type="button" title={copy.logout} onClick={onLogout}>
+                <UiIcon name="logout" />
+              </button>
+            </div>
+          </div>
           <nav className="admin-sidebar-nav">
             <span className="admin-sidebar-section-label">MENU</span>
             {ADMIN_MODULE_DEFS.filter((item) => allowedModules.includes(item.id)).map((item) => (
@@ -3268,7 +3388,7 @@ function AdminApp({
                 className={tab === item.id ? "active" : ""}
                 onClick={() => setTab(item.id)}
               >
-                <UiIcon name={item.icon} /> {copy[item.id]}
+                <UiIcon name={item.icon} /> <span>{getAdminModuleLabel(item.id)}</span>
               </button>
             ))}
           </nav>
@@ -3278,24 +3398,10 @@ function AdminApp({
           <nav className="admin-breadcrumb" aria-label="Breadcrumb">
             <span>{language === "en" ? "Home" : "Accueil"}</span>
             <UiIcon name="chevron" className="admin-breadcrumb-sep" />
-            <span className="active">{copy[tab]}</span>
+            <span className="active">{getAdminModuleLabel(tab)}</span>
           </nav>
 
-          {tab === "dashboard" && allowedModules.includes("dashboard") ? <AdminDashboardPage user={user} language={language} /> : null}
-          {tab === "accounts" && allowedModules.includes("accounts") ? (
-            <AdminAccountsPage user={user} language={language} currency={currency} initialSearch={accountsSearch} />
-          ) : null}
-          {tab === "finance" && allowedModules.includes("finance") ? (
-            <AdminFinancePage user={user} language={language} currency={currency} initialSearch={financeSearch} />
-          ) : null}
-          {tab === "activity" && allowedModules.includes("activity") ? <AdminActivityLogPage user={user} language={language} /> : null}
-          {tab === "licenses" && allowedModules.includes("licenses") ? (
-            <AdminLicenseCodesPage user={user} language={language} initialSearch={licenseSearch} />
-          ) : null}
-          {tab === "aiSamples" && allowedModules.includes("aiSamples") ? <AdminAiSamplesPage user={user} language={language} /> : null}
-          {tab === "settings" && allowedModules.includes("settings") ? <AdminSettingsPage user={user} language={language} /> : null}
-          {tab === "announcements" && allowedModules.includes("announcements") ? <AdminAnnouncementsPage user={user} language={language} /> : null}
-          {tab === "pricing" && allowedModules.includes("pricing") ? <AdminPricingPage user={user} language={language} currency={currency} /> : null}
+          {routeLoading ? <AdminPageLoader language={language} /> : renderAdminPage()}
         </main>
       </div>
 
@@ -3340,9 +3446,12 @@ function AdminApp({
 const SCHOOL_MODULE_DEFS = [
   { id: "dashboard", icon: "chart" },
   { id: "students", icon: "profile" },
+  { id: "promotions", icon: "network" },
   { id: "invitations", icon: "mail" },
   { id: "license", icon: "save" },
-  { id: "insights", icon: "spark" }
+  { id: "insights", icon: "chart" },
+  { id: "reports", icon: "file" },
+  { id: "settings", icon: "settings" }
 ];
 
 function SchoolApp({
@@ -3389,7 +3498,10 @@ function SchoolApp({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notifOpen, setNotifOpen] = useState(false);
   const userMenuRef = useRef(null);
+  const notifRef = useRef(null);
   const searchBoxRef = useRef(null);
   const searchCopy =
     language === "en" ? { placeholder: "Search students…" } : { placeholder: "Rechercher des étudiants…" };
@@ -3449,9 +3561,11 @@ function SchoolApp({
       ? {
           dashboard: "Dashboard",
           students: "Students",
+          promotions: "Promotions",
           invitations: "Invitations",
           license: "My license",
           insights: "Tracking & employability",
+          reports: "Reports",
           settings: "Institution settings",
           accountSettings: "My profile",
           logout: "Log out",
@@ -3461,9 +3575,11 @@ function SchoolApp({
       : {
           dashboard: "Dashboard",
           students: "Étudiants",
+          promotions: "Promotions",
           invitations: "Invitations",
           license: "Ma licence",
           insights: "Suivi & employabilité",
+          reports: "Rapports",
           settings: "Paramètres de l'établissement",
           accountSettings: "Mon profil",
           logout: "Déconnexion",
@@ -3476,10 +3592,17 @@ function SchoolApp({
       if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
         setUserMenuOpen(false);
       }
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setNotifOpen(false);
+      }
     }
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    getSchoolNotifications(user.id, language).then((data) => setNotifications(data.items || [])).catch(() => setNotifications([]));
+  }, [user.id, language, tab]);
 
   function openAccountSettings() {
     setAccountPanel("account");
@@ -3535,6 +3658,58 @@ function SchoolApp({
         </div>
 
         <div className="topbar-user" ref={userMenuRef}>
+          <div className="topbar-notif" ref={notifRef}>
+            <button
+              type="button"
+              className="topbar-icon-btn"
+              title={language === "en" ? "Notifications" : "Notifications"}
+              onClick={() => setNotifOpen((prev) => !prev)}
+            >
+              <UiIcon name="bell" />
+              {notifications.filter((item) => !item.readAt).length ? (
+                <span className="topbar-notif-badge">
+                  {notifications.filter((item) => !item.readAt).length > 9 ? "9+" : notifications.filter((item) => !item.readAt).length}
+                </span>
+              ) : null}
+            </button>
+            {notifOpen ? (
+              <div className="topbar-notif-panel">
+                <div className="topbar-notif-panel-head">
+                  <strong>{language === "en" ? "Notifications" : "Notifications"}</strong>
+                  <button
+                    type="button"
+                    className="admin-row-action"
+                    onClick={() => {
+                      markSchoolNotificationsRead(user.id).finally(() =>
+                        setNotifications((items) => items.map((item) => ({ ...item, readAt: item.readAt || new Date().toISOString() })))
+                      );
+                    }}
+                  >
+                    {language === "en" ? "Mark as read" : "Tout marquer lu"}
+                  </button>
+                </div>
+                {notifications.length ? (
+                  <div className="topbar-notif-list">
+                    {notifications.slice(0, 8).map((item) => (
+                      <div key={item.id} className="topbar-notif-row">
+                        <span className="topbar-notif-icon">
+                          <UiIcon name={item.type === "license_capacity" ? "save" : item.type === "low_match_score" ? "alert" : "profile"} />
+                        </span>
+                        <div>
+                          <strong>{item.title}</strong>
+                          <span className="muted">{item.body}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="muted topbar-notif-empty">
+                    {language === "en" ? "No notification yet." : "Aucune notification pour le moment."}
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
           <button type="button" className="topbar-icon-btn" title={copy.insights} onClick={() => setTab("insights")}>
             <UiIcon name="history" />
           </button>
@@ -3555,7 +3730,6 @@ function SchoolApp({
               </strong>
               <span>{copy.role}</span>
             </div>
-            <span className="menu-caret">▾</span>
           </button>
 
           {userMenuOpen ? (
@@ -3591,11 +3765,29 @@ function SchoolApp({
 
       <div className="admin-body">
         <aside className={`admin-sidebar-vertical ${sidebarOpen ? "" : "collapsed"}`}>
+          <div className="admin-sidebar-user">
+            <AvatarCircle user={user} />
+            <strong>
+              {user.firstName} {user.lastName}
+            </strong>
+            <span>{copy.role}</span>
+            <div className="admin-sidebar-user-actions">
+              <button type="button" title={copy.accountSettings} onClick={openAccountSettings}>
+                <UiIcon name="profile" />
+              </button>
+              <button type="button" title={copy.invitations} onClick={() => setTab("invitations")}>
+                <UiIcon name="mail" />
+              </button>
+              <button type="button" title={copy.logout} onClick={onLogout}>
+                <UiIcon name="logout" />
+              </button>
+            </div>
+          </div>
           <nav className="admin-sidebar-nav">
             <span className="admin-sidebar-section-label">MENU</span>
             {SCHOOL_MODULE_DEFS.map((item) => (
               <button key={item.id} type="button" className={tab === item.id ? "active" : ""} onClick={() => setTab(item.id)}>
-                <UiIcon name={item.icon} /> {copy[item.id]}
+                <UiIcon name={item.icon} /> <span>{copy[item.id]}</span>
               </button>
             ))}
           </nav>
@@ -3612,9 +3804,12 @@ function SchoolApp({
           {tab === "students" ? (
             <SchoolStudentsPage user={user} language={language} initialSearch={studentsSearch} />
           ) : null}
+          {tab === "promotions" ? <SchoolPromotionsPage user={user} language={language} /> : null}
           {tab === "invitations" ? <SchoolInvitationsPage user={user} language={language} /> : null}
           {tab === "license" ? <SchoolLicensePage user={user} language={language} currency={currency} /> : null}
           {tab === "insights" ? <SchoolInsightsPage user={user} language={language} /> : null}
+          {tab === "reports" ? <SchoolReportsPage user={user} language={language} /> : null}
+          {tab === "settings" ? <SchoolSettingsPage user={user} language={language} /> : null}
         </main>
       </div>
 
@@ -3675,6 +3870,25 @@ function AdminExportCsvButton({ adminUserId, path, language }) {
   );
 }
 
+function SchoolExportCsvButton({ userId, language }) {
+  const [loading, setLoading] = useState(false);
+  async function handleClick() {
+    setLoading(true);
+    try {
+      const base = await getApiBase();
+      window.open(`${base}/school/students/export?userId=${encodeURIComponent(userId)}`, "_blank");
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <button type="button" className="btn-ghost admin-export-btn" onClick={handleClick} disabled={loading}>
+      {loading ? <span className="btn-spinner" /> : <UiIcon name="download" />}
+      {language === "en" ? "Export CSV" : "Exporter en CSV"}
+    </button>
+  );
+}
+
 function AdminKpiCard({ tone, icon, value, label }) {
   return (
     <div className={`admin-kpi-card tone-${tone}`}>
@@ -3683,6 +3897,21 @@ function AdminKpiCard({ tone, icon, value, label }) {
       </span>
       <span className="admin-kpi-value">{value}</span>
       <span className="admin-kpi-label">{label}</span>
+    </div>
+  );
+}
+
+function AdminPageLoader({ language, label }) {
+  return (
+    <div
+      className="admin-page-loader"
+      aria-label={label || (language === "en" ? "Loading data" : "Chargement des donnees")}
+    >
+      <div className="app-boot-loader" aria-hidden="true">
+        <span className="brand-mark" aria-hidden="true">
+          <UiIcon name="matchmark" />
+        </span>
+      </div>
     </div>
   );
 }
@@ -3704,13 +3933,17 @@ function SchoolDashboardPage({ user, language }) {
           avgScore: "Average match score",
           inactive: "Inactive 30+ days",
           trend: "New students — last 8 weeks",
+          noTrendTitle: "No recent signup",
+          noTrendHint: "New students linked to your license will appear here week by week.",
           noScore: "No data yet",
           recentStudents: "Recently joined",
           noStudents: "No student linked to your license yet.",
           joinedOn: "Joined",
           activityBreakdown: "Activity breakdown",
           activeLabel: "Active (30d)",
-          inactiveLabel: "Inactive"
+          inactiveLabel: "Inactive",
+          noActivityTitle: "No activity yet",
+          noActivityHint: "Activity starts when students import a CV or launch a match analysis."
         }
       : {
           title: "Dashboard",
@@ -3723,13 +3956,17 @@ function SchoolDashboardPage({ user, language }) {
           avgScore: "Score de matching moyen",
           inactive: "Inactifs depuis 30j+",
           trend: "Nouveaux étudiants — 8 dernières semaines",
+          noTrendTitle: "Aucune inscription récente",
+          noTrendHint: "Les nouveaux étudiants rattachés à votre licence apparaîtront ici semaine par semaine.",
           noScore: "Pas encore de données",
           recentStudents: "Derniers inscrits",
           noStudents: "Aucun étudiant rattaché à votre licence pour l'instant.",
           joinedOn: "Inscrit le",
           activityBreakdown: "Répartition de l'activité",
           activeLabel: "Actifs (30j)",
-          inactiveLabel: "Inactifs"
+          inactiveLabel: "Inactifs",
+          noActivityTitle: "Aucune activité pour le moment",
+          noActivityHint: "L'activité démarre quand les étudiants importent un CV ou lancent une analyse de matching."
         };
 
   useEffect(() => {
@@ -3744,7 +3981,7 @@ function SchoolDashboardPage({ user, language }) {
   }, [user.id]);
 
   if (error) return <p className="field-error">{error}</p>;
-  if (!overview) return <p className="muted">…</p>;
+  if (!overview) return <AdminPageLoader language={language} />;
 
   return (
     <section className="admin-dashboard">
@@ -3761,7 +3998,7 @@ function SchoolDashboardPage({ user, language }) {
           value={`${overview.seatsUsed}/${overview.seatsTotal}`}
           label={copy.seats}
         />
-        <AdminKpiCard tone="success" icon="spark" value={`${overview.activationRate}%`} label={copy.activation} />
+        <AdminKpiCard tone="success" icon="chart" value={`${overview.activationRate}%`} label={copy.activation} />
         <AdminKpiCard tone="primary" icon="upload" value={overview.totalCvs} label={copy.cvs} />
         <AdminKpiCard tone="warning" icon="chart" value={overview.totalMatchRuns} label={copy.matches} />
         <AdminKpiCard
@@ -3776,7 +4013,11 @@ function SchoolDashboardPage({ user, language }) {
       <div className="admin-panel-grid">
         <div className="admin-panel admin-trend-panel">
           <h3>{copy.trend}</h3>
-          <AdminTrendChart trend={overview.signupsTrend} language={language} />
+          {overview.signupsTrend?.some((point) => point.count > 0) ? (
+            <AdminTrendChart trend={overview.signupsTrend} language={language} />
+          ) : (
+            <SchoolEmptyState icon="chart" title={copy.noTrendTitle} hint={copy.noTrendHint} />
+          )}
         </div>
 
         <div className="admin-panel admin-trend-panel">
@@ -3799,25 +4040,29 @@ function SchoolDashboardPage({ user, language }) {
               ))}
             </div>
           ) : recentStudents ? (
-            <p className="muted">{copy.noStudents}</p>
+            <SchoolEmptyState icon="profile" title={copy.recentStudents} hint={copy.noStudents} />
           ) : (
-            <p className="muted">…</p>
+            <AdminPageLoader language={language} />
           )}
         </div>
 
         <div className="admin-panel admin-trend-panel">
           <h3>{copy.activityBreakdown}</h3>
-          <AdminDonutChart
-            segments={[
-              {
-                label: copy.activeLabel,
-                value: overview.totalStudents - overview.inactiveStudents,
-                color: "var(--success)"
-              },
-              { label: copy.inactiveLabel, value: overview.inactiveStudents, color: "var(--danger)" }
-            ]}
-            emptyLabel={copy.noStudents}
-          />
+          {overview.totalStudents ? (
+            <AdminDonutChart
+              segments={[
+                {
+                  label: copy.activeLabel,
+                  value: overview.totalStudents - overview.inactiveStudents,
+                  color: "var(--success)"
+                },
+                { label: copy.inactiveLabel, value: overview.inactiveStudents, color: "var(--danger)" }
+              ]}
+              emptyLabel={copy.noStudents}
+            />
+          ) : (
+            <SchoolEmptyState icon="chart" title={copy.noActivityTitle} hint={copy.noActivityHint} />
+          )}
         </div>
       </div>
     </section>
@@ -3840,6 +4085,9 @@ function SchoolStudentsPage({ user, language, initialSearch }) {
           active: "Active",
           inactive: "Inactive",
           never: "No activity yet",
+          totalLabel: "Students",
+          activeLabel: "Active accounts",
+          scoredLabel: "With match score",
           remove: "Remove",
           removeTitle: "Remove this student",
           removeWarning: "This frees up a seat on your license. The student switches back to the free plan and keeps their data.",
@@ -3860,6 +4108,9 @@ function SchoolStudentsPage({ user, language, initialSearch }) {
           active: "Actif",
           inactive: "Inactif",
           never: "Aucune activité",
+          totalLabel: "Étudiants",
+          activeLabel: "Comptes actifs",
+          scoredLabel: "Avec score",
           remove: "Retirer",
           removeTitle: "Retirer cet étudiant",
           removeWarning: "Cela libère un siège sur votre licence. L'étudiant repasse au plan gratuit et conserve ses données.",
@@ -3893,6 +4144,8 @@ function SchoolStudentsPage({ user, language, initialSearch }) {
 
   const totalPages = Math.max(1, Math.ceil(students.length / ADMIN_PAGE_SIZE));
   const pagedStudents = students.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+  const activeCount = students.filter((student) => student.active).length;
+  const scoredCount = students.filter((student) => student.latestScore != null).length;
 
   async function handleRemove(student) {
     const result = await Swal.fire({
@@ -3929,9 +4182,18 @@ function SchoolStudentsPage({ user, language, initialSearch }) {
   return (
     <section className="admin-accounts">
       <header className="module-header">
-        <h2>{copy.title}</h2>
-        <p>{copy.subtitle}</p>
+        <div>
+          <h2>{copy.title}</h2>
+          <p>{copy.subtitle}</p>
+        </div>
+        <SchoolExportCsvButton userId={user.id} language={language} />
       </header>
+
+      <div className="admin-module-metrics">
+        <AdminMiniMetric icon="profile" label={copy.totalLabel} value={students.length} tone="primary" />
+        <AdminMiniMetric icon="chart" label={copy.activeLabel} value={activeCount} tone="success" />
+        <AdminMiniMetric icon="scale" label={copy.scoredLabel} value={scoredCount} tone="warning" />
+      </div>
 
       <div className="admin-table-toolbar">
         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
@@ -4020,6 +4282,9 @@ function SchoolInvitationsPage({ user, language }) {
           colSent: "Sent on",
           statusPending: "Pending",
           statusRedeemed: "Accepted",
+          sentLabel: "Invitations",
+          pendingLabel: "Pending",
+          acceptedLabel: "Accepted",
           empty: "No invitation sent yet."
         }
       : {
@@ -4034,6 +4299,9 @@ function SchoolInvitationsPage({ user, language }) {
           colSent: "Envoyée le",
           statusPending: "En attente",
           statusRedeemed: "Acceptée",
+          sentLabel: "Invitations",
+          pendingLabel: "En attente",
+          acceptedLabel: "Acceptées",
           empty: "Aucune invitation envoyée pour l'instant."
         };
 
@@ -4071,12 +4339,21 @@ function SchoolInvitationsPage({ user, language }) {
     }
   }
 
+  const pendingCount = invitations.filter((invite) => invite.status !== "redeemed").length;
+  const redeemedCount = invitations.filter((invite) => invite.status === "redeemed").length;
+
   return (
     <section className="admin-accounts">
       <header className="module-header">
         <h2>{copy.title}</h2>
         <p>{copy.subtitle}</p>
       </header>
+
+      <div className="admin-module-metrics">
+        <AdminMiniMetric icon="mail" label={copy.sentLabel} value={invitations.length} tone="primary" />
+        <AdminMiniMetric icon="history" label={copy.pendingLabel} value={pendingCount} tone="warning" />
+        <AdminMiniMetric icon="shield" label={copy.acceptedLabel} value={redeemedCount} tone="success" />
+      </div>
 
       <form className="admin-inline-form" onSubmit={submit}>
         <input
@@ -4127,6 +4404,166 @@ function SchoolInvitationsPage({ user, language }) {
             )}
           </tbody>
         </table>
+      </div>
+    </section>
+  );
+}
+
+function SchoolPromotionsPage({ user, language }) {
+  const copy = language === "en"
+    ? {
+        title: "Promotions",
+        subtitle: "Organize students by program, campus and academic year.",
+        name: "Promotion name",
+        program: "Program",
+        level: "Level",
+        campus: "Campus",
+        year: "Academic year",
+        create: "Create promotion",
+        assign: "Assign a student",
+        addStudent: "Add",
+        removeStudent: "Remove",
+        students: "students",
+        empty: "No promotion created yet.",
+        delete: "Delete"
+      }
+    : {
+        title: "Promotions",
+        subtitle: "Organisez les étudiants par programme, campus et année académique.",
+        name: "Nom de la promotion",
+        program: "Programme",
+        level: "Niveau",
+        campus: "Campus",
+        year: "Année académique",
+        create: "Créer la promotion",
+        assign: "Affecter un étudiant",
+        addStudent: "Ajouter",
+        removeStudent: "Retirer",
+        students: "étudiants",
+        empty: "Aucune promotion créée pour le moment.",
+        delete: "Supprimer"
+      };
+  const [data, setData] = useState({ items: [], students: [] });
+  const [form, setForm] = useState({ name: "", program: "", level: "", campus: "", academicYear: "" });
+  const [selectedStudents, setSelectedStudents] = useState({});
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  function reload() {
+    getSchoolPromotions(user.id).then(setData).catch((err) => setError(getFriendlyErrorMessage(err, language)));
+  }
+
+  useEffect(() => {
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id]);
+
+  async function submit(event) {
+    event.preventDefault();
+    setError("");
+    setSaving(true);
+    try {
+      await createSchoolPromotion(user.id, form);
+      setForm({ name: "", program: "", level: "", campus: "", academicYear: "" });
+      reload();
+      Swal.fire({ icon: "success", title: language === "en" ? "Promotion created." : "Promotion créée.", timer: 1800, showConfirmButton: false });
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove(item) {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: language === "en" ? "Delete this promotion?" : "Supprimer cette promotion ?",
+      text: item.name,
+      showCancelButton: true,
+      confirmButtonText: copy.delete,
+      cancelButtonText: language === "en" ? "Cancel" : "Annuler",
+      confirmButtonColor: "#dc2626"
+    });
+    if (!result.isConfirmed) return;
+    await deleteSchoolPromotion(user.id, item.id);
+    reload();
+  }
+
+  async function updateStudent(item, action, studentId) {
+    const id = studentId || selectedStudents[item.id];
+    if (!id) return;
+    setError("");
+    try {
+      await updateSchoolPromotionStudent(user.id, item.id, id, action);
+      setSelectedStudents((current) => ({ ...current, [item.id]: "" }));
+      reload();
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, language));
+    }
+  }
+
+  return (
+    <section className="school-promotions">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+      <form className="school-settings-form school-promotion-form" onSubmit={submit}>
+        <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={copy.name} />
+        <input value={form.program} onChange={(event) => setForm({ ...form, program: event.target.value })} placeholder={copy.program} />
+        <input value={form.level} onChange={(event) => setForm({ ...form, level: event.target.value })} placeholder={copy.level} />
+        <input value={form.campus} onChange={(event) => setForm({ ...form, campus: event.target.value })} placeholder={copy.campus} />
+        <input value={form.academicYear} onChange={(event) => setForm({ ...form, academicYear: event.target.value })} placeholder={copy.year} />
+        <button className="btn-main ready" disabled={saving}>{saving ? <span className="btn-spinner" /> : null} {copy.create}</button>
+      </form>
+      {error ? <p className="field-error">{error}</p> : null}
+      <div className="school-card-grid">
+        {data.items.length ? data.items.map((item) => {
+          const assignedIds = new Set(item.studentIds || []);
+          const assigned = data.students.filter((student) => assignedIds.has(student.id));
+          const available = data.students.filter((student) => !assignedIds.has(student.id));
+          return (
+            <article key={item.id} className="school-data-card">
+              <div>
+                <strong>{item.name}</strong>
+                <span>{[item.program, item.level, item.campus, item.academicYear].filter(Boolean).join(" · ") || "—"}</span>
+              </div>
+              <small>{item.studentCount} {copy.students}</small>
+              <div className="school-promotion-assign">
+                <select
+                  value={selectedStudents[item.id] || ""}
+                  onChange={(event) => setSelectedStudents((current) => ({ ...current, [item.id]: event.target.value }))}
+                >
+                  <option value="">{copy.assign}</option>
+                  {available.map((student) => (
+                    <option key={student.id} value={student.id}>
+                      {student.firstName} {student.lastName} · {student.email}
+                    </option>
+                  ))}
+                </select>
+                <button type="button" className="btn-ghost" onClick={() => updateStudent(item, "add")} disabled={!selectedStudents[item.id]}>
+                  <UiIcon name="plus" /> {copy.addStudent}
+                </button>
+              </div>
+              {assigned.length ? (
+                <div className="school-promotion-students">
+                  {assigned.map((student) => (
+                    <span key={student.id} className="school-promotion-student-pill">
+                      <AvatarCircle user={student} />
+                      {student.firstName} {student.lastName}
+                      <button type="button" onClick={() => updateStudent(item, "remove", student.id)} title={copy.removeStudent}>
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <button type="button" className="admin-row-action danger" onClick={() => remove(item)}>
+                <UiIcon name="trash" /> {copy.delete}
+              </button>
+            </article>
+          );
+        }) : <SchoolEmptyState icon="network" title={copy.title} hint={copy.empty} />}
       </div>
     </section>
   );
@@ -4417,6 +4854,250 @@ function SchoolInsightsPage({ user, language }) {
   );
 }
 
+function SchoolReportsPage({ user, language }) {
+  const copy = language === "en"
+    ? {
+        title: "Reports",
+        subtitle: "Generate employability reports for management and academic teams.",
+        generateMonthly: "Generate monthly report",
+        generateWeekly: "Generate weekly report",
+        totalStudents: "Students",
+        activeStudents: "Active",
+        withoutCv: "Without CV",
+        lowScores: "Low scores",
+        avgScore: "Average score",
+        history: "Generated reports",
+        empty: "No report generated yet."
+      }
+    : {
+        title: "Rapports",
+        subtitle: "Générez des rapports d'employabilité pour la direction et les équipes pédagogiques.",
+        generateMonthly: "Générer le rapport mensuel",
+        generateWeekly: "Générer le rapport hebdomadaire",
+        totalStudents: "Étudiants",
+        activeStudents: "Actifs",
+        withoutCv: "Sans CV",
+        lowScores: "Scores faibles",
+        avgScore: "Score moyen",
+        history: "Rapports générés",
+        empty: "Aucun rapport généré pour le moment."
+      };
+  const [data, setData] = useState(null);
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+
+  function reload() {
+    getSchoolReports(user.id).then(setData).catch((err) => setError(getFriendlyErrorMessage(err, language)));
+  }
+
+  useEffect(() => {
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id]);
+
+  async function generate(period) {
+    setBusy(period);
+    try {
+      await generateSchoolReport(user.id, period);
+      reload();
+      Swal.fire({ icon: "success", title: language === "en" ? "Report generated." : "Rapport généré.", timer: 1800, showConfirmButton: false });
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  if (!data) return <AdminPageLoader language={language} />;
+
+  return (
+    <section className="school-reports">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+      <div className="admin-module-metrics">
+        <AdminMiniMetric icon="profile" label={copy.totalStudents} value={data.snapshot.totalStudents} />
+        <AdminMiniMetric icon="chart" label={copy.activeStudents} value={data.snapshot.activeStudents} tone="success" />
+        <AdminMiniMetric icon="upload" label={copy.withoutCv} value={data.snapshot.withoutCv} tone="warning" />
+        <AdminMiniMetric icon="alert" label={copy.lowScores} value={data.snapshot.lowScores} tone="danger" />
+        <AdminMiniMetric icon="scale" label={copy.avgScore} value={data.snapshot.avgScore != null ? `${data.snapshot.avgScore}%` : "—"} />
+      </div>
+      <div className="school-report-actions">
+        <button className="btn-main ready" onClick={() => generate("monthly")} disabled={Boolean(busy)}>
+          {busy === "monthly" ? <span className="btn-spinner" /> : <UiIcon name="file" />} {copy.generateMonthly}
+        </button>
+        <button className="btn-ghost" onClick={() => generate("weekly")} disabled={Boolean(busy)}>
+          {busy === "weekly" ? <span className="btn-spinner dark" /> : <UiIcon name="history" />} {copy.generateWeekly}
+        </button>
+      </div>
+      {error ? <p className="field-error">{error}</p> : null}
+      <div className="admin-panel school-insight-panel">
+        <h3>{copy.history}</h3>
+        {data.items.length ? (
+          <div className="school-report-list">
+            {data.items.map((item) => (
+              <article key={item.id} className="school-report-row">
+                <div>
+                  <strong>{item.title}</strong>
+                  <span className="muted">{formatDate(item.createdAt)} · {item.period}</span>
+                </div>
+                <span className="tag">{item.payload?.avgScore != null ? `${item.payload.avgScore}%` : "—"}</span>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <SchoolEmptyState icon="file" title={copy.history} hint={copy.empty} />
+        )}
+      </div>
+    </section>
+  );
+}
+
+function SchoolSettingsPage({ user, language }) {
+  const copy = language === "en"
+    ? {
+        title: "Institution settings",
+        subtitle: "Manage the institution identity separately from the administrator account.",
+        adminBlock: "Administrator",
+        schoolBlock: "Institution",
+        save: "Save settings",
+        orgName: "Official institution name",
+        orgType: "Type",
+        website: "Website",
+        emailDomain: "Email domain",
+        address: "Address",
+        city: "City",
+        country: "Country",
+        contactName: "Primary contact",
+        contactEmail: "Contact email",
+        contactPhone: "Contact phone",
+        notes: "Internal notes"
+      }
+    : {
+        title: "Paramètres de l'établissement",
+        subtitle: "Gérez l'identité de l'établissement séparément du compte administrateur.",
+        adminBlock: "Administrateur",
+        schoolBlock: "Établissement",
+        save: "Enregistrer les paramètres",
+        orgName: "Nom officiel de l'établissement",
+        orgType: "Type",
+        website: "Site web",
+        emailDomain: "Domaine email",
+        address: "Adresse",
+        city: "Ville",
+        country: "Pays",
+        contactName: "Contact principal",
+        contactEmail: "Email de contact",
+        contactPhone: "Téléphone de contact",
+        notes: "Notes internes"
+      };
+  const [data, setData] = useState(null);
+  const [form, setForm] = useState({});
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    getSchoolProfile(user.id)
+      .then((payload) => {
+        setData(payload);
+        setForm(payload.profile || {});
+      })
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
+  }, [user.id]);
+
+  function update(field, value) {
+    setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  async function handleLogoUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      setError(language === "en" ? "Please select an image file." : "Veuillez sélectionner une image.");
+      event.target.value = "";
+      return;
+    }
+    try {
+      const content = await fileToBase64(file);
+      update("logoDataUrl", content);
+    } catch (_error) {
+      setError(language === "en" ? "Unable to read this image." : "Impossible de lire cette image.");
+    } finally {
+      event.target.value = "";
+    }
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+    setSaving(true);
+    setError("");
+    try {
+      const payload = await updateSchoolProfile(user.id, form);
+      setForm(payload.profile || form);
+      Swal.fire({ icon: "success", title: language === "en" ? "Settings saved." : "Paramètres enregistrés.", timer: 1800, showConfirmButton: false });
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!data) return <AdminPageLoader language={language} />;
+
+  return (
+    <section className="school-settings">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+      <div className="school-settings-grid">
+        <article className="admin-panel">
+          <h3>{copy.adminBlock}</h3>
+          <div className="school-admin-identity">
+            <AvatarCircle user={data.admin} />
+            <div>
+              <strong>{data.admin.firstName} {data.admin.lastName}</strong>
+              <span className="muted">{data.admin.email}</span>
+            </div>
+          </div>
+        </article>
+        <form className="admin-panel school-settings-form" onSubmit={submit}>
+          <h3>{copy.schoolBlock}</h3>
+          <div className="school-logo-editor">
+            <span className="school-logo-preview">
+              {form.logoDataUrl ? <img src={form.logoDataUrl} alt="" /> : <UiIcon name="briefcase" />}
+            </span>
+            <label className="btn-ghost">
+              <UiIcon name="upload" />
+              {language === "en" ? "Upload logo" : "Télécharger le logo"}
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleLogoUpload} />
+            </label>
+            {form.logoDataUrl ? (
+              <button type="button" className="admin-row-action danger" onClick={() => update("logoDataUrl", "")}>
+                {language === "en" ? "Remove logo" : "Supprimer le logo"}
+              </button>
+            ) : null}
+          </div>
+          <input value={form.organizationName || ""} onChange={(event) => update("organizationName", event.target.value)} placeholder={copy.orgName} />
+          <input value={form.organizationType || ""} onChange={(event) => update("organizationType", event.target.value)} placeholder={copy.orgType} />
+          <input value={form.website || ""} onChange={(event) => update("website", event.target.value)} placeholder={copy.website} />
+          <input value={form.emailDomain || ""} onChange={(event) => update("emailDomain", event.target.value)} placeholder={copy.emailDomain} />
+          <input value={form.address || ""} onChange={(event) => update("address", event.target.value)} placeholder={copy.address} />
+          <input value={form.city || ""} onChange={(event) => update("city", event.target.value)} placeholder={copy.city} />
+          <input value={form.country || ""} onChange={(event) => update("country", event.target.value)} placeholder={copy.country} />
+          <input value={form.primaryContactName || ""} onChange={(event) => update("primaryContactName", event.target.value)} placeholder={copy.contactName} />
+          <input value={form.contactEmail || ""} onChange={(event) => update("contactEmail", event.target.value)} placeholder={copy.contactEmail} />
+          <input value={form.contactPhone || ""} onChange={(event) => update("contactPhone", event.target.value)} placeholder={copy.contactPhone} />
+          <textarea value={form.notes || ""} onChange={(event) => update("notes", event.target.value)} placeholder={copy.notes} />
+          {error ? <p className="field-error">{error}</p> : null}
+          <button className="btn-main ready" disabled={saving}>{saving ? <span className="btn-spinner" /> : null} {copy.save}</button>
+        </form>
+      </div>
+    </section>
+  );
+}
+
 const ADMIN_DASHBOARD_ROLES = [
   { id: "student", icon: "profile", color: "#2f5bff" },
   { id: "school", icon: "shield", color: "#0e9f6e" },
@@ -4492,6 +5173,7 @@ function AdminDonutChart({ segments, emptyLabel }) {
 function AdminDashboardPage({ user, language }) {
   const [overview, setOverview] = useState(null);
   const [recentActivity, setRecentActivity] = useState(null);
+  const [recentUsers, setRecentUsers] = useState(null);
   const [error, setError] = useState("");
   const copy =
     language === "en"
@@ -4509,14 +5191,22 @@ function AdminDashboardPage({ user, language }) {
           noActivity: "No activity recorded yet.",
           planDistribution: "Active plans breakdown",
           noPlanData: "No active plan yet.",
-          conversionRate: "Free → paid conversion",
+          conversionRate: "Free to paid conversion",
           revenueThisMonth: "Revenue this month",
           revenueNoData: "No revenue last month to compare",
           licenseUsage: "License seats used",
           licenseNoSeats: "No license sold yet",
           pendingInvitations: "Pending school invitations",
           emailScoutSearches: "Email Scout searches",
-          inactiveAccounts: "Inactive accounts (30d+)"
+          inactiveAccounts: "Inactive accounts (30d+)",
+          latestUsers: "Last 10 signups",
+          colUser: "User",
+          colRole: "Role",
+          colPlan: "Plan",
+          colDate: "Signup date",
+          noRecentUsers: "No signup yet.",
+          planFocus: "Plan overview",
+          activeSubscribers: "active subscriber(s)"
         }
       : {
           title: "Dashboard",
@@ -4532,14 +5222,22 @@ function AdminDashboardPage({ user, language }) {
           noActivity: "Aucune activité enregistrée pour l'instant.",
           planDistribution: "Répartition des plans actifs",
           noPlanData: "Aucun plan actif pour l'instant.",
-          conversionRate: "Conversion gratuit → payant",
+          conversionRate: "Conversion gratuit vers payant",
           revenueThisMonth: "Revenu ce mois-ci",
           revenueNoData: "Aucun revenu le mois dernier pour comparer",
           licenseUsage: "Sièges de licence utilisés",
           licenseNoSeats: "Aucune licence vendue pour l'instant",
           pendingInvitations: "Invitations école en attente",
           emailScoutSearches: "Recherches Email Scout",
-          inactiveAccounts: "Comptes inactifs (30j+)"
+          inactiveAccounts: "Comptes inactifs (30j+)",
+          latestUsers: "10 dernières inscriptions",
+          colUser: "Utilisateur",
+          colRole: "Rôle",
+          colPlan: "Plan",
+          colDate: "Inscription",
+          noRecentUsers: "Aucune inscription pour le moment.",
+          planFocus: "Vue des plans",
+          activeSubscribers: "abonné(s) actif(s)"
         };
 
   const DONUT_COLORS = [
@@ -4557,6 +5255,14 @@ function AdminDashboardPage({ user, language }) {
     getAdminActivityLog(user.id)
       .then((data) => setRecentActivity(data.items.slice(0, 5)))
       .catch(() => setRecentActivity([]));
+    listAdminUsers(user.id)
+      .then((items) => {
+        const latest = [...items]
+          .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+          .slice(0, 10);
+        setRecentUsers(latest);
+      })
+      .catch(() => setRecentUsers([]));
   }, [user.id]);
 
   if (error) return <p className="field-error">{error}</p>;
@@ -4568,6 +5274,7 @@ function AdminDashboardPage({ user, language }) {
     value: count,
     color: DONUT_COLORS[index % DONUT_COLORS.length]
   }));
+  const activePlanTotal = planEntries.reduce((total, [, count]) => total + Number(count || 0), 0);
 
   return (
     <section className="admin-dashboard">
@@ -4579,7 +5286,8 @@ function AdminDashboardPage({ user, language }) {
       <div className="admin-kpi-grid">
         <AdminKpiCard tone="primary" icon="upload" value={overview.totalCvs} label={copy.cvs} />
         <AdminKpiCard tone="warning" icon="chart" value={overview.totalMatchRuns} label={copy.matches} />
-        <AdminKpiCard tone="success" icon="spark" value={overview.signupsLast30Days} label={copy.signups} />
+        <AdminKpiCard tone="success" icon="profile" value={overview.signupsLast30Days} label={copy.signups} />
+        <AdminKpiCard tone="danger" icon="pricetag" value={activePlanTotal} label={copy.plans} />
       </div>
 
       <div className="admin-kpi-grid admin-kpi-grid-secondary">
@@ -4678,16 +5386,86 @@ function AdminDashboardPage({ user, language }) {
         })}
       </div>
 
-      <div className="admin-panel">
-        <h3>{copy.plans}</h3>
-        <ul className="admin-stat-list">
-          {planEntries.map(([planId, count]) => (
-            <li key={planId}>
-              <span>{getPlanById(planId)?.name?.[language] || getPlanById(planId)?.name?.fr || planId}</span>
-              <strong>{count}</strong>
-            </li>
-          ))}
-        </ul>
+      <div className="admin-dashboard-insights">
+        <div className="admin-panel admin-latest-users-panel">
+          <div className="admin-panel-title-row">
+            <h3>{copy.latestUsers}</h3>
+            <span>{overview.totalUsers || recentUsers?.length || 0}</span>
+          </div>
+          {recentUsers?.length ? (
+            <div className="admin-table-wrap compact">
+              <table className="admin-table admin-latest-users-table">
+                <thead>
+                  <tr>
+                    <th>{copy.colUser}</th>
+                    <th>{copy.colRole}</th>
+                    <th>{copy.colPlan}</th>
+                    <th>{copy.colDate}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentUsers.map((item) => {
+                    const plan = item.planId ? getPlanById(item.planId) : null;
+                    return (
+                      <tr key={item.id}>
+                        <td>
+                          <div className="admin-latest-user-cell">
+                            <AvatarCircle user={item} />
+                            <div>
+                              <strong>
+                                {item.firstName} {item.lastName}
+                              </strong>
+                              <span>{item.email}</span>
+                            </div>
+                          </div>
+                        </td>
+                        <td>{getAccountLabel(item.roleType, language)}</td>
+                        <td>
+                          <span className={`status-pill ${plan ? "active" : "neutral"}`}>
+                            {plan?.name?.[language] || plan?.name?.fr || copy.noPlan}
+                          </span>
+                        </td>
+                        <td>{formatDate(item.createdAt)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : recentUsers ? (
+            <p className="muted">{copy.noRecentUsers}</p>
+          ) : (
+            <p className="muted">…</p>
+          )}
+        </div>
+
+        <div className="admin-panel admin-plan-focus-panel">
+          <div className="admin-panel-title-row">
+            <h3>{copy.planFocus}</h3>
+            <span>{activePlanTotal} {copy.activeSubscribers}</span>
+          </div>
+          <div className="admin-plan-focus-list">
+            {planEntries.length ? (
+              planEntries.map(([planId, count]) => {
+                const percent = activePlanTotal ? Math.round((Number(count || 0) / activePlanTotal) * 100) : 0;
+                return (
+                  <div key={planId} className="admin-plan-focus-item">
+                    <div>
+                      <strong>{getPlanById(planId)?.name?.[language] || getPlanById(planId)?.name?.fr || planId}</strong>
+                      <span>{count} {copy.activeSubscribers}</span>
+                    </div>
+                    <div className="admin-plan-focus-meter" style={{ "--pct": `${percent}%` }}>
+                      <span />
+                    </div>
+                    <em>{percent}%</em>
+                  </div>
+                );
+              })
+            ) : (
+              <p className="muted">{copy.noPlanData}</p>
+            )}
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -4704,6 +5482,9 @@ function AdminPricingPage({ user, language, currency = "EUR" }) {
           saving: "Saving…",
           cancel: "Cancel",
           reset: "Reset to default",
+          features: "Included",
+          monthlyLabel: "Monthly",
+          annualLabel: "Annual",
           monthly: "Monthly price (€)",
           annual: "Annual price (€)",
           singlePrice: "Price (€)",
@@ -4721,6 +5502,9 @@ function AdminPricingPage({ user, language, currency = "EUR" }) {
           saving: "Enregistrement…",
           cancel: "Annuler",
           reset: "Réinitialiser au tarif par défaut",
+          features: "Inclus",
+          monthlyLabel: "Mensuel",
+          annualLabel: "Annuel",
           monthly: "Prix mensuel (€)",
           annual: "Prix annuel (€)",
           singlePrice: "Prix (€)",
@@ -4824,7 +5608,7 @@ function AdminPricingPage({ user, language, currency = "EUR" }) {
               ? pricingCopy.segmentAgency
               : pricingCopy.segmentSchool}
           </h3>
-          <div className="pricing-grid admin-pricing-grid">
+          <div className="admin-pricing-grid">
             {PLANS.filter((plan) => plan.segment === segment).map((plan) => {
               const effective = overrides[plan.id] || {
                 monthlyPrice: plan.monthlyPrice,
@@ -4841,12 +5625,20 @@ function AdminPricingPage({ user, language, currency = "EUR" }) {
               );
               const isEditing = editingId === plan.id;
               return (
-                <article key={plan.id} className={`pricing-card admin-pricing-card ${plan.highlighted ? "recommended" : ""}`}>
-                  {plan.badge ? <span className="pricing-badge">{plan.badge[language] || plan.badge.fr}</span> : null}
-                  {effective.overridden ? <span className="admin-pricing-custom-badge">{copy.customBadge}</span> : null}
-                  <h3>{plan.name[language] || plan.name.fr}</h3>
-                  <p className="muted">{plan.tagline[language] || plan.tagline.fr}</p>
-
+                <article key={plan.id} className={`admin-pricing-card ${plan.highlighted ? "recommended" : ""}`}>
+                  <div className="admin-pricing-card-head">
+                    <div>
+                      <div className="admin-pricing-badges">
+                        {plan.badge ? <span>{plan.badge[language] || plan.badge.fr}</span> : null}
+                        {effective.overridden ? <span className="is-custom">{copy.customBadge}</span> : null}
+                      </div>
+                      <h4>{plan.name[language] || plan.name.fr}</h4>
+                      <p>{plan.tagline[language] || plan.tagline.fr}</p>
+                    </div>
+                    <span className="admin-pricing-icon">
+                      <UiIcon name={plan.grantsPremium ? "pricetag" : "shield"} />
+                    </span>
+                  </div>
                   {isEditing ? (
                     <div className="admin-pricing-edit-form">
                       {!effective.isSinglePrice ? (
@@ -4882,12 +5674,23 @@ function AdminPricingPage({ user, language, currency = "EUR" }) {
                     </div>
                   ) : (
                     <>
-                      <div className="pricing-price">
-                        <strong>{price.amount}</strong>
-                        <span>{price.unit}</span>
+                      <div className="admin-pricing-price-row">
+                        <div className="admin-pricing-price">
+                          <span>{effective.isSinglePrice ? copy.singlePrice : copy.monthlyLabel}</span>
+                          <strong>{price.amount}</strong>
+                          <small>{price.unit}</small>
+                        </div>
+                        {!effective.isSinglePrice ? (
+                          <div className="admin-pricing-price is-secondary">
+                            <span>{copy.annualLabel}</span>
+                            <strong>{formatEur(effective.annualPrice, currency)}</strong>
+                            <small>{pricingCopy.perYear}</small>
+                          </div>
+                        ) : null}
                       </div>
-                      <ul className="pricing-feature-list">
-                        {(plan.features[language] || plan.features.fr).map((feature) => (
+                      <div className="admin-pricing-features-title">{copy.features}</div>
+                      <ul className="admin-pricing-feature-list">
+                        {(plan.features[language] || plan.features.fr).slice(0, 4).map((feature) => (
                           <li key={feature}>{feature}</li>
                         ))}
                       </ul>
@@ -5106,10 +5909,18 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
           adminModulesHint: "Leave everything checked for full access.",
           colPermissions: "Permissions",
           fullAccess: "Full access"
+          ,
+          colUsage: "Usage",
+          colLastLogin: "Last login",
+          colStatus: "Status",
+          active: "Active",
+          suspended: "Suspended",
+          suspend: "Suspend",
+          reactivate: "Reactivate"
         }
       : {
           title: "Gestion de compte",
-          subtitle: "Consulte tous les comptes de la plateforme et crée-en de nouveaux.",
+          subtitle: "Consultez tous les comptes de la plateforme et créez-en de nouveaux.",
           firstName: "Prénom",
           lastName: "Nom",
           email: "Email",
@@ -5141,14 +5952,21 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
           deleteTitle: "Supprimer ce compte",
           deleteWarning:
             "Cela supprime définitivement le compte et toutes ses données (CV, historique de matching, codes de licence). Action irréversible.",
-          deleteConfirmLabel: "Tape l'email du compte pour confirmer",
+          deleteConfirmLabel: "Saisissez l'email du compte pour confirmer",
           deleteConfirm: "Supprimer définitivement",
           cancel: "Annuler",
           free: "Gratuit",
           adminModulesLabel: "Modules visibles",
-          adminModulesHint: "Laisse tout coché pour un accès complet.",
+          adminModulesHint: "Laissez tout coché pour un accès complet.",
           colPermissions: "Permissions",
-          fullAccess: "Accès complet"
+          fullAccess: "Accès complet",
+          colUsage: "Usage",
+          colLastLogin: "Dernière connexion",
+          colStatus: "Statut",
+          active: "Actif",
+          suspended: "Suspendu",
+          suspend: "Suspendre",
+          reactivate: "Réactiver"
         };
 
   const [subTab, setSubTab] = useState("all");
@@ -5285,6 +6103,57 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
     }
   }
 
+  async function toggleUserStatus(item) {
+    const nextStatus = item.status === "suspended" ? "active" : "suspended";
+    const isSuspending = nextStatus === "suspended";
+    const result = await Swal.fire({
+      icon: isSuspending ? "warning" : "question",
+      title: isSuspending
+        ? language === "en"
+          ? "Suspend this account?"
+          : "Suspendre ce compte ?"
+        : language === "en"
+          ? "Reactivate this account?"
+          : "Réactiver ce compte ?",
+      html: isSuspending
+        ? language === "en"
+          ? `<p style="text-align:left;margin:0;">The user will no longer be able to sign in. Active sessions will be closed.</p><p style="text-align:left;font-weight:700;margin-top:0.75rem;">${item.firstName} ${item.lastName} · ${item.email}</p>`
+          : `<p style="text-align:left;margin:0;">L'utilisateur ne pourra plus se connecter. Les sessions actives seront fermées.</p><p style="text-align:left;font-weight:700;margin-top:0.75rem;">${item.firstName} ${item.lastName} · ${item.email}</p>`
+        : language === "en"
+          ? `<p style="text-align:left;margin:0;">This account will be allowed to sign in again.</p><p style="text-align:left;font-weight:700;margin-top:0.75rem;">${item.firstName} ${item.lastName} · ${item.email}</p>`
+          : `<p style="text-align:left;margin:0;">Ce compte pourra de nouveau se connecter.</p><p style="text-align:left;font-weight:700;margin-top:0.75rem;">${item.firstName} ${item.lastName} · ${item.email}</p>`,
+      showCancelButton: true,
+      confirmButtonText: isSuspending ? copy.suspend : copy.reactivate,
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: isSuspending ? "#dc2626" : "#4f46e5",
+      focusCancel: true
+    });
+    if (!result.isConfirmed) return;
+
+    try {
+      await updateAdminUserStatus({ adminUserId: user.id, userId: item.id, status: nextStatus });
+      reload();
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: isSuspending
+          ? language === "en"
+            ? "Account suspended."
+            : "Compte suspendu."
+          : language === "en"
+            ? "Account reactivated."
+            : "Compte réactivé.",
+        showConfirmButton: false,
+        timer: 2500,
+        timerProgressBar: true,
+        customClass: { popup: "career-toast", title: "career-toast-title" }
+      });
+    } catch (err) {
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+    }
+  }
+
   function loadUsers() {
     listAdminUsers(user.id, { search, roleType: subTab === "all" ? "" : subTab })
       .then(setUsers)
@@ -5411,6 +6280,9 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
                   {subTab !== "admin" ? <th>{copy.colPlan}</th> : null}
                   {subTab !== "admin" ? <th>{copy.colPrice}</th> : null}
                   {subTab === "admin" ? <th>{copy.colPermissions}</th> : null}
+                  {subTab !== "admin" ? <th>{copy.colUsage}</th> : null}
+                  <th>{copy.colLastLogin}</th>
+                  <th>{copy.colStatus}</th>
                   <th>{copy.colCreated}</th>
                   <th>{copy.colActions}</th>
                 </tr>
@@ -5460,6 +6332,20 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
                           )}
                         </td>
                       ) : null}
+                      {subTab !== "admin" ? (
+                        <td>
+                          <div className="admin-usage-stack">
+                            <span>{item.cvCount || 0} CV</span>
+                            <span>{item.matchCount || 0} analyses</span>
+                          </div>
+                        </td>
+                      ) : null}
+                      <td className="muted">{item.lastLoginAt ? formatDate(item.lastLoginAt) : "—"}</td>
+                      <td>
+                        <span className={`tag ${item.status === "suspended" ? "tag-danger" : "tag-success"}`}>
+                          {item.status === "suspended" ? copy.suspended : copy.active}
+                        </span>
+                      </td>
                       <td className="muted">{formatDate(item.createdAt)}</td>
                       <td>
                         <div className="admin-row-actions">
@@ -5467,9 +6353,14 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
                             <UiIcon name="edit" /> {copy.edit}
                           </button>
                           {item.roleType !== "admin" ? (
-                            <button type="button" className="admin-row-action danger" onClick={() => openDelete(item)}>
-                              <UiIcon name="alert" /> {copy.delete}
-                            </button>
+                            <>
+                              <button type="button" className="admin-row-action" onClick={() => toggleUserStatus(item)}>
+                                <UiIcon name="shield" /> {item.status === "suspended" ? copy.reactivate : copy.suspend}
+                              </button>
+                              <button type="button" className="admin-row-action danger" onClick={() => openDelete(item)}>
+                                <UiIcon name="alert" /> {copy.delete}
+                              </button>
+                            </>
                           ) : null}
                         </div>
                       </td>
@@ -5477,7 +6368,7 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={subTab === "admin" ? 5 : 6} className="admin-table-empty muted">
+                    <td colSpan={subTab === "admin" ? 7 : 9} className="admin-table-empty muted">
                       {copy.empty}
                     </td>
                   </tr>
@@ -5746,6 +6637,330 @@ function planPriceLabel(planId, billingCycle, freeLabel, currency = "EUR") {
   return `${formatEur(amount, currency)} / ${billingCycle === "annual" ? "an" : "mois"}`;
 }
 
+function AdminMiniMetric({ label, value, icon = "chart", tone = "" }) {
+  return (
+    <article className={`admin-mini-metric ${tone}`}>
+      <span>
+        <UiIcon name={icon} />
+      </span>
+      <div>
+        <strong>{value}</strong>
+        <small>{label}</small>
+      </div>
+    </article>
+  );
+}
+
+function AdminCvsPage({ user, language }) {
+  const copy =
+    language === "en"
+      ? {
+          title: "Uploaded CVs",
+          subtitle: "Every CV saved in the platform, with extraction status and quick actions.",
+          search: "Search by user, file, skill…",
+          all: "All statuses",
+          extracted: "Extracted",
+          partial: "Partial",
+          needsReview: "Needs review",
+          colCv: "CV",
+          colUser: "User",
+          colStatus: "Status",
+          colData: "Extracted data",
+          colActions: "Actions",
+          reanalyze: "Reanalyze",
+          delete: "Delete",
+          empty: "No CV found."
+        }
+      : {
+          title: "CV importés",
+          subtitle: "Tous les CV enregistrés dans la plateforme, avec statut d'extraction et actions rapides.",
+          search: "Rechercher par utilisateur, fichier, compétence…",
+          all: "Tous les statuts",
+          extracted: "Extrait",
+          partial: "Partiel",
+          needsReview: "À revoir",
+          colCv: "CV",
+          colUser: "Utilisateur",
+          colStatus: "Statut",
+          colData: "Données extraites",
+          colActions: "Actions",
+          reanalyze: "Réanalyser",
+          delete: "Supprimer",
+          empty: "Aucun CV trouvé."
+        };
+  const [data, setData] = useState({ items: [], statusCounts: {} });
+  const [search, setSearch] = useState("");
+  const [status, setStatus] = useState("");
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
+  const [busyId, setBusyId] = useState("");
+  const [loading, setLoading] = useState(true);
+
+  function reload() {
+    setLoading(true);
+    getAdminCvs(user.id, { search, status })
+      .then(setData)
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(() => {
+    setPage(1);
+    reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search, status]);
+
+  async function handleReanalyze(item) {
+    setBusyId(item.id);
+    try {
+      await reanalyzeAdminCv({ adminUserId: user.id, cvId: item.id });
+      reload();
+    } catch (err) {
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function handleDelete(item) {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: language === "en" ? "Delete this CV?" : "Supprimer ce CV ?",
+      text: item.fileName,
+      showCancelButton: true,
+      confirmButtonText: copy.delete,
+      cancelButtonText: language === "en" ? "Cancel" : "Annuler",
+      confirmButtonColor: "#dc2626"
+    });
+    if (!result.isConfirmed) return;
+    setBusyId(item.id);
+    try {
+      await deleteAdminCv({ adminUserId: user.id, cvId: item.id });
+      reload();
+    } catch (err) {
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  const statusCopy = { extracted: copy.extracted, partial: copy.partial, needs_review: copy.needsReview };
+  const totalPages = Math.max(1, Math.ceil(data.items.length / ADMIN_PAGE_SIZE));
+  const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+
+  return (
+    <section className="admin-cvs admin-module-pro">
+      <header className="module-header">
+        <h2>{copy.title}</h2>
+        <p>{copy.subtitle}</p>
+      </header>
+      <div className="admin-module-metrics">
+        <AdminMiniMetric icon="save" label={copy.extracted} value={data.statusCounts?.extracted || 0} tone="success" />
+        <AdminMiniMetric icon="alert" label={copy.partial} value={data.statusCounts?.partial || 0} tone="warning" />
+        <AdminMiniMetric icon="shield" label={copy.needsReview} value={data.statusCounts?.needs_review || 0} tone="danger" />
+      </div>
+      <div className="admin-table-toolbar split">
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
+        <select value={status} onChange={(event) => setStatus(event.target.value)}>
+          <option value="">{copy.all}</option>
+          <option value="extracted">{copy.extracted}</option>
+          <option value="partial">{copy.partial}</option>
+          <option value="needs_review">{copy.needsReview}</option>
+        </select>
+      </div>
+      {error ? <p className="field-error">{error}</p> : null}
+      {loading ? <AdminPageLoader language={language} /> : null}
+      {!loading && !error ? (
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead>
+            <tr>
+              <th>{copy.colCv}</th>
+              <th>{copy.colUser}</th>
+              <th>{copy.colStatus}</th>
+              <th>{copy.colData}</th>
+              <th>{copy.colActions}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {pagedItems.length ? pagedItems.map((item) => (
+              <tr key={item.id}>
+                <td>
+                  <strong>{item.fileName}</strong>
+                  <span className="muted admin-block-muted">{formatDate(item.createdAt)} · {item.characterCount} car.</span>
+                </td>
+                <td>
+                  <div className="admin-table-name">
+                    <AvatarCircle user={{ firstName: item.userFirstName, lastName: item.userLastName, avatarDataUrl: item.userAvatarDataUrl }} />
+                    <div>
+                      <strong>{item.userFirstName} {item.userLastName}</strong>
+                      <span className="muted">{item.userEmail}</span>
+                    </div>
+                  </div>
+                </td>
+                <td><span className={`tag ${item.status === "extracted" ? "tag-success" : item.status === "needs_review" ? "tag-danger" : ""}`}>{statusCopy[item.status] || item.status}</span></td>
+                <td>
+                  <div className="admin-extract-preview">
+                    <strong>{item.preview.headline || `${item.preview.firstName} ${item.preview.lastName}`.trim() || "—"}</strong>
+                    <span>{item.extraction.counts.skills} skills · {item.extraction.counts.experiences} exp. · {item.extraction.counts.education} formations</span>
+                    <small>{item.preview.skills.slice(0, 5).join(", ")}</small>
+                  </div>
+                </td>
+                <td>
+                  <div className="admin-row-actions">
+                    <button type="button" className="admin-row-action" disabled={busyId === item.id} onClick={() => handleReanalyze(item)}>
+                      <UiIcon name="history" /> {copy.reanalyze}
+                    </button>
+                    <button type="button" className="admin-row-action danger" disabled={busyId === item.id} onClick={() => handleDelete(item)}>
+                      <UiIcon name="trash" /> {copy.delete}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )) : (
+              <tr><td colSpan={5} className="admin-table-empty muted">{copy.empty}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      ) : null}
+      <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={data.items.length} />
+    </section>
+  );
+}
+
+function AdminMatchesPage({ user, language }) {
+  const copy = language === "en"
+    ? { title: "Analyzed jobs", subtitle: "CV/job matching history and market signals from real user analyses.", search: "Search by user, job, company…", avg: "Average score", skills: "Top skills", sectors: "Top sectors", colJob: "Job", colUser: "User", colScore: "Score", colSignals: "Signals", empty: "No analyzed job yet." }
+    : { title: "Offres analysées", subtitle: "Historique des matchings CV/offres et signaux métier issus des vraies analyses.", search: "Rechercher par utilisateur, poste, entreprise…", avg: "Score moyen", skills: "Compétences demandées", sectors: "Secteurs fréquents", colJob: "Offre", colUser: "Utilisateur", colScore: "Score", colSignals: "Signaux", empty: "Aucune offre analysée." };
+  const [data, setData] = useState({ items: [], topSkills: [], topSectors: [], averageScore: null });
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setPage(1);
+    setLoading(true);
+    getAdminMatches(user.id, { search }).then(setData).catch((err) => setError(getFriendlyErrorMessage(err, language))).finally(() => setLoading(false));
+  }, [user.id, search, language]);
+  const totalPages = Math.max(1, Math.ceil(data.items.length / ADMIN_PAGE_SIZE));
+  const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+  return (
+    <section className="admin-matches admin-module-pro">
+      <header className="module-header"><h2>{copy.title}</h2><p>{copy.subtitle}</p></header>
+      <div className="admin-module-split">
+        <div className="admin-signal-card"><AdminMiniMetric icon="chart" label={copy.avg} value={data.averageScore == null ? "—" : `${data.averageScore}/100`} /></div>
+        <div className="admin-signal-card"><h3>{copy.skills}</h3><div className="admin-chip-cloud">{data.topSkills.map((item) => <span key={item.name}>{item.name}<strong>{item.count}</strong></span>)}</div></div>
+        <div className="admin-signal-card"><h3>{copy.sectors}</h3><div className="admin-chip-cloud">{data.topSectors.map((item) => <span key={item.name}>{item.name}<strong>{item.count}</strong></span>)}</div></div>
+      </div>
+      <div className="admin-table-toolbar"><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} /></div>
+      {error ? <p className="field-error">{error}</p> : null}
+      {loading ? <AdminPageLoader language={language} /> : null}
+      {!loading ? (
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead><tr><th>{copy.colJob}</th><th>{copy.colUser}</th><th>{copy.colScore}</th><th>{copy.colSignals}</th></tr></thead>
+          <tbody>
+            {pagedItems.length ? pagedItems.map((item) => (
+              <tr key={item.id}>
+                <td><strong>{item.title || "—"}</strong><span className="muted admin-block-muted">{item.company || "—"} · {item.location || "—"} · {formatDate(item.createdAt)}</span></td>
+                <td><div className="admin-table-name"><AvatarCircle user={{ firstName: item.userFirstName, lastName: item.userLastName, avatarDataUrl: item.userAvatarDataUrl }} /><div><strong>{item.userFirstName} {item.userLastName}</strong><span className="muted">{item.userEmail}</span></div></div></td>
+                <td><span className={`tag ${Number(item.score) >= 75 ? "tag-success" : Number(item.score) < 50 ? "tag-danger" : ""}`}>{item.score == null ? "—" : `${item.score}/100`}</span></td>
+                <td><div className="admin-chip-cloud compact">{[...item.technicalSkills.slice(0, 4), ...item.missingKeywords.slice(0, 3)].map((skill) => <span key={skill}>{skill}</span>)}</div></td>
+              </tr>
+            )) : <tr><td colSpan={4} className="admin-table-empty muted">{copy.empty}</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      ) : null}
+      <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={data.items.length} />
+    </section>
+  );
+}
+
+function AdminQualityPage({ user, language }) {
+  const copy = language === "en"
+    ? { title: "Extraction quality", subtitle: "CVs that deserve manual review before they damage matching quality.", search: "Search suspicious CVs…", needs: "Needs review", partial: "Partial", colCv: "CV", colUser: "User", colIssues: "Issues", colScore: "Quality", empty: "No quality issue detected." }
+    : { title: "Qualité extraction", subtitle: "CV à contrôler manuellement avant qu'ils dégradent la qualité du matching.", search: "Rechercher les CV suspects…", needs: "À revoir", partial: "Partiels", colCv: "CV", colUser: "Utilisateur", colIssues: "Points à corriger", colScore: "Qualité", empty: "Aucun problème qualité détecté." };
+  const [data, setData] = useState({ items: [], totals: {} });
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    setPage(1);
+    setLoading(true);
+    getAdminQuality(user.id, { search }).then(setData).catch((err) => setError(getFriendlyErrorMessage(err, language))).finally(() => setLoading(false));
+  }, [user.id, search, language]);
+  const totalPages = Math.max(1, Math.ceil(data.items.length / ADMIN_PAGE_SIZE));
+  const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+  return (
+    <section className="admin-quality admin-module-pro">
+      <header className="module-header"><h2>{copy.title}</h2><p>{copy.subtitle}</p></header>
+      <div className="admin-module-metrics">
+        <AdminMiniMetric icon="alert" label={copy.needs} value={data.totals?.needsReview || 0} tone="danger" />
+        <AdminMiniMetric icon="shield" label={copy.partial} value={data.totals?.partial || 0} tone="warning" />
+      </div>
+      <div className="admin-table-toolbar"><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} /></div>
+      {error ? <p className="field-error">{error}</p> : null}
+      {loading ? <AdminPageLoader language={language} /> : null}
+      {!loading ? (
+      <div className="admin-table-wrap">
+        <table className="admin-table">
+          <thead><tr><th>{copy.colCv}</th><th>{copy.colUser}</th><th>{copy.colIssues}</th><th>{copy.colScore}</th></tr></thead>
+          <tbody>{pagedItems.length ? pagedItems.map((item) => (
+            <tr key={item.id}>
+              <td><strong>{item.fileName}</strong><span className="muted admin-block-muted">{formatDate(item.createdAt)}</span></td>
+              <td><div className="admin-table-name"><AvatarCircle user={{ firstName: item.userFirstName, lastName: item.userLastName, avatarDataUrl: item.userAvatarDataUrl }} /><div><strong>{item.userFirstName} {item.userLastName}</strong><span className="muted">{item.userEmail}</span></div></div></td>
+              <td><div className="admin-chip-cloud compact">{[...item.missing, ...item.suspicious].map((issue) => <span key={issue}>{issue}</span>)}</div></td>
+              <td><span className={`tag ${item.score >= 75 ? "tag-success" : item.score < 55 ? "tag-danger" : ""}`}>{item.score}/100</span></td>
+            </tr>
+          )) : <tr><td colSpan={4} className="admin-table-empty muted">{copy.empty}</td></tr>}</tbody>
+        </table>
+      </div>
+      ) : null}
+      <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={data.items.length} />
+    </section>
+  );
+}
+
+function AdminAiMonitoringPage({ user, language }) {
+  const copy = language === "en"
+    ? { title: "AI monitoring", subtitle: "Operational view of extraction and matching reliability.", success: "Successful extractions", failed: "Needs review", partial: "Partial", runs: "Match analyses", cost: "Estimated cost", avg: "Average score", invalid: "Invalid responses / weak extractions" }
+    : { title: "Monitoring IA", subtitle: "Vue opérationnelle de la fiabilité extraction et matching.", success: "Extractions réussies", failed: "À revoir", partial: "Partielles", runs: "Analyses matching", cost: "Coût estimé", avg: "Score moyen", invalid: "Réponses invalides / extractions faibles" };
+  const [data, setData] = useState(null);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    getAdminAiMonitoring(user.id).then(setData).catch((err) => setError(getFriendlyErrorMessage(err, language)));
+  }, [user.id, language]);
+  if (error) return <p className="field-error">{error}</p>;
+  if (!data) return <AdminPageLoader language={language} />;
+  return (
+    <section className="admin-ai-monitoring admin-module-pro">
+      <header className="module-header"><h2>{copy.title}</h2><p>{copy.subtitle}</p></header>
+      <div className="admin-module-metrics wide">
+        <AdminMiniMetric icon="shield" label={copy.success} value={data.successfulExtractions} tone="success" />
+        <AdminMiniMetric icon="alert" label={copy.partial} value={data.partialExtractions} tone="warning" />
+        <AdminMiniMetric icon="alert" label={copy.failed} value={data.failedExtractions} tone="danger" />
+        <AdminMiniMetric icon="chart" label={copy.runs} value={data.totalMatchRuns} />
+        <AdminMiniMetric icon="scale" label={copy.cost} value={`${data.estimatedCost.amount} ${data.estimatedCost.currency}`} />
+        <AdminMiniMetric icon="matchmark" label={copy.avg} value={data.averageMatchScore == null ? "—" : `${data.averageMatchScore}/100`} />
+      </div>
+      <div className="admin-signal-card">
+        <h3>{copy.invalid}</h3>
+        <div className="admin-quality-feed">
+          {data.invalidResponses.length ? data.invalidResponses.map((item) => (
+            <article key={item.id}>
+              <span className="tag tag-danger">{item.score}/100</span>
+              <div><strong>{item.id}</strong><small>{[...item.missing, ...item.suspicious].join(", ") || "—"}</small></div>
+            </article>
+          )) : <p className="muted">Aucune anomalie détectée.</p>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function AdminFinancePage({ user, language, currency = "EUR", initialSearch }) {
   const copy =
     language === "en"
@@ -5880,7 +7095,7 @@ function AdminFinancePage({ user, language, currency = "EUR", initialSearch }) {
   }
 
   if (error) return <p className="field-error">{error}</p>;
-  if (!data) return <p className="muted">…</p>;
+  if (!data) return <AdminPageLoader language={language} />;
 
   const totalPages = Math.max(1, Math.ceil(data.items.length / ADMIN_PAGE_SIZE));
   const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
@@ -6055,6 +7270,10 @@ const ADMIN_EVENT_LABELS = {
   account_deleted: { fr: "Compte supprimé (par l'utilisateur)", en: "Account deleted (by user)" },
   admin_user_updated: { fr: "Compte modifié par l'admin", en: "Account edited by admin" },
   admin_user_deleted: { fr: "Compte supprimé par l'admin", en: "Account deleted by admin" },
+  admin_user_suspended: { fr: "Compte suspendu par l'admin", en: "Account suspended by admin" },
+  admin_user_reactivated: { fr: "Compte réactivé par l'admin", en: "Account reactivated by admin" },
+  admin_cv_reanalyzed: { fr: "CV réanalysé par l'admin", en: "CV reanalyzed by admin" },
+  admin_cv_deleted: { fr: "CV supprimé par l'admin", en: "CV deleted by admin" },
   admin_license_code_revoked: { fr: "Code de licence révoqué", en: "License code revoked" },
   admin_license_code_restored: { fr: "Code de licence restauré", en: "License code restored" },
   admin_setting_changed: { fr: "Paramètre plateforme modifié", en: "Platform setting changed" }
@@ -6149,7 +7368,7 @@ function AdminActivityLogPage({ user, language }) {
   }, [user.id, search, eventType]);
 
   if (error) return <p className="field-error">{error}</p>;
-  if (!data) return <p className="muted">…</p>;
+  if (!data) return <AdminPageLoader language={language} />;
 
   const totalPages = Math.max(1, Math.ceil(data.items.length / ADMIN_PAGE_SIZE));
   const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
@@ -6168,7 +7387,8 @@ function AdminActivityLogPage({ user, language }) {
 
       <div className="admin-subtabs">
         <button type="button" className={`admin-subtab ${eventType === "" ? "active" : ""}`} onClick={() => setEventType("")}>
-          {copy.allEvents}
+          <span>{copy.allEvents}</span>
+          <strong>{data.items.length}</strong>
         </button>
         {eventEntries.map(([type, count]) => (
           <button
@@ -6177,7 +7397,8 @@ function AdminActivityLogPage({ user, language }) {
             className={`admin-subtab ${eventType === type ? "active" : ""}`}
             onClick={() => setEventType(type)}
           >
-            {eventTypeLabel(type, language)} ({count})
+            <span>{eventTypeLabel(type, language)}</span>
+            <strong>{count}</strong>
           </button>
         ))}
       </div>
@@ -6684,7 +7905,30 @@ function AdminAnnouncementsPage({ user, language }) {
           colSubject: "Subject",
           colAudience: "Audience",
           colRecipients: "Recipients",
-          colFailed: "Failed"
+          colFailed: "Failed",
+          compose: "Compose",
+          composeTitle: "Compose new message",
+          folders: "Folders",
+          inbox: "Audience",
+          sent: "Sent",
+          drafts: "Draft",
+          failed: "Failed",
+          labels: "Labels",
+          important: "Important",
+          platform: "Platform",
+          schools: "Schools",
+          to: "To:",
+          subjectLine: "Subject:",
+          normalText: "Normal text",
+          attachment: "Attachment",
+          attachmentHint: "Add a PDF, image or office document to this campaign.",
+          attachFile: "Attach file",
+          removeFile: "Remove file",
+          draftSaved: "Draft saved.",
+          linkPrompt: "Paste the link to insert",
+          importantPrefix: "[Important]",
+          platformPrefix: "[Platform]",
+          schoolPrefix: "[Schools]"
         }
       : {
           title: "Emails d'annonce",
@@ -6692,7 +7936,7 @@ function AdminAnnouncementsPage({ user, language }) {
           audience: "Audience",
           subject: "Objet",
           message: "Message",
-          messagePlaceholder: "Rédige ton annonce… (laisse une ligne vide pour un nouveau paragraphe)",
+          messagePlaceholder: "Rédigez votre annonce… (laissez une ligne vide pour un nouveau paragraphe)",
           recipients: "destinataire(s)",
           send: "Envoyer l'annonce",
           sending: "Envoi en cours…",
@@ -6706,7 +7950,30 @@ function AdminAnnouncementsPage({ user, language }) {
           colSubject: "Objet",
           colAudience: "Audience",
           colRecipients: "Destinataires",
-          colFailed: "Échecs"
+          colFailed: "Échecs",
+          compose: "Composer",
+          composeTitle: "Nouveau message",
+          folders: "Dossiers",
+          inbox: "Audience",
+          sent: "Envoyés",
+          drafts: "Brouillon",
+          failed: "Échecs",
+          labels: "Labels",
+          important: "Important",
+          platform: "Plateforme",
+          schools: "Écoles",
+          to: "À :",
+          subjectLine: "Objet :",
+          normalText: "Texte normal",
+          attachment: "Pièce jointe",
+          attachmentHint: "Ajoute un PDF, une image ou un document bureautique à cette campagne.",
+          attachFile: "Joindre un fichier",
+          removeFile: "Retirer le fichier",
+          draftSaved: "Brouillon enregistré.",
+          linkPrompt: "Colle le lien à insérer",
+          importantPrefix: "[Important]",
+          platformPrefix: "[Plateforme]",
+          schoolPrefix: "[Écoles]"
         };
 
   const [audience, setAudience] = useState("");
@@ -6716,6 +7983,23 @@ function AdminAnnouncementsPage({ user, language }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [history, setHistory] = useState([]);
+  const [activeFolder, setActiveFolder] = useState("compose");
+  const [activeLabel, setActiveLabel] = useState("");
+  const [mailSearch, setMailSearch] = useState("");
+  const [attachment, setAttachment] = useState(null);
+  const messageRef = useRef(null);
+  const attachmentInputRef = useRef(null);
+  const failedTotal = history.reduce((total, item) => total + Number(item.failedCount || 0), 0);
+  const folderHistory = activeFolder === "failed" ? history.filter((item) => Number(item.failedCount || 0) > 0) : history;
+  const visibleHistory = folderHistory.filter((item) => {
+    const term = mailSearch.trim().toLowerCase();
+    if (!term) return true;
+    const audienceLabel =
+      ADMIN_ANNOUNCEMENT_AUDIENCES.find((a) => a.id === item.audience || (a.id === "" && item.audience === "all"))
+        ?.label[language] || item.audience;
+    return `${item.subject} ${audienceLabel}`.toLowerCase().includes(term);
+  });
+  const showMailbox = activeFolder === "sent" || activeFolder === "failed";
 
   function loadHistory() {
     getAdminAnnouncements(user.id)
@@ -6734,6 +8018,121 @@ function AdminAnnouncementsPage({ user, language }) {
       .catch(() => setAudienceCount(null));
   }, [user.id, audience]);
 
+  useEffect(() => {
+    try {
+      const draft = JSON.parse(localStorage.getItem("career_app_admin_announcement_draft") || "null");
+      if (draft?.subject || draft?.message) {
+        setSubject(draft.subject || "");
+        setMessage(draft.message || "");
+        setAudience(draft.audience || "");
+        setAttachment(draft.attachmentMeta || null);
+      }
+    } catch (_error) {
+      // ignore malformed draft
+    }
+  }, []);
+
+  function focusMessage() {
+    setTimeout(() => messageRef.current?.focus(), 0);
+  }
+
+  function handleFolderClick(folder) {
+    setActiveFolder(folder);
+    if (folder === "compose" || folder === "audience" || folder === "draft") {
+      focusMessage();
+    }
+  }
+
+  function getAudienceLabel(value) {
+    return (
+      ADMIN_ANNOUNCEMENT_AUDIENCES.find((a) => a.id === value || (a.id === "" && value === "all"))?.label[language] ||
+      value ||
+      ADMIN_ANNOUNCEMENT_AUDIENCES[0].label[language]
+    );
+  }
+
+  function insertInMessage(before, after = "", fallback = "") {
+    const textarea = messageRef.current;
+    const start = textarea?.selectionStart ?? message.length;
+    const end = textarea?.selectionEnd ?? message.length;
+    const selected = message.slice(start, end) || fallback;
+    const next = `${message.slice(0, start)}${before}${selected}${after}${message.slice(end)}`;
+    setMessage(next);
+    requestAnimationFrame(() => {
+      messageRef.current?.focus();
+      const cursorStart = start + before.length;
+      const cursorEnd = cursorStart + selected.length;
+      messageRef.current?.setSelectionRange(cursorStart, cursorEnd);
+    });
+  }
+
+  function applyLabel(label) {
+    setActiveLabel(label);
+    const prefix = label === "important" ? copy.importantPrefix : label === "schools" ? copy.schoolPrefix : copy.platformPrefix;
+    if (!subject.startsWith(prefix)) {
+      setSubject((prev) => `${prefix} ${prev}`.trim());
+    }
+    if (label === "schools") setAudience("school");
+    if (label === "platform") setAudience("");
+    focusMessage();
+  }
+
+  async function insertLink() {
+    const result = await Swal.fire({
+      title: copy.linkPrompt,
+      input: "url",
+      inputPlaceholder: "https://",
+      showCancelButton: true,
+      confirmButtonText: "OK",
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#5964e8"
+    });
+    if (result.isConfirmed && result.value) {
+      insertInMessage("", "", result.value);
+    }
+  }
+
+  function saveDraft() {
+    localStorage.setItem(
+      "career_app_admin_announcement_draft",
+      JSON.stringify({
+        subject,
+        message,
+        audience,
+        attachmentMeta: attachment ? { name: attachment.name, size: attachment.size, type: attachment.type } : null,
+        savedAt: new Date().toISOString()
+      })
+    );
+    setActiveFolder("draft");
+    Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon: "success",
+      title: copy.draftSaved,
+      showConfirmButton: false,
+      timer: 2200,
+      timerProgressBar: true,
+      customClass: { popup: "career-toast", title: "career-toast-title" }
+    });
+  }
+
+  async function handleAttachmentChange(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const content = await fileToBase64(file);
+      setAttachment({ name: file.name, size: file.size, type: file.type || "application/octet-stream", content });
+    } catch (_error) {
+      setError(
+        language === "en"
+          ? "Unable to read this attachment. Try another file."
+          : "Impossible de lire cette pièce jointe. Essaie un autre fichier."
+      );
+    } finally {
+      event.target.value = "";
+    }
+  }
+
   async function handleSend(event) {
     event.preventDefault();
     setError("");
@@ -6751,9 +8150,12 @@ function AdminAnnouncementsPage({ user, language }) {
 
     setSending(true);
     try {
-      const response = await sendAdminAnnouncement({ adminUserId: user.id, subject, message, audience });
+      const response = await sendAdminAnnouncement({ adminUserId: user.id, subject, message, audience, attachment });
       setSubject("");
       setMessage("");
+      setAttachment(null);
+      localStorage.removeItem("career_app_admin_announcement_draft");
+      setActiveFolder("sent");
       loadHistory();
       Swal.fire({
         toast: true,
@@ -6782,83 +8184,252 @@ function AdminAnnouncementsPage({ user, language }) {
         <p>{copy.subtitle}</p>
       </header>
 
-      <form className="admin-create-form admin-announcement-form" onSubmit={handleSend}>
-        <label>
-          {copy.audience}
-          <select value={audience} onChange={(event) => setAudience(event.target.value)}>
-            {ADMIN_ANNOUNCEMENT_AUDIENCES.map((item) => (
-              <option key={item.id || "all"} value={item.id}>
-                {item.label[language] || item.label.fr}
-              </option>
-            ))}
-          </select>
-        </label>
-        {audienceCount !== null ? (
-          <p className="admin-announcement-count muted">
-            {audienceCount} {copy.recipients}
-          </p>
-        ) : null}
+      <div className="admin-mail-layout">
+        <aside className="admin-mail-sidebar">
+          <button type="button" className="admin-mail-compose-btn" onClick={() => handleFolderClick("compose")}>
+            <UiIcon name="mail" /> {copy.compose}
+          </button>
 
-        <label>
-          {copy.subject}
-          <input value={subject} onChange={(event) => setSubject(event.target.value)} required />
-        </label>
+          <div className="admin-mail-card">
+            <div className="admin-mail-card-title">
+              <span>{copy.folders}</span>
+              <strong>-</strong>
+            </div>
+            <button
+              type="button"
+              className={`admin-mail-folder ${activeFolder === "audience" || activeFolder === "compose" ? "active" : ""}`}
+              onClick={() => handleFolderClick("audience")}
+            >
+              <UiIcon name="profile" />
+              <span>{copy.inbox}</span>
+              <strong>{audienceCount ?? "…"}</strong>
+            </button>
+            <button
+              type="button"
+              className={`admin-mail-folder ${activeFolder === "sent" ? "active" : ""}`}
+              onClick={() => handleFolderClick("sent")}
+            >
+              <UiIcon name="mail" />
+              <span>{copy.sent}</span>
+              <strong>{history.length}</strong>
+            </button>
+            <button
+              type="button"
+              className={`admin-mail-folder ${activeFolder === "draft" ? "active" : ""}`}
+              onClick={() => handleFolderClick("draft")}
+            >
+              <UiIcon name="docModern" />
+              <span>{copy.drafts}</span>
+              <strong>{subject || message ? 1 : 0}</strong>
+            </button>
+            <button
+              type="button"
+              className={`admin-mail-folder ${activeFolder === "failed" ? "active" : ""}`}
+              onClick={() => handleFolderClick("failed")}
+            >
+              <UiIcon name="alert" />
+              <span>{copy.failed}</span>
+              <strong>{failedTotal}</strong>
+            </button>
+          </div>
 
-        <label>
-          {copy.message}
-          <textarea
-            value={message}
-            onChange={(event) => setMessage(event.target.value)}
-            placeholder={copy.messagePlaceholder}
-            rows={8}
-            required
-          />
-        </label>
+          <div className="admin-mail-card">
+            <div className="admin-mail-card-title">
+              <span>{copy.labels}</span>
+              <strong>-</strong>
+            </div>
+            <button
+              type="button"
+              className={`admin-mail-label important ${activeLabel === "important" ? "active" : ""}`}
+              onClick={() => applyLabel("important")}
+            >
+              {copy.important}
+            </button>
+            <button
+              type="button"
+              className={`admin-mail-label platform ${activeLabel === "platform" ? "active" : ""}`}
+              onClick={() => applyLabel("platform")}
+            >
+              {copy.platform}
+            </button>
+            <button
+              type="button"
+              className={`admin-mail-label schools ${activeLabel === "schools" ? "active" : ""}`}
+              onClick={() => applyLabel("schools")}
+            >
+              {copy.schools}
+            </button>
+          </div>
+        </aside>
 
-        {error ? <p className="field-error">{error}</p> : null}
+        <div className="admin-mail-main">
+          {showMailbox ? (
+            <div className="admin-mail-inbox">
+              <div className="admin-mail-inbox-toolbar">
+                <div className="admin-mail-inbox-actions">
+                  <button type="button" title={language === "en" ? "Select" : "Sélectionner"}>
+                    ?
+                  </button>
+                  <button type="button" title={language === "en" ? "Refresh" : "Actualiser"} onClick={loadHistory}>
+                    <UiIcon name="history" />
+                  </button>
+                  <button type="button" title={language === "en" ? "More" : "Plus"}>
+                    ?
+                  </button>
+                </div>
+                <input
+                  value={mailSearch}
+                  onChange={(event) => setMailSearch(event.target.value)}
+                  placeholder={language === "en" ? "Search sent announcements" : "Rechercher dans les annonces envoyées"}
+                />
+                <span className="admin-mail-range">
+                  {visibleHistory.length ? `1-${visibleHistory.length}` : "0"} / {folderHistory.length}
+                </span>
+              </div>
 
-        <button type="submit" className="btn-main ready" disabled={sending || !audienceCount}>
-          {sending ? <span className="btn-spinner" /> : null} {sending ? copy.sending : copy.send}
-        </button>
-      </form>
+              <div className="admin-mail-tabs">
+                <button type="button" className="active">
+                  <UiIcon name="mail" />
+                  {language === "en" ? "Primary" : "Principal"}
+                </button>
+                <button type="button">
+                  <UiIcon name="pricetag" />
+                  {copy.platform}
+                </button>
+                <button type="button">
+                  <UiIcon name="profile" />
+                  {copy.schools}
+                </button>
+              </div>
 
-      <h3 className="admin-announcement-history-title">{copy.history}</h3>
-      <div className="admin-table-wrap">
-        <table className="admin-table">
-          <thead>
-            <tr>
-              <th>{copy.colDate}</th>
-              <th>{copy.colSubject}</th>
-              <th>{copy.colAudience}</th>
-              <th>{copy.colRecipients}</th>
-              <th>{copy.colFailed}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.length ? (
-              history.map((item) => (
-                <tr key={item.id}>
-                  <td className="muted">{formatDate(item.createdAt)}</td>
-                  <td>{item.subject}</td>
-                  <td>
-                    <span className="tag">
-                      {ADMIN_ANNOUNCEMENT_AUDIENCES.find((a) => a.id === item.audience || (a.id === "" && item.audience === "all"))
-                        ?.label[language] || item.audience}
-                    </span>
-                  </td>
-                  <td className="muted">{item.recipientCount}</td>
-                  <td className={item.failedCount ? "admin-announcement-failed" : "muted"}>{item.failedCount}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={5} className="admin-table-empty muted">
-                  {copy.noHistory}
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+              <div className="admin-mail-list">
+                {visibleHistory.length ? (
+                  visibleHistory.map((item) => (
+                    <button type="button" key={item.id} className="admin-mail-row">
+                      <span className="admin-mail-check">?</span>
+                      <span className="admin-mail-star">?</span>
+                      <strong>{getAudienceLabel(item.audience)}</strong>
+                      <span className="admin-mail-row-subject">{item.subject}</span>
+                      <span className={item.failedCount ? "admin-mail-row-failed" : "admin-mail-row-count"}>
+                        {item.failedCount ? `${item.failedCount} ${copy.failed}` : `${item.recipientCount} ${copy.recipients}`}
+                      </span>
+                      <time>{formatDate(item.createdAt)}</time>
+                    </button>
+                  ))
+                ) : (
+                  <div className="admin-mail-empty">
+                    {activeFolder === "failed"
+                      ? language === "en"
+                        ? "No failed send."
+                        : "Aucun échec d'envoi."
+                      : copy.noHistory}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <form className="admin-create-form admin-announcement-form admin-mail-compose" onSubmit={handleSend}>
+            <div className="admin-mail-compose-head">
+              <h3>{copy.composeTitle}</h3>
+              {audienceCount !== null ? (
+                <span className="admin-mail-recipient-badge">
+                  {audienceCount} {copy.recipients}
+                </span>
+              ) : null}
+            </div>
+
+            <label className="admin-mail-line">
+              <span>{copy.to}</span>
+              <select value={audience} onChange={(event) => setAudience(event.target.value)}>
+                {ADMIN_ANNOUNCEMENT_AUDIENCES.map((item) => (
+                  <option key={item.id || "all"} value={item.id}>
+                    {item.label[language] || item.label.fr}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="admin-mail-line">
+              <span>{copy.subjectLine}</span>
+              <input value={subject} onChange={(event) => setSubject(event.target.value)} required />
+            </label>
+
+            <div className="admin-mail-editor-toolbar" aria-label={language === "en" ? "Formatting toolbar" : "Barre de mise en forme"}>
+              <button type="button" className="admin-mail-format-select" onClick={() => insertInMessage("\n\n", "", language === "en" ? "New paragraph" : "Nouveau paragraphe")}>
+                A {copy.normalText} ?
+              </button>
+              <button type="button" onClick={() => insertInMessage("**", "**", language === "en" ? "bold text" : "texte en gras")}>
+                <strong>B</strong>
+              </button>
+              <button type="button" onClick={() => insertInMessage("_", "_", language === "en" ? "italic text" : "texte italique")}>
+                <em>I</em>
+              </button>
+              <button type="button" onClick={() => insertInMessage("\n\n> ", "", language === "en" ? "Quote" : "Citation")}>
+                “
+              </button>
+              <button type="button" onClick={() => insertInMessage("\n- ", "", language === "en" ? "List item" : "Élément de liste")}>
+                ?
+              </button>
+              <button type="button" onClick={() => insertInMessage("\n1. ", "", language === "en" ? "First item" : "Premier élément")}>
+                =
+              </button>
+              <button type="button" onClick={insertLink}>
+                ?
+              </button>
+            </div>
+
+            <textarea
+              ref={messageRef}
+              className="admin-mail-message"
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+              placeholder={copy.messagePlaceholder}
+              rows={12}
+              required
+            />
+
+            <div className="admin-mail-attachment">
+              <UiIcon name="upload" />
+              <div>
+                <strong>{copy.attachment}</strong>
+                <span>
+                  {attachment?.name
+                    ? `${attachment.name} · ${Math.max(1, Math.round((attachment.size || 0) / 1024))} Ko`
+                    : copy.attachmentHint}
+                </span>
+              </div>
+              <input
+                ref={attachmentInputRef}
+                type="file"
+                accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.png,.jpg,.jpeg,.webp"
+                onChange={handleAttachmentChange}
+              />
+              <div className="admin-mail-attachment-actions">
+                <button type="button" className="btn-ghost" onClick={() => attachmentInputRef.current?.click()} disabled={sending}>
+                  <UiIcon name="upload" /> {copy.attachFile}
+                </button>
+                {attachment ? (
+                  <button type="button" className="btn-ghost danger" onClick={() => setAttachment(null)} disabled={sending}>
+                    {copy.removeFile}
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {error ? <p className="field-error">{error}</p> : null}
+
+            <div className="admin-mail-actions">
+              <button type="button" className="btn-ghost" onClick={saveDraft} disabled={(!message && !subject) || sending}>
+                <UiIcon name="docModern" /> {copy.drafts}
+              </button>
+              <button type="submit" className="btn-main ready" disabled={sending || !audienceCount}>
+                {sending ? <span className="btn-spinner" /> : <UiIcon name="mail" />} {sending ? copy.sending : copy.send}
+              </button>
+            </div>
+            </form>
+          )}
+
+        </div>
       </div>
     </section>
   );
@@ -6927,7 +8498,7 @@ function RoleQuizModal({ language, onComplete }) {
                   className={`role-quiz-other-input ${roleOtherTooShort ? "invalid" : ""}`}
                   value={roleOther}
                   onChange={(event) => setRoleOther(event.target.value)}
-                  placeholder={language === "en" ? "Tell us your target role..." : "Précise le poste que tu vises..."}
+                  placeholder={language === "en" ? "Tell us your target role..." : "Précisez le poste que vous visez..."}
                   minLength={MIN_OTHER_LENGTH}
                   autoFocus
                 />
@@ -6969,7 +8540,7 @@ function RoleQuizModal({ language, onComplete }) {
                   className={`role-quiz-other-input ${sectorOtherTooShort ? "invalid" : ""}`}
                   value={sectorOther}
                   onChange={(event) => setSectorOther(event.target.value)}
-                  placeholder={language === "en" ? "Tell us your industry..." : "Précise ton secteur..."}
+                  placeholder={language === "en" ? "Tell us your industry..." : "Précisez votre secteur..."}
                   minLength={MIN_OTHER_LENGTH}
                   autoFocus
                 />
@@ -7107,7 +8678,7 @@ function AccountDrawer({
       return;
     }
     setProfileAvatarFile(file);
-    setProfileAvatarPreview(await readFileAsDataUrl(file));
+    setProfileAvatarPreview(await resizeImageFileToDataUrl(file));
   }
 
   async function requestEmail(event) {
@@ -7238,13 +8809,13 @@ function AccountDrawer({
           connected: "Comptes connectés",
           removeConnected: "Retirer",
           connectedRemoveTitle: "Connexion Google",
-          connectedRemoveText: "Cela délie ton compte Google. Tu ne pourras plus l'utiliser pour te connecter, mais la connexion par mot de passe et code e-mail reste disponible.",
+          connectedRemoveText: "Cela délie votre compte Google. Vous ne pourrez plus l'utiliser pour vous connecter, mais la connexion par mot de passe et code e-mail reste disponible.",
           preferences: "Préférences",
           language: "Langue",
           currency: "Devise",
-          currencyHint: "Les prix affichés dans l'app (offres, tarifs) sont convertis dans ta devise avec un taux indicatif fixe.",
+          currencyHint: "Les prix affichés dans l'app (offres, tarifs) sont convertis dans votre devise avec un taux indicatif fixe.",
           theme: "Thème de couleur",
-          themeHint: "Change la couleur d'accent utilisée pour les boutons, liens et éléments mis en avant dans toute l'app.",
+          themeHint: "Changez la couleur d'accent utilisée pour les boutons, liens et éléments mis en avant dans toute l'app.",
           mode: "Apparence",
           modeLight: "Clair",
           modeDark: "Sombre",
@@ -7711,17 +9282,10 @@ function AccountDrawer({
 function AvatarCircle({ user, large = false }) {
   const src = getAvatarSource(user);
   const initials = withInitials(user);
-  const style = src
-    ? {
-        backgroundImage: `url(${src})`,
-        backgroundSize: "cover",
-        backgroundPosition: "center"
-      }
-    : undefined;
 
   return (
-    <div className={`avatar ${large ? "large" : ""} ${src ? "has-image" : ""}`} style={style}>
-      {src ? null : initials}
+    <div className={`avatar ${large ? "large" : ""} ${src ? "has-image" : ""}`}>
+      {src ? <img src={src} alt="" loading="lazy" /> : initials}
     </div>
   );
 }
@@ -7914,7 +9478,7 @@ function LandingPage({
             <div className="landing-trust">
               {copy.trust.map((item, index) => (
                 <span key={item}>
-                  <UiIcon name={index === 0 ? "shield" : index === 1 ? "spark" : "profile"} />
+                  <UiIcon name={index === 0 ? "shield" : index === 1 ? "chart" : "profile"} />
                   {item}
                 </span>
               ))}
@@ -8059,7 +9623,7 @@ function LandingPage({
               <article key={step.title}>
                 <span className="step-number">{String(index + 1).padStart(2, "0")}</span>
                 <span className="step-icon">
-                  <UiIcon name={index === 0 ? "upload" : index === 1 ? "spark" : "chat"} />
+                  <UiIcon name={index === 0 ? "upload" : index === 1 ? "matchmark" : "chat"} />
                 </span>
                 <h3>{step.title}</h3>
                 <p>{step.text}</p>
@@ -8302,7 +9866,7 @@ function slugify(text) {
   return text
     .toLowerCase()
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
@@ -8369,7 +9933,7 @@ function LegalDocPage({
 
       <main className="legal-page">
         <button type="button" className="legal-back" onClick={onBack}>
-          {language === "en" ? "← Back to home" : "← Retour à l'accueil"}
+          {language === "en" ? "? Back to home" : "? Retour à l'accueil"}
         </button>
 
         <p className="legal-eyebrow">{eyebrow}</p>
@@ -8803,7 +10367,7 @@ function InfoPage({
 
       <main className="legal-page info-page">
         <button type="button" className="legal-back" onClick={onBack}>
-          {language === "en" ? "← Back to home" : "← Retour à l'accueil"}
+          {language === "en" ? "? Back to home" : "? Retour à l'accueil"}
         </button>
 
         <p className="legal-eyebrow">{eyebrow}</p>
@@ -9399,7 +10963,7 @@ function AuthScreen({
                     <strong>{verificationEmail}</strong>
                     {mode === "login" ? (
                       <button type="button" onClick={() => setLoginStep("identifier")} aria-label="Modifier l'adresse">
-                        ✎
+                        ?
                       </button>
                     ) : null}
                   </>
@@ -9860,7 +11424,7 @@ function ImportPage({
               onClick={isReachable ? () => onStepClick(stepKeys[index]) : undefined}
               aria-current={index === activeIndex ? "step" : undefined}
             >
-              <span>{index < activeIndex ? "✓" : index + 1}</span>
+              <span>{index < activeIndex ? "?" : index + 1}</span>
               <div>
                 <strong>{step.title}</strong>
                 <small>{step.text}</small>
@@ -9963,7 +11527,7 @@ function ImportPage({
             </div>
 
             <div className="review-column">
-              <ReviewCard title={copy.skillsLanguages} icon="spark">
+              <ReviewCard title={copy.skillsLanguages} icon="chart">
                 <TokenEditor
                   label="Technical skills"
                   items={cvReview.skills || []}
@@ -10390,7 +11954,7 @@ function MatchResultsStep({
 
         <article className="card match-results-card">
           <h3>
-            <UiIcon name="spark" /> {copy.matchResultsTitle}
+            <UiIcon name="chart" /> {copy.matchResultsTitle}
           </h3>
           <p className="muted">{copy.matchResultsSubtitle}</p>
           <div className="match-grid">
@@ -10437,7 +12001,7 @@ function MatchResultsStep({
       <article className="card block match-block">
         <div className="match-block-head">
           <h3>
-            <UiIcon name="spark" /> {copy.matchRecommendations}
+            <UiIcon name="chart" /> {copy.matchRecommendations}
           </h3>
           <div className="match-feedback no-print">
             {feedback ? (
@@ -10446,10 +12010,10 @@ function MatchResultsStep({
               <>
                 <span>{copy.matchFeedbackQuestion}</span>
                 <button type="button" className="match-feedback-btn" disabled={feedbackSaving} onClick={() => handleFeedback(true)}>
-                  👍 {copy.matchFeedbackYes}
+                  ?? {copy.matchFeedbackYes}
                 </button>
                 <button type="button" className="match-feedback-btn" disabled={feedbackSaving} onClick={() => handleFeedback(false)}>
-                  👎 {copy.matchFeedbackNo}
+                  ?? {copy.matchFeedbackNo}
                 </button>
               </>
             )}
@@ -11880,7 +13444,7 @@ function InterviewPage({ language, subscription, onGoToTarifs }) {
       <section className="interview-locked">
         <div className="interview-locked-copy">
           <span className="interview-locked-badge">
-            <UiIcon name="spark" /> Trajectoire Pro
+            <UiIcon name="chart" /> Trajectoire Pro
           </span>
           <h2>{copy.lockedTitle}</h2>
           <p>{copy.lockedText}</p>
@@ -12046,7 +13610,7 @@ const LETTER_TEMPLATES = [
   { id: "minimal", label: { fr: "Minimaliste", en: "Minimal" }, icon: "docMinimal" }
 ];
 
-const LETTER_TONE_ICONS = { formal: "shield", enthusiastic: "spark", direct: "share" };
+const LETTER_TONE_ICONS = { formal: "shield", enthusiastic: "matchmark", direct: "share" };
 
 const EMAIL_CONFIDENCE_COPY = {
   smtp_confirmed: { fr: "Confirmé par le serveur mail", en: "Confirmed by the mail server" },
@@ -12097,7 +13661,7 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
           lastNamePlaceholder: "ex : Dupont",
           submit: "Trouver l'email (1 jeton)",
           searching: "Recherche…",
-          noTokens: "Tu n'as plus de jetons. Passe à un plan supérieur pour continuer à utiliser Email Scout.",
+          noTokens: "Vous n'avez plus de jetons. Passez à un plan supérieur pour continuer à utiliser Email Scout.",
           domainNoMxTitle: "Domaine sans email",
           domainNoMx: "Ce domaine ne semble pas accepter d'emails — vérifie le nom de l'entreprise ou le domaine.",
           bestMatch: "Email le plus probable",
@@ -13055,7 +14619,7 @@ function CvHistoryPage({ cvHistory, latestMatch, language }) {
 
               <div className="history-card-stats">
                 <span className="history-card-stat">
-                  <UiIcon name="spark" />
+                  <UiIcon name="chart" />
                   {skills.length} {language === "en" ? "skills detected" : "compétences détectées"}
                 </span>
               </div>
@@ -13107,6 +14671,9 @@ function profileToForm(profile = {}) {
     languages: Array.isArray(profile.languages) ? profile.languages.join(", ") : ""
   };
 }
+
+
+
 
 
 

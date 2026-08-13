@@ -478,6 +478,46 @@ await db.exec(`
     redeemed_at TEXT
   );
 
+  CREATE TABLE IF NOT EXISTS school_promotions (
+    id TEXT PRIMARY KEY,
+    school_user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    program TEXT NOT NULL DEFAULT '',
+    level TEXT NOT NULL DEFAULT '',
+    campus TEXT NOT NULL DEFAULT '',
+    academic_year TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS school_promotion_students (
+    id TEXT PRIMARY KEY,
+    promotion_id TEXT NOT NULL,
+    student_user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE (promotion_id, student_user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS school_reports (
+    id TEXT PRIMARY KEY,
+    school_user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    period TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS school_notifications (
+    id TEXT PRIMARY KEY,
+    school_user_id TEXT NOT NULL,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL,
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    read_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS platform_settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL,
@@ -545,15 +585,27 @@ await db.exec(`
   ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data_url TEXT NOT NULL DEFAULT '';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS google_id TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
   ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS revoked INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS revoked_at TEXT NOT NULL DEFAULT '';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_modules_json TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS logo_data_url TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS city TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS email_domain TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS contact_email TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS contact_phone TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS primary_contact_name TEXT NOT NULL DEFAULT '';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT '';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip_address TEXT NOT NULL DEFAULT '';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at TEXT NOT NULL DEFAULT '';
   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT;
   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS refunded INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS refunded_at TEXT;
+  ALTER TABLE cvs ADD COLUMN IF NOT EXISTS file_name TEXT NOT NULL DEFAULT 'CV importé';
+  ALTER TABLE cvs ADD COLUMN IF NOT EXISTS source_text TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cvs ADD COLUMN IF NOT EXISTS parsed_json TEXT NOT NULL DEFAULT '{}';
 `);
 
 await db.query("UPDATE users SET updated_at = created_at WHERE COALESCE(updated_at, '') = ''");
@@ -710,19 +762,19 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
   const isSignup = purpose === "signup";
 
   const subject = isSignup
-    ? `Bienvenue sur Career App — ton code de vérification : ${safeCode}`
-    : `${safeCode} est ton code de vérification Career App`;
+    ? `Bienvenue sur Career App - votre code de vérification : ${safeCode}`
+    : `${safeCode} est votre code de vérification Career App`;
 
   const introTitle = isSignup ? "Bienvenue sur Career App !" : "Vérifiez votre messagerie";
   const introText = isSignup
-    ? `Merci de rejoindre Career App, ${safeName}. Confirme ton adresse <strong>${safeEmail}</strong> avec le code ci-dessous pour activer ton compte et commencer à optimiser tes candidatures.`
+    ? `Merci de rejoindre Career App, ${safeName}. Confirmez votre adresse <strong>${safeEmail}</strong> avec le code ci-dessous pour activer votre compte et commencer à optimiser vos candidatures.`
     : `Utilisez le code ci-dessous pour continuer vers Career App avec l'adresse <strong>${safeEmail}</strong>.`;
 
   const text = [
     isSignup ? `Bienvenue sur Career App, ${firstName || ""} !`.trim() : `Bonjour ${firstName || ""}`.trim(),
     "",
     isSignup
-      ? `Merci de rejoindre Career App. Ton code de vérification est : ${code}`
+      ? `Merci de rejoindre Career App. Votre code de vérification est : ${code}`
       : `Votre code de vérification Career App est : ${code}`,
     "",
     "Ce code expire dans 10 minutes.",
@@ -923,6 +975,14 @@ async function createSessionForRequest(req, userId) {
   return token;
 }
 
+function ensureUserCanAuthenticate(userRow) {
+  if (coerceString(userRow?.status || "active") === "suspended") {
+    const error = new Error("Ce compte est suspendu. Veuillez contacter l'administrateur Career App pour rétablir l'accès.");
+    error.statusCode = 403;
+    throw error;
+  }
+}
+
 async function logSecurityEvent(req, userId, eventType, metadata = {}) {
   await db.query(
     `INSERT INTO account_security_events (id, user_id, event_type, metadata_json, ip_address, user_agent, created_at)
@@ -945,6 +1005,100 @@ function parseJsonField(input, fallback) {
   } catch (error) {
     return fallback;
   }
+}
+
+function getCvExtractionStatus(parsed) {
+  const skills = Array.isArray(parsed?.skills) ? parsed.skills.filter(Boolean) : [];
+  const experiences = Array.isArray(parsed?.experiences) ? parsed.experiences.filter(Boolean) : [];
+  const education = Array.isArray(parsed?.educationItems) ? parsed.educationItems.filter(Boolean) : [];
+  const certifications = Array.isArray(parsed?.certifications) ? parsed.certifications.filter(Boolean) : [];
+  const missing = [];
+  if (!parsed?.firstName) missing.push("firstName");
+  if (!parsed?.lastName) missing.push("lastName");
+  if (!parsed?.email) missing.push("email");
+  if (!skills.length) missing.push("skills");
+  if (!experiences.length) missing.push("experiences");
+  if (!education.length) missing.push("education");
+  const suspicious = [];
+  if (skills.some((item) => String(item).trim().length <= 1)) suspicious.push("short_skill");
+  if (parsed?.linkedinUrl && !String(parsed.linkedinUrl).includes("linkedin.com")) suspicious.push("linkedin_incomplete");
+  if (experiences.some((item) => !item.company || !item.role || !item.dates)) suspicious.push("experience_incomplete");
+  if (education.some((item) => !item.school && !item.degree)) suspicious.push("education_incomplete");
+  const status = missing.length >= 3 || suspicious.length >= 2 ? "needs_review" : missing.length || suspicious.length ? "partial" : "extracted";
+  return {
+    status,
+    missing,
+    suspicious,
+    score: Math.max(0, 100 - missing.length * 12 - suspicious.length * 10),
+    counts: {
+      skills: skills.length,
+      experiences: experiences.length,
+      education: education.length,
+      certifications: certifications.length
+    }
+  };
+}
+
+function summarizeCvParsed(parsed) {
+  return {
+    firstName: parsed?.firstName || "",
+    lastName: parsed?.lastName || "",
+    email: parsed?.email || "",
+    phone: parsed?.phone || "",
+    linkedinUrl: parsed?.linkedinUrl || "",
+    location: parsed?.location || "",
+    headline: parsed?.headline || "",
+    summary: parsed?.summary || "",
+    skills: Array.isArray(parsed?.skills) ? parsed.skills.filter(Boolean).slice(0, 40) : [],
+    experiences: Array.isArray(parsed?.experiences) ? parsed.experiences.slice(0, 8) : [],
+    educationItems: Array.isArray(parsed?.educationItems) ? parsed.educationItems.slice(0, 8) : [],
+    certifications: Array.isArray(parsed?.certifications) ? parsed.certifications.slice(0, 12) : []
+  };
+}
+
+async function ensureCvStorageSchema() {
+  const statements = [
+    "ALTER TABLE cvs ADD COLUMN IF NOT EXISTS file_name TEXT NOT NULL DEFAULT 'CV importé'",
+    "ALTER TABLE cvs ADD COLUMN IF NOT EXISTS source_text TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE cvs ADD COLUMN IF NOT EXISTS parsed_json TEXT NOT NULL DEFAULT '{}'"
+  ];
+  for (const statement of statements) {
+    await db.query(statement);
+  }
+}
+
+async function getAdminCvRows() {
+  try {
+    await ensureCvStorageSchema();
+    const { rows } = await db.query(
+      "SELECT id, user_id, created_at, file_name, source_text, parsed_json FROM cvs ORDER BY created_at DESC LIMIT 500"
+    );
+    return rows;
+  } catch (error) {
+    const { rows } = await db.query("SELECT id, user_id, created_at FROM cvs ORDER BY created_at DESC LIMIT 500");
+    return rows.map((row) => ({
+      ...row,
+      file_name: "CV importé",
+      source_text: "",
+      parsed_json: "{}"
+    }));
+  }
+}
+
+function getMatchPayloadSummary(payload) {
+  const job = payload?.jobReview || payload?.offer || {};
+  const insights = payload?.matchInsights || payload?.analysis || {};
+  return {
+    title: job.title || "",
+    company: job.company || "",
+    location: job.location || "",
+    sector: job.sector || "",
+    score: insights.score ?? null,
+    technicalSkills: Array.isArray(job.skills) ? job.skills : [],
+    missingKeywords: Array.isArray(insights.missingKeywords) ? insights.missingKeywords : [],
+    strengths: Array.isArray(insights.strengths) ? insights.strengths : [],
+    recommendation: insights.recommendation || ""
+  };
 }
 
 function sanitizeProfilePatch(rawPatch = {}) {
@@ -1555,7 +1709,7 @@ async function analyzeMatchWithAi(candidate, offer) {
     {
       role: "system",
       content:
-        "Tu es un expert recrutement et carriere. Tu compares un profil candidat a une offre d'emploi et tu produis une analyse de matching honnete, actionnable et en francais. Reponds uniquement en JSON. Le score reflete la compatibilite reelle (0-100). N'invente pas de mots-cles absents de l'offre ou du profil. Ecris dans un style naturel et personnalise, jamais generique ou robotique."
+        "Vous êtes un expert recrutement et carriere. Vous comparez un profil candidat a une offre d'emploi et vous produisez une analyse de matching honnete, actionnable et en francais. Repondez uniquement en JSON. Le score reflete la compatibilite reelle (0-100). N'inventez pas de mots-cles absents de l'offre ou du profil. Ecrivez dans un style naturel et personnalise, jamais generique ou robotique."
     },
     {
       role: "user",
@@ -1766,7 +1920,7 @@ function localNegotiationReply(language) {
       }
     : {
         reply: "Merci pour ces precisions. Je dois en discuter avec l'equipe avant de valider un montant definitif.",
-        tip: "Appuie ta demande sur un resultat chiffre concret ou une donnee de marche precise."
+        tip: "Appuyez votre demande sur un resultat chiffre concret ou une donnee de marche precise."
       };
 }
 
@@ -1778,9 +1932,9 @@ function localNegotiationSummary(language) {
         improvements: ["Use more concrete numbers and market benchmarks to support your ask"]
       }
     : {
-        summary: "Tu as tenu ta position pendant la negociation. Continue a t'entrainer pour affiner tes arguments.",
-        strengths: ["Tu es reste(e) engage(e) dans l'echange"],
-        improvements: ["Appuie davantage tes demandes sur des chiffres et des reperes de marche"]
+        summary: "Vous avez tenu votre position pendant la negociation. Continuez a vous entrainer pour affiner vos arguments.",
+        strengths: ["Vous etes reste(e) engage(e) dans l'echange"],
+        improvements: ["Appuyez davantage vos demandes sur des chiffres et des reperes de marche"]
       };
 }
 
@@ -1795,7 +1949,7 @@ async function negotiationReplyWithAi(candidate, offer, history, options = {}) {
 
   const systemPrompt =
     "Tu es un(e) responsable recrutement/RH realiste qui negocie un salaire avec un(e) candidat(e) pour le poste decrit. " +
-    "Tu es ferme(e) mais correct(e), tu tiens compte du budget implicite de l'offre et du marche, tu ne cedes pas facilement mais tu restes respectueux(se) et professionnel(le). " +
+    "Vous etes ferme mais correct, vous tenez compte du budget implicite de l'offre et du marche, vous ne cedez pas facilement mais vous restez respectueux et professionnel. " +
     `Exprime systematiquement tous les montants en ${currencyLabel}, jamais dans une autre devise. ` +
     "Reponds uniquement en JSON.";
 
@@ -1803,7 +1957,7 @@ async function negotiationReplyWithAi(candidate, offer, history, options = {}) {
   const salaryReferenceBlock = salaryReference
     ? `REFERENCE SALARIALE REELLE DE MARCHE (sources: ${salaryReference.sources.map((s) => s.name).join(", ")}): ` +
       `entre ${salaryReference.min} et ${salaryReference.max} ${salaryReference.currency} par an. ` +
-      "Base-toi sur cette fourchette reelle pour rester credible, ne propose pas un montant hors de cette plage sans le justifier explicitement.\n\n"
+      "Basez-vous sur cette fourchette reelle pour rester credible, ne proposez pas un montant hors de cette plage sans le justifier explicitement.\n\n"
     : "AUCUNE REFERENCE SALARIALE DE MARCHE REELLE DISPONIBLE. Reste prudent(e) et generique sur les montants precis, sans pretendre citer une donnee de marche.\n\n";
 
   const contextBlock =
@@ -1815,7 +1969,7 @@ async function negotiationReplyWithAi(candidate, offer, history, options = {}) {
 
   const userPrompt = finish
     ? "La negociation est terminee. Produis un bilan de coaching : un resume court (3-4 phrases), 2 a 4 points forts du candidat pendant la negociation, et 2 a 4 axes d'amelioration concrets."
-    : "Continue la negociation en repondant au dernier message du candidat, en restant dans ton role de recruteur. " +
+    : "Continuez la negociation en repondant au dernier message du candidat, en restant dans votre role de recruteur. " +
       "Produis aussi un conseil court et actionnable pour aider le candidat a mieux negocier son prochain message.";
 
   const messages = [
@@ -1910,7 +2064,7 @@ function parseCvLocally(sourceText) {
     "scikit-learn",
     "pandas",
     "numpy",
-    "spark",
+    "data engineering",
     "airflow",
     "git",
     "supabase",
@@ -2019,7 +2173,7 @@ function uniqueByNormalized(list) {
 
 function compactKey(value) {
   return normalizeText(value)
-    .replace(/[‑–—]/g, "-")
+    .replace(/[-–—]/g, "-")
     .replace(/[^a-z0-9]+/g, "");
 }
 
@@ -2995,7 +3149,7 @@ async function scorePremiumEligibility(userRow) {
   return {
     score,
     eligible: score >= 55,
-    reasons: reasons.length ? reasons : ["complÃ¨te ton profil pour Ã©valuer l'Ã©ligibilitÃ© premium"],
+    reasons: reasons.length ? reasons : ["Complétez votre profil pour évaluer l'éligibilité premium"],
     tier: score >= 80 ? "Elite" : score >= 65 ? "Plus" : "Starter"
   };
 }
@@ -3117,7 +3271,7 @@ app.post("/api/auth/register", async (req, res) => {
       verification: { email: verification.email, expiresAt: verification.expiresAt, resendAfterSeconds: 30 }
     });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
@@ -3130,13 +3284,14 @@ app.post("/api/auth/login", async (req, res) => {
     if (!user || !verifyPassword(password, user.password_salt, user.password_hash)) {
       return res.status(401).json({ error: "Identifiants invalides." });
     }
+    ensureUserCanAuthenticate(user);
 
     const token = await createSessionForRequest(req, user.id);
     await logSecurityEvent(req, user.id, "login_password", { method: "password" });
 
     return res.json({ token, user: await getPublicUserById(user.id) });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
@@ -3221,13 +3376,14 @@ app.post("/api/auth/google", async (req, res) => {
 
       user = await getUserRowById(id);
     }
+    ensureUserCanAuthenticate(user);
 
     const token = await createSessionForRequest(req, user.id);
     await logSecurityEvent(req, user.id, "login_google", { method: "google" });
 
     return res.json({ token, user: await getPublicUserById(user.id) });
   } catch (error) {
-    return res.status(401).json({ error: error.message || "Connexion Google impossible." });
+    return res.status(error.statusCode || 401).json({ error: error.message || "Connexion Google impossible." });
   }
 });
 
@@ -3239,6 +3395,7 @@ app.post("/api/auth/request-code", async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "Aucun compte ne correspond à cet identifiant." });
     }
+    ensureUserCanAuthenticate(user);
 
     const loginEmail = identifier.includes("@") ? normalizeEmail(identifier) : user.email;
     const verification = await createEmailVerificationCode(user, purpose, loginEmail);
@@ -3249,7 +3406,7 @@ app.post("/api/auth/request-code", async (req, res) => {
       resendAfterSeconds: 30
     });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
@@ -3264,6 +3421,7 @@ app.post("/api/auth/verify-code", async (req, res) => {
     if (!user || code.length !== 6) {
       return res.status(401).json({ error: "Code invalide." });
     }
+    ensureUserCanAuthenticate(user);
 
     const { rows } = await db.query(
       `SELECT * FROM email_verification_codes
@@ -3278,10 +3436,10 @@ app.post("/api/auth/verify-code", async (req, res) => {
       return res.status(401).json({ error: "Demande de code introuvable." });
     }
     if (new Date(verification.expires_at).getTime() < Date.now()) {
-      return res.status(401).json({ error: "Code expiré. Demande un nouveau code." });
+      return res.status(401).json({ error: "Code expiré. Demandez un nouveau code." });
     }
     if (Number(verification.attempts || 0) >= 5) {
-      return res.status(429).json({ error: "Trop de tentatives. Demande un nouveau code." });
+      return res.status(429).json({ error: "Trop de tentatives. Demandez un nouveau code." });
     }
 
     const valid = verifyPassword(code, verification.code_salt, verification.code_hash);
@@ -3300,7 +3458,7 @@ app.post("/api/auth/verify-code", async (req, res) => {
 
     return res.json({ token, user: await getPublicUserById(user.id) });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
@@ -3377,6 +3535,7 @@ app.get("/api/auth/session", async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
+    ensureUserCanAuthenticate(user);
 
     const premium = await computePremiumAccess(user);
     return res.json({ user: await getPublicUserById(user.id), premium });
@@ -3542,7 +3701,7 @@ app.post("/api/account/emails/request", async (req, res) => {
 
     const ownEmails = await getEmailRowsForUser(userId);
     if (ownEmails.some((item) => normalizeEmail(item.email) === email)) {
-      return res.status(409).json({ error: "Cette adresse e-mail est dÃ©jÃ  liÃ©e Ã  ton compte." });
+      return res.status(409).json({ error: "Cette adresse e-mail est déjà liée à votre compte." });
     }
 
     const verification = await createEmailVerificationCode(user, "add_email", email);
@@ -4324,7 +4483,7 @@ function toCsv(headers, rows) {
     lines.push(row.map(csvCell).join(","));
   }
   // BOM UTF-8 : Excel ouvre correctement les accents sans ça.
-  return `﻿${lines.join("\r\n")}`;
+  return `?${lines.join("\r\n")}`;
 }
 
 function sendCsv(res, filename, headers, rows) {
@@ -4605,8 +4764,29 @@ app.get("/api/admin/users", async (req, res) => {
     const roleType = coerceString(req.query?.roleType);
 
     const { rows } = await db.query(
-      "SELECT id, first_name, last_name, email, role_type, avatar_data_url, created_at, subscription_json, admin_modules_json FROM users ORDER BY created_at DESC LIMIT 200"
+      "SELECT id, first_name, last_name, email, role_type, avatar_data_url, status, created_at, subscription_json, admin_modules_json FROM users ORDER BY created_at DESC LIMIT 300"
     );
+    const userIds = rows.map((row) => row.id);
+    const [{ rows: cvRows }, { rows: matchRows }, { rows: loginRows }] = await Promise.all([
+      userIds.length
+        ? db.query("SELECT user_id, COUNT(*)::int AS count FROM cvs WHERE user_id = ANY($1) GROUP BY user_id", [userIds])
+        : { rows: [] },
+      userIds.length
+        ? db.query("SELECT user_id, COUNT(*)::int AS count FROM match_runs WHERE user_id = ANY($1) GROUP BY user_id", [userIds])
+        : { rows: [] },
+      userIds.length
+        ? db.query(
+            `SELECT user_id, MAX(created_at) AS last_login
+             FROM account_security_events
+             WHERE user_id = ANY($1) AND event_type IN ('login_password', 'login_google', 'login_email_code')
+             GROUP BY user_id`,
+            [userIds]
+          )
+        : { rows: [] }
+    ]);
+    const cvCountByUser = Object.fromEntries(cvRows.map((row) => [row.user_id, row.count]));
+    const matchCountByUser = Object.fromEntries(matchRows.map((row) => [row.user_id, row.count]));
+    const lastLoginByUser = Object.fromEntries(loginRows.map((row) => [row.user_id, row.last_login]));
 
     const filtered = rows.filter((row) => {
       if (roleType && row.role_type !== roleType) return false;
@@ -4625,8 +4805,12 @@ app.get("/api/admin/users", async (req, res) => {
           email: row.email,
           roleType: row.role_type,
           avatarDataUrl: row.avatar_data_url || "",
+          status: row.status || "active",
           planId: subscription.planId || null,
           billingCycle: subscription.billingCycle || null,
+          cvCount: cvCountByUser[row.id] || 0,
+          matchCount: matchCountByUser[row.id] || 0,
+          lastLoginAt: lastLoginByUser[row.id] || "",
           createdAt: row.created_at,
           adminModules: row.role_type === "admin" ? sanitizeAdminModules(parseJsonField(row.admin_modules_json, [])) : undefined
         };
@@ -4941,9 +5125,23 @@ app.post("/api/admin/announcements/send", async (req, res) => {
     const subject = coerceString(req.body?.subject);
     const message = coerceString(req.body?.message);
     const audience = coerceString(req.body?.audience);
+    const attachment = req.body?.attachment && typeof req.body.attachment === "object" ? req.body.attachment : null;
 
     if (!subject || !message) {
       return res.status(400).json({ error: "Objet et message requis." });
+    }
+
+    let attachments = [];
+    if (attachment?.content && attachment?.name) {
+      const filename = coerceString(attachment.name).replace(/[<>:"/\\|?*\x00-\x1F]/g, "_").slice(0, 160);
+      const contentType = coerceString(attachment.type) || "application/octet-stream";
+      const content = String(attachment.content).includes(",")
+        ? String(attachment.content).split(",").pop()
+        : String(attachment.content);
+      if (Buffer.byteLength(content, "base64") > 10 * 1024 * 1024) {
+        return res.status(400).json({ error: "La pièce jointe ne doit pas dépasser 10 Mo." });
+      }
+      attachments = [{ filename, content, encoding: "base64", contentType }];
     }
 
     const transporter = getMailTransporter();
@@ -4965,7 +5163,8 @@ app.post("/api/admin/announcements/send", async (req, res) => {
           to: recipient.email,
           subject: built.subject,
           text: built.text,
-          html: built.html
+          html: built.html,
+          attachments
         });
       } catch (sendError) {
         failedCount += 1;
@@ -5038,6 +5237,246 @@ app.get("/api/admin/ai-samples", async (req, res) => {
       });
 
     return res.json({ items, total: runRows.length });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/ai-monitoring", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const { rows: cvRows } = await db.query("SELECT id, created_at, parsed_json FROM cvs ORDER BY created_at DESC LIMIT 500");
+    const { rows: matchRows } = await db.query("SELECT id, created_at, payload_json FROM match_runs ORDER BY created_at DESC LIMIT 500");
+    const { rows: eventRows } = await db.query(
+      `SELECT event_type, COUNT(*)::int AS count
+       FROM account_security_events
+       WHERE event_type IN ('cv_upload', 'match_analysis', 'admin_announcement_sent')
+       GROUP BY event_type`
+    );
+
+    const cvStatuses = cvRows.map((row) => getCvExtractionStatus(parseJsonField(row.parsed_json, {})));
+    const successfulExtractions = cvStatuses.filter((item) => item.status === "extracted").length;
+    const partialExtractions = cvStatuses.filter((item) => item.status === "partial").length;
+    const failedExtractions = cvStatuses.filter((item) => item.status === "needs_review").length;
+    const invalidResponses = cvStatuses.filter((item) => item.suspicious.length || item.missing.length >= 3);
+    const providerCounts = {};
+    const scores = [];
+    for (const row of matchRows) {
+      const payload = parseJsonField(row.payload_json, {});
+      const provider = payload.provider || payload.extractionProvider || "local";
+      providerCounts[provider] = (providerCounts[provider] || 0) + 1;
+      const summary = getMatchPayloadSummary(payload);
+      if (Number.isFinite(Number(summary.score))) scores.push(Number(summary.score));
+    }
+
+    const eventCounts = Object.fromEntries(eventRows.map((row) => [row.event_type, row.count]));
+    return res.json({
+      successfulExtractions,
+      partialExtractions,
+      failedExtractions,
+      totalMatchRuns: matchRows.length,
+      averageMatchScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null,
+      providerCounts,
+      estimatedCost: {
+        currency: "EUR",
+        amount: Number(((cvRows.length + matchRows.length) * 0.002).toFixed(3)),
+        note: "Estimation indicative basée sur le nombre d'appels IA enregistrés."
+      },
+      averageAnalysisTimeSeconds: null,
+      apiErrors: failedExtractions,
+      eventCounts,
+      invalidResponses: invalidResponses.slice(0, 12).map((status, index) => ({
+        id: cvRows[index]?.id || `invalid-${index}`,
+        createdAt: cvRows[index]?.created_at || "",
+        missing: status.missing,
+        suspicious: status.suspicious,
+        score: status.score
+      }))
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/cvs", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const search = coerceString(req.query?.search).toLowerCase();
+    const statusFilter = coerceString(req.query?.status);
+    const cvRows = await getAdminCvRows();
+    const userIds = [...new Set(cvRows.map((row) => row.user_id))];
+    const { rows: userRows } = userIds.length
+      ? await db.query("SELECT id, first_name, last_name, email, role_type, avatar_data_url FROM users WHERE id = ANY($1)", [userIds])
+      : { rows: [] };
+    const userById = Object.fromEntries(userRows.map((row) => [row.id, row]));
+
+    const items = cvRows
+      .map((row) => {
+        const parsed = parseJsonField(row.parsed_json, {});
+        const extraction = getCvExtractionStatus(parsed);
+        const owner = userById[row.user_id];
+        return {
+          id: row.id,
+          userId: row.user_id,
+          userFirstName: owner?.first_name || "",
+          userLastName: owner?.last_name || "",
+          userEmail: owner?.email || "",
+          userRoleType: owner?.role_type || "",
+          userAvatarDataUrl: owner?.avatar_data_url || "",
+          createdAt: row.created_at,
+          fileName: row.file_name,
+          characterCount: String(row.source_text || "").length,
+          status: extraction.status,
+          extraction,
+          preview: summarizeCvParsed(parsed)
+        };
+      })
+      .filter((item) => {
+        if (statusFilter && item.status !== statusFilter) return false;
+        if (!search) return true;
+        const haystack = `${item.fileName} ${item.userFirstName} ${item.userLastName} ${item.userEmail} ${item.preview.headline} ${item.preview.skills.join(" ")}`.toLowerCase();
+        return haystack.includes(search);
+      });
+
+    const statusCounts = items.reduce((acc, item) => {
+      acc[item.status] = (acc[item.status] || 0) + 1;
+      return acc;
+    }, {});
+    return res.json({ items, statusCounts });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/cvs/:id/reanalyze", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+    const cvId = coerceString(req.params.id);
+    const { rows } = await db.query("SELECT source_text FROM cvs WHERE id = $1 LIMIT 1", [cvId]);
+    if (!rows[0]) return res.status(404).json({ error: "CV introuvable." });
+    const parsed = postProcessCvExtraction(rows[0].source_text, await extractCvWithAi(rows[0].source_text));
+    await db.query("UPDATE cvs SET parsed_json = $1 WHERE id = $2", [JSON.stringify(parsed), cvId]);
+    await logSecurityEvent(req, adminUserId, "admin_cv_reanalyzed", { cvId });
+    return res.json({ ok: true, parsed, extraction: getCvExtractionStatus(parsed) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Réanalyse impossible." });
+  }
+});
+
+app.delete("/api/admin/cvs/:id", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+    const cvId = coerceString(req.params.id);
+    await db.query("DELETE FROM cvs WHERE id = $1", [cvId]);
+    await logSecurityEvent(req, adminUserId, "admin_cv_deleted", { cvId });
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Suppression impossible." });
+  }
+});
+
+app.get("/api/admin/matches", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+    const search = coerceString(req.query?.search).toLowerCase();
+    const { rows: runRows } = await db.query("SELECT id, user_id, created_at, payload_json FROM match_runs ORDER BY created_at DESC LIMIT 500");
+    const userIds = [...new Set(runRows.map((row) => row.user_id))];
+    const { rows: userRows } = userIds.length
+      ? await db.query("SELECT id, first_name, last_name, email, avatar_data_url FROM users WHERE id = ANY($1)", [userIds])
+      : { rows: [] };
+    const userById = Object.fromEntries(userRows.map((row) => [row.id, row]));
+    const skillCounts = {};
+    const sectorCounts = {};
+    const scores = [];
+    const items = runRows.map((row) => {
+      const payload = parseJsonField(row.payload_json, {});
+      const summary = getMatchPayloadSummary(payload);
+      summary.technicalSkills.forEach((skill) => {
+        const key = String(skill).trim();
+        if (key) skillCounts[key] = (skillCounts[key] || 0) + 1;
+      });
+      if (summary.sector) sectorCounts[summary.sector] = (sectorCounts[summary.sector] || 0) + 1;
+      if (Number.isFinite(Number(summary.score))) scores.push(Number(summary.score));
+      const owner = userById[row.user_id];
+      return {
+        id: row.id,
+        userId: row.user_id,
+        userFirstName: owner?.first_name || "",
+        userLastName: owner?.last_name || "",
+        userEmail: owner?.email || "",
+        userAvatarDataUrl: owner?.avatar_data_url || "",
+        createdAt: row.created_at,
+        ...summary
+      };
+    }).filter((item) => {
+      if (!search) return true;
+      const haystack = `${item.userFirstName} ${item.userLastName} ${item.userEmail} ${item.title} ${item.company} ${item.sector}`.toLowerCase();
+      return haystack.includes(search);
+    });
+
+    const topSkills = Object.entries(skillCounts).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([name, count]) => ({ name, count }));
+    const topSectors = Object.entries(sectorCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
+    return res.json({
+      items,
+      averageScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null,
+      topSkills,
+      topSectors
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/quality", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+    const search = coerceString(req.query?.search).toLowerCase();
+    const { rows: cvRows } = await db.query("SELECT id, user_id, created_at, file_name, parsed_json FROM cvs ORDER BY created_at DESC LIMIT 500");
+    const userIds = [...new Set(cvRows.map((row) => row.user_id))];
+    const { rows: userRows } = userIds.length
+      ? await db.query("SELECT id, first_name, last_name, email, avatar_data_url FROM users WHERE id = ANY($1)", [userIds])
+      : { rows: [] };
+    const userById = Object.fromEntries(userRows.map((row) => [row.id, row]));
+    const items = cvRows.map((row) => {
+      const parsed = parseJsonField(row.parsed_json, {});
+      const extraction = getCvExtractionStatus(parsed);
+      const owner = userById[row.user_id];
+      return {
+        id: row.id,
+        userId: row.user_id,
+        userFirstName: owner?.first_name || "",
+        userLastName: owner?.last_name || "",
+        userEmail: owner?.email || "",
+        userAvatarDataUrl: owner?.avatar_data_url || "",
+        createdAt: row.created_at,
+        fileName: row.file_name,
+        status: extraction.status,
+        score: extraction.score,
+        missing: extraction.missing,
+        suspicious: extraction.suspicious,
+        counts: extraction.counts
+      };
+    }).filter((item) => {
+      if (item.status === "extracted") return false;
+      if (!search) return true;
+      const haystack = `${item.fileName} ${item.userFirstName} ${item.userLastName} ${item.userEmail} ${item.missing.join(" ")}`.toLowerCase();
+      return haystack.includes(search);
+    });
+    return res.json({
+      items,
+      totals: {
+        needsReview: items.filter((item) => item.status === "needs_review").length,
+        partial: items.filter((item) => item.status === "partial").length
+      }
+    });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
@@ -5350,6 +5789,35 @@ app.post("/api/admin/users/update", async (req, res) => {
   }
 });
 
+app.post("/api/admin/users/status", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const targetUserId = coerceString(req.body?.userId);
+    const status = coerceString(req.body?.status) === "suspended" ? "suspended" : "active";
+    const target = await getUserRowById(targetUserId);
+    if (!target) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+    if (target.role_type === "admin") {
+      return res.status(403).json({ error: "Le statut d'un administrateur ne peut pas être changé ici." });
+    }
+
+    await db.query("UPDATE users SET status = $1, updated_at = $2 WHERE id = $3", [status, nowIso(), targetUserId]);
+    if (status === "suspended") {
+      await db.query("DELETE FROM sessions WHERE user_id = $1", [targetUserId]);
+    }
+    await logSecurityEvent(req, adminUserId, status === "suspended" ? "admin_user_suspended" : "admin_user_reactivated", {
+      targetUserId,
+      email: target.email
+    });
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.post("/api/admin/users/delete", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
@@ -5421,45 +5889,138 @@ async function getSchoolStudentRows(schoolUserId) {
   });
 }
 
+async function getSchoolOrgProfile(userId) {
+  const { rows } = await db.query("SELECT * FROM user_org_profiles WHERE user_id = $1", [userId]);
+  const row = rows[0] || {};
+  return {
+    organizationName: row.organization_name || "",
+    organizationType: row.organization_type || "",
+    department: row.department || "",
+    website: row.website || "",
+    sizeRange: row.size_range || "",
+    industry: row.industry || "",
+    contactRole: row.contact_role || "",
+    notes: row.notes || "",
+    logoDataUrl: row.logo_data_url || "",
+    address: row.address || "",
+    city: row.city || "",
+    country: row.country || "",
+    emailDomain: row.email_domain || "",
+    contactEmail: row.contact_email || "",
+    contactPhone: row.contact_phone || "",
+    primaryContactName: row.primary_contact_name || "",
+    updatedAt: row.updated_at || ""
+  };
+}
+
+async function buildSchoolMetrics(userId) {
+  const students = await getSchoolStudentRows(userId);
+  const studentIds = students.map((row) => row.id);
+  const codeRows = await getSchoolLicenseCodeRows(userId);
+  const seatsTotal = codeRows.reduce((sum, row) => sum + Number(row.seats_total || 0), 0);
+  const seatsUsed = codeRows.reduce((sum, row) => sum + Number(row.seats_used || 0), 0);
+  const { rows: cvRows } = studentIds.length
+    ? await db.query("SELECT user_id, created_at, parsed_json FROM cvs WHERE user_id = ANY($1)", [studentIds])
+    : { rows: [] };
+  const { rows: matchRows } = studentIds.length
+    ? await db.query("SELECT user_id, created_at, payload_json FROM match_runs WHERE user_id = ANY($1)", [studentIds])
+    : { rows: [] };
+  const lastActivityByStudent = {};
+  for (const row of [...cvRows, ...matchRows]) {
+    const time = new Date(row.created_at).getTime();
+    if (!lastActivityByStudent[row.user_id] || time > lastActivityByStudent[row.user_id]) {
+      lastActivityByStudent[row.user_id] = time;
+    }
+  }
+  const activeStudentIds = new Set([...cvRows.map((row) => row.user_id), ...matchRows.map((row) => row.user_id)]);
+  const scores = matchRows
+    .map((row) => parseJsonField(row.payload_json, {})?.matchInsights?.score)
+    .filter((score) => typeof score === "number");
+  const latestScoreByStudent = {};
+  for (const row of [...matchRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))) {
+    if (latestScoreByStudent[row.user_id] !== undefined) continue;
+    const score = parseJsonField(row.payload_json, {})?.matchInsights?.score;
+    latestScoreByStudent[row.user_id] = typeof score === "number" ? score : null;
+  }
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const inactiveStudents = students.filter((student) => {
+    const lastActivity = lastActivityByStudent[student.id];
+    return !lastActivity || lastActivity < thirtyDaysAgo;
+  });
+  const lowScoreStudents = students.filter((student) => {
+    const score = latestScoreByStudent[student.id];
+    return typeof score === "number" && score < 50;
+  });
+  const withoutCvStudents = students.filter((student) => !cvRows.some((row) => row.user_id === student.id));
+  const parsedCvs = cvRows.map((row) => parseJsonField(row.parsed_json, {}));
+  const targetRoleCounts = {};
+  const skillCounts = {};
+  for (const parsed of parsedCvs) {
+    const target = coerceString(parsed.targetRole || parsed.headline || "").trim();
+    if (target) targetRoleCounts[target] = (targetRoleCounts[target] || 0) + 1;
+    for (const skill of Array.isArray(parsed.skills) ? parsed.skills : []) {
+      const key = coerceString(skill).trim();
+      if (key) skillCounts[key] = (skillCounts[key] || 0) + 1;
+    }
+  }
+  return {
+    students,
+    codeRows,
+    cvRows,
+    matchRows,
+    seatsTotal,
+    seatsUsed,
+    activationRate: studentIds.length ? Math.round((activeStudentIds.size / studentIds.length) * 100) : 0,
+    avgScore: scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : null,
+    inactiveStudents,
+    lowScoreStudents,
+    withoutCvStudents,
+    topTargetRoles: Object.entries(targetRoleCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, count]) => ({ label, count })),
+    topSkills: Object.entries(skillCounts).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([label, count]) => ({ label, count }))
+  };
+}
+
+function buildSchoolAlerts(metrics, language = "fr") {
+  const alerts = [];
+  const remainingSeats = Math.max(0, Number(metrics.seatsTotal || 0) - Number(metrics.seatsUsed || 0));
+  if (metrics.seatsTotal && remainingSeats <= Math.max(2, Math.ceil(metrics.seatsTotal * 0.1))) {
+    alerts.push({
+      type: "license_capacity",
+      title: language === "en" ? "License capacity is almost full" : "Licence presque saturée",
+      body: language === "en" ? `${remainingSeats} seat(s) remaining.` : `${remainingSeats} siège(s) restant(s).`
+    });
+  }
+  if (metrics.withoutCvStudents.length) {
+    alerts.push({
+      type: "students_without_cv",
+      title: language === "en" ? "Students without CV" : "Étudiants sans CV",
+      body: language === "en" ? `${metrics.withoutCvStudents.length} student(s) have not imported a CV.` : `${metrics.withoutCvStudents.length} étudiant(s) n'ont pas encore importé de CV.`
+    });
+  }
+  if (metrics.lowScoreStudents.length) {
+    alerts.push({
+      type: "low_match_score",
+      title: language === "en" ? "Low match scores detected" : "Scores de matching faibles détectés",
+      body: language === "en" ? `${metrics.lowScoreStudents.length} student(s) are below 50%.` : `${metrics.lowScoreStudents.length} étudiant(s) sont sous 50 %.`
+    });
+  }
+  if (metrics.inactiveStudents.length) {
+    alerts.push({
+      type: "inactive_students",
+      title: language === "en" ? "Inactive students" : "Étudiants inactifs",
+      body: language === "en" ? `${metrics.inactiveStudents.length} student(s) inactive for 30+ days.` : `${metrics.inactiveStudents.length} étudiant(s) inactifs depuis 30 jours ou plus.`
+    });
+  }
+  return alerts;
+}
+
 app.get("/api/school/overview", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     await requireSchoolOwner(userId);
 
-    const students = await getSchoolStudentRows(userId);
-    const codeRows = await getSchoolLicenseCodeRows(userId);
-    const studentIds = students.map((row) => row.id);
-
-    const seatsTotal = codeRows.reduce((sum, row) => sum + Number(row.seats_total || 0), 0);
-    const seatsUsed = codeRows.reduce((sum, row) => sum + Number(row.seats_used || 0), 0);
-
-    const { rows: cvRows } = studentIds.length
-      ? await db.query("SELECT user_id, created_at FROM cvs WHERE user_id = ANY($1)", [studentIds])
-      : { rows: [] };
-    const { rows: matchRows } = studentIds.length
-      ? await db.query("SELECT user_id, created_at, payload_json FROM match_runs WHERE user_id = ANY($1)", [studentIds])
-      : { rows: [] };
-
-    const activeStudentIds = new Set([...cvRows.map((row) => row.user_id), ...matchRows.map((row) => row.user_id)]);
-    const activationRate = studentIds.length ? Math.round((activeStudentIds.size / studentIds.length) * 100) : 0;
-
-    const scores = matchRows
-      .map((row) => parseJsonField(row.payload_json, {})?.matchInsights?.score)
-      .filter((score) => typeof score === "number");
-    const avgScore = scores.length ? Math.round(scores.reduce((sum, value) => sum + value, 0) / scores.length) : null;
-
-    const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-    const lastActivityByStudent = {};
-    for (const row of [...cvRows, ...matchRows]) {
-      const time = new Date(row.created_at).getTime();
-      if (!lastActivityByStudent[row.user_id] || time > lastActivityByStudent[row.user_id]) {
-        lastActivityByStudent[row.user_id] = time;
-      }
-    }
-    const inactiveStudents = students.filter((student) => {
-      const lastActivity = lastActivityByStudent[student.id];
-      return !lastActivity || lastActivity < thirtyDaysAgo;
-    }).length;
+    const metrics = await buildSchoolMetrics(userId);
+    const students = metrics.students;
 
     const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
     const weekCount = 8;
@@ -5483,13 +6044,18 @@ app.get("/api/school/overview", async (req, res) => {
 
     return res.json({
       totalStudents: students.length,
-      seatsTotal,
-      seatsUsed,
-      activationRate,
-      totalCvs: cvRows.length,
-      totalMatchRuns: matchRows.length,
-      avgScore,
-      inactiveStudents,
+      seatsTotal: metrics.seatsTotal,
+      seatsUsed: metrics.seatsUsed,
+      activationRate: metrics.activationRate,
+      totalCvs: metrics.cvRows.length,
+      totalMatchRuns: metrics.matchRows.length,
+      avgScore: metrics.avgScore,
+      inactiveStudents: metrics.inactiveStudents.length,
+      withoutCv: metrics.withoutCvStudents.length,
+      lowScores: metrics.lowScoreStudents.length,
+      topTargetRoles: metrics.topTargetRoles,
+      topSkills: metrics.topSkills,
+      alerts: buildSchoolAlerts(metrics, coerceString(req.query?.language || "fr")),
       signupsTrend
     });
   } catch (error) {
@@ -5709,6 +6275,324 @@ app.get("/api/school/invitations", async (req, res) => {
   }
 });
 
+app.get("/api/school/profile", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    const school = await requireSchoolOwner(userId);
+    const profile = await getSchoolOrgProfile(userId);
+    return res.json({
+      admin: {
+        id: school.id,
+        firstName: school.first_name,
+        lastName: school.last_name,
+        email: school.email,
+        avatarDataUrl: school.avatar_data_url || ""
+      },
+      profile
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.put("/api/school/profile", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    await requireSchoolOwner(userId);
+    const profile = req.body?.profile || {};
+    await db.query(
+      `INSERT INTO user_org_profiles (
+        user_id, organization_name, organization_type, department, website, size_range, industry, contact_role, notes,
+        logo_data_url, address, city, country, email_domain, contact_email, contact_phone, primary_contact_name, updated_at
+      )
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      ON CONFLICT (user_id) DO UPDATE SET
+        organization_name=EXCLUDED.organization_name,
+        organization_type=EXCLUDED.organization_type,
+        department=EXCLUDED.department,
+        website=EXCLUDED.website,
+        size_range=EXCLUDED.size_range,
+        industry=EXCLUDED.industry,
+        contact_role=EXCLUDED.contact_role,
+        notes=EXCLUDED.notes,
+        logo_data_url=EXCLUDED.logo_data_url,
+        address=EXCLUDED.address,
+        city=EXCLUDED.city,
+        country=EXCLUDED.country,
+        email_domain=EXCLUDED.email_domain,
+        contact_email=EXCLUDED.contact_email,
+        contact_phone=EXCLUDED.contact_phone,
+        primary_contact_name=EXCLUDED.primary_contact_name,
+        updated_at=EXCLUDED.updated_at`,
+      [
+        userId,
+        coerceString(profile.organizationName),
+        coerceString(profile.organizationType),
+        coerceString(profile.department),
+        coerceString(profile.website),
+        coerceString(profile.sizeRange),
+        coerceString(profile.industry),
+        coerceString(profile.contactRole),
+        coerceString(profile.notes),
+        coerceString(profile.logoDataUrl),
+        coerceString(profile.address),
+        coerceString(profile.city),
+        coerceString(profile.country),
+        coerceString(profile.emailDomain),
+        normalizeEmail(profile.contactEmail || ""),
+        coerceString(profile.contactPhone),
+        coerceString(profile.primaryContactName),
+        nowIso()
+      ]
+    );
+    await logSecurityEvent(req, userId, "school_profile_updated", {});
+    return res.json({ ok: true, profile: await getSchoolOrgProfile(userId) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/school/notifications", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    await requireSchoolOwner(userId);
+    const metrics = await buildSchoolMetrics(userId);
+    const generated = buildSchoolAlerts(metrics, coerceString(req.query?.language || "fr")).map((item, index) => ({
+      id: `generated-${item.type}-${index}`,
+      ...item,
+      readAt: "",
+      createdAt: nowIso(),
+      generated: true
+    }));
+    const { rows } = await db.query(
+      "SELECT * FROM school_notifications WHERE school_user_id = $1 ORDER BY created_at DESC LIMIT 50",
+      [userId]
+    );
+    const stored = rows.map((row) => ({
+      id: row.id,
+      type: row.type,
+      title: row.title,
+      body: row.body,
+      metadata: parseJsonField(row.metadata_json, {}),
+      readAt: row.read_at,
+      createdAt: row.created_at,
+      generated: false
+    }));
+    return res.json({ items: [...generated, ...stored], unreadCount: [...generated, ...stored].filter((item) => !item.readAt).length });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/school/notifications/read", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    await requireSchoolOwner(userId);
+    await db.query("UPDATE school_notifications SET read_at = $1 WHERE school_user_id = $2 AND COALESCE(read_at, '') = ''", [
+      nowIso(),
+      userId
+    ]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/school/promotions", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    await requireSchoolOwner(userId);
+    const students = await getSchoolStudentRows(userId);
+    const { rows } = await db.query("SELECT * FROM school_promotions WHERE school_user_id = $1 ORDER BY created_at DESC", [userId]);
+    const promotionIds = rows.map((row) => row.id);
+    const { rows: links } = promotionIds.length
+      ? await db.query("SELECT promotion_id, student_user_id FROM school_promotion_students WHERE promotion_id = ANY($1)", [promotionIds])
+      : { rows: [] };
+    return res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        program: row.program,
+        level: row.level,
+        campus: row.campus,
+        academicYear: row.academic_year,
+        createdAt: row.created_at,
+        studentIds: links.filter((link) => link.promotion_id === row.id).map((link) => link.student_user_id),
+        studentCount: links.filter((link) => link.promotion_id === row.id).length
+      })),
+      students: students.map((row) => ({
+        id: row.id,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        email: row.email,
+        avatarDataUrl: row.avatar_data_url || ""
+      }))
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/school/promotions", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    await requireSchoolOwner(userId);
+    const name = coerceString(req.body?.name);
+    if (!name) return res.status(400).json({ error: "Le nom de la promotion est requis." });
+    const id = `promo-${crypto.randomUUID()}`;
+    await db.query(
+      `INSERT INTO school_promotions (id, school_user_id, name, program, level, campus, academic_year, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$8)`,
+      [
+        id,
+        userId,
+        name,
+        coerceString(req.body?.program),
+        coerceString(req.body?.level),
+        coerceString(req.body?.campus),
+        coerceString(req.body?.academicYear),
+        nowIso()
+      ]
+    );
+    await logSecurityEvent(req, userId, "school_promotion_created", { promotionId: id });
+    return res.status(201).json({ ok: true, id });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/school/promotions/:id/students", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    await requireSchoolOwner(userId);
+    const promotionId = coerceString(req.params.id);
+    const studentId = coerceString(req.body?.studentId);
+    const action = coerceString(req.body?.action || "add");
+    if (!promotionId || !studentId) return res.status(400).json({ error: "Promotion et étudiant requis." });
+
+    const { rows: promoRows } = await db.query("SELECT id FROM school_promotions WHERE id = $1 AND school_user_id = $2", [
+      promotionId,
+      userId
+    ]);
+    if (!promoRows.length) return res.status(404).json({ error: "Promotion introuvable." });
+
+    const students = await getSchoolStudentRows(userId);
+    if (!students.some((student) => student.id === studentId)) {
+      return res.status(403).json({ error: "Cet étudiant n'est pas rattaché à votre établissement." });
+    }
+
+    if (action === "remove") {
+      await db.query("DELETE FROM school_promotion_students WHERE promotion_id = $1 AND student_user_id = $2", [
+        promotionId,
+        studentId
+      ]);
+      await logSecurityEvent(req, userId, "school_promotion_student_removed", { promotionId, studentId });
+    } else {
+      await db.query(
+        `INSERT INTO school_promotion_students (id, promotion_id, student_user_id, created_at)
+         VALUES ($1,$2,$3,$4)
+         ON CONFLICT (promotion_id, student_user_id) DO NOTHING`,
+        [`promo-student-${crypto.randomUUID()}`, promotionId, studentId, nowIso()]
+      );
+      await logSecurityEvent(req, userId, "school_promotion_student_added", { promotionId, studentId });
+    }
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.delete("/api/school/promotions/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId || req.body?.userId);
+    await requireSchoolOwner(userId);
+    const promotionId = coerceString(req.params.id);
+    await db.query("DELETE FROM school_promotion_students WHERE promotion_id = $1", [promotionId]);
+    await db.query("DELETE FROM school_promotions WHERE id = $1 AND school_user_id = $2", [promotionId, userId]);
+    await logSecurityEvent(req, userId, "school_promotion_deleted", { promotionId });
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/school/reports", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    await requireSchoolOwner(userId);
+    const metrics = await buildSchoolMetrics(userId);
+    const { rows } = await db.query("SELECT * FROM school_reports WHERE school_user_id = $1 ORDER BY created_at DESC LIMIT 50", [userId]);
+    return res.json({
+      snapshot: {
+        totalStudents: metrics.students.length,
+        activeStudents: metrics.students.length - metrics.inactiveStudents.length,
+        withoutCv: metrics.withoutCvStudents.length,
+        lowScores: metrics.lowScoreStudents.length,
+        avgScore: metrics.avgScore,
+        topTargetRoles: metrics.topTargetRoles,
+        topSkills: metrics.topSkills
+      },
+      items: rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        period: row.period,
+        payload: parseJsonField(row.payload_json, {}),
+        createdAt: row.created_at
+      }))
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/school/reports/generate", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    await requireSchoolOwner(userId);
+    const period = coerceString(req.body?.period || "monthly");
+    const metrics = await buildSchoolMetrics(userId);
+    const payload = {
+      generatedAt: nowIso(),
+      totalStudents: metrics.students.length,
+      activeStudents: metrics.students.length - metrics.inactiveStudents.length,
+      inactiveStudents: metrics.inactiveStudents.length,
+      withoutCv: metrics.withoutCvStudents.length,
+      lowScores: metrics.lowScoreStudents.length,
+      avgScore: metrics.avgScore,
+      topTargetRoles: metrics.topTargetRoles,
+      topSkills: metrics.topSkills,
+      alerts: buildSchoolAlerts(metrics, "fr")
+    };
+    const id = `report-${crypto.randomUUID()}`;
+    const title = period === "weekly" ? "Rapport hebdomadaire employabilité" : "Rapport mensuel employabilité";
+    await db.query(
+      "INSERT INTO school_reports (id, school_user_id, title, period, payload_json, created_at) VALUES ($1,$2,$3,$4,$5,$6)",
+      [id, userId, title, period, JSON.stringify(payload), nowIso()]
+    );
+    await logSecurityEvent(req, userId, "school_report_generated", { reportId: id, period });
+    return res.status(201).json({ ok: true, id, payload });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/school/students/export", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    await requireSchoolOwner(userId);
+    const students = await getSchoolStudentRows(userId);
+    const header = ["prenom", "nom", "email", "date_inscription"].join(",");
+    const lines = students.map((row) =>
+      [row.first_name, row.last_name, row.email, row.created_at].map((value) => `"${String(value || "").replace(/"/g, '""')}"`).join(",")
+    );
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename=\"career-app-etudiants.csv\"");
+    return res.send([header, ...lines].join("\n"));
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.post("/api/school/invitations/send", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
@@ -5827,9 +6711,9 @@ app.post("/api/tokens/consume", async (req, res) => {
 });
 
 function slugifyForEmail(value) {
-  return String(value || "")
+    return String(value || "")
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
 }
@@ -5837,7 +6721,7 @@ function slugifyForEmail(value) {
 function companyNameToDomain(companyName) {
   const slug = String(companyName || "")
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
     .replace(/\b(sa|sas|sarl|inc|ltd|llc|corp|co)\b/g, "")
     .replace(/[^a-z0-9]+/g, "");
@@ -6613,4 +7497,8 @@ if (serverStart.status === "existing") {
   console.log(`Career API (PostgreSQL embarque) sur http://127.0.0.1:${serverStart.port}`);
   console.log(`Donnees PostgreSQL: ${dataDirectory}`);
 }
+
+
+
+
 

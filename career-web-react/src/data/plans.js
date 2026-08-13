@@ -1,4 +1,4 @@
-export const PLAN_SEGMENTS = ["candidate", "agency", "school"];
+﻿export const PLAN_SEGMENTS = ["candidate", "agency", "school"];
 
 export const PLANS = [
   {
@@ -20,9 +20,9 @@ export const PLANS = [
       fr: [
         "Analyse CV & Offre (IA)",
         "Score de matching",
-        "1 CV enregistré",
+        "1 CV enregistrÃ©",
         "Lettre de motivation IA",
-        "Simulateur de négociation salariale",
+        "Simulateur de nÃ©gociation salariale",
         "Email Scout (recherche d'email pro)"
       ],
       en: [
@@ -38,9 +38,9 @@ export const PLANS = [
   {
     id: "candidate_booster",
     segment: "candidate",
-    name: { fr: "Élan", en: "Momentum" },
+    name: { fr: "Ã‰lan", en: "Momentum" },
     tagline: {
-      fr: "Idéal pour décrocher vos premiers entretiens.",
+      fr: "IdÃ©al pour dÃ©crocher vos premiers entretiens.",
       en: "Ideal to land your first interviews."
     },
     monthlyPrice: null,
@@ -52,7 +52,7 @@ export const PLANS = [
     highlighted: false,
     badge: null,
     features: {
-      fr: ["30 jetons d'analyse", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
+      fr: ["30 jetons d'analyse", "Historique CV illimitÃ©", "Export PDF", "Lettre de motivation IA", "Simulateur de nÃ©gociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
       en: ["30 analysis tokens", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
     }
   },
@@ -71,15 +71,15 @@ export const PLANS = [
     seats: null,
     grantsPremium: true,
     highlighted: true,
-    badge: { fr: "Recommandé", en: "Recommended" },
+    badge: { fr: "RecommandÃ©", en: "Recommended" },
     features: {
       fr: [
         "130 jetons d'analyse",
-        "Simulateur d'entretiens illimité",
-        "Lettre de motivation IA illimitée",
-        "Simulateur de négociation salariale illimité",
-        "Email Scout illimité (recherche d'email pro)",
-        "Suggestions de réseautage avancées",
+        "Simulateur d'entretiens illimitÃ©",
+        "Lettre de motivation IA illimitÃ©e",
+        "Simulateur de nÃ©gociation salariale illimitÃ©",
+        "Email Scout illimitÃ© (recherche d'email pro)",
+        "Suggestions de rÃ©seautage avancÃ©es",
         "Support prioritaire"
       ],
       en: [
@@ -109,7 +109,7 @@ export const PLANS = [
     highlighted: false,
     badge: null,
     features: {
-      fr: ["3 sièges recruteurs", "Analyses candidats illimitées", "Code de licence à distribuer"],
+      fr: ["3 siÃ¨ges recruteurs", "Analyses candidats illimitÃ©es", "Code de licence Ã  distribuer"],
       en: ["3 recruiter seats", "Unlimited candidate analyses", "License code to distribute"]
     }
   },
@@ -118,7 +118,7 @@ export const PLANS = [
     segment: "agency",
     name: { fr: "Cabinet Croissance", en: "Firm Growth" },
     tagline: {
-      fr: "Pour les cabinets et boîtes de conseil en croissance.",
+      fr: "Pour les cabinets et boÃ®tes de conseil en croissance.",
       en: "For growing recruitment and consulting firms."
     },
     monthlyPrice: 149,
@@ -127,9 +127,9 @@ export const PLANS = [
     seats: 10,
     grantsPremium: true,
     highlighted: true,
-    badge: { fr: "Recommandé", en: "Recommended" },
+    badge: { fr: "RecommandÃ©", en: "Recommended" },
     features: {
-      fr: ["10 sièges recruteurs", "Export de rapports", "Support prioritaire", "Code de licence à distribuer"],
+      fr: ["10 siÃ¨ges recruteurs", "Export de rapports", "Support prioritaire", "Code de licence Ã  distribuer"],
       en: ["10 recruiter seats", "Report exports", "Priority support", "License code to distribute"]
     }
   },
@@ -138,19 +138,19 @@ export const PLANS = [
     segment: "school",
     name: { fr: "Licence Campus", en: "Campus License" },
     tagline: {
-      fr: "Active l'offre Trajectoire Pro pour tes étudiants.",
+      fr: "Activez l'offre Trajectoire Pro pour vos étudiants.",
       en: "Activates the Pro Track plan for your students."
     },
     monthlyPrice: null,
     annualPrice: 3,
-    annualPriceUnit: { fr: "/ étudiant / an (min. 30)", en: "/ student / year (min. 30)" },
+    annualPriceUnit: { fr: "/ Ã©tudiant / an (min. 30)", en: "/ student / year (min. 30)" },
     credits: 999,
     seats: 30,
     grantsPremium: true,
     highlighted: false,
     badge: null,
     features: {
-      fr: ["30 sièges étudiants minimum", "Plan Trajectoire Pro pour chaque étudiant", "Code de licence à distribuer"],
+      fr: ["30 siÃ¨ges Ã©tudiants minimum", "Plan Trajectoire Pro pour chaque Ã©tudiant", "Code de licence Ã  distribuer"],
       en: ["Minimum 30 student seats", "Pro Track plan for every student", "License code to distribute"]
     }
   }
@@ -159,3 +159,5 @@ export const PLANS = [
 export function getPlanById(planId) {
   return PLANS.find((plan) => plan.id === planId) || null;
 }
+
+
