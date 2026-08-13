@@ -14,6 +14,10 @@ import {
   findEmail,
   extractJobOffer,
   generateCoverLetter,
+  listCoverLetters,
+  saveCoverLetter,
+  updateCoverLetter,
+  deleteCoverLetter,
   getLatestMatchRun,
   getHealth,
   getMatchFeedback,
@@ -27,6 +31,13 @@ import {
   getAdminLicenseCodes,
   getAdminOrgAccounts,
   getAdminOverview,
+  getAdminNotifications,
+  getApiBase,
+  getPlanOverrides,
+  getAdminPlans,
+  updateAdminPlan,
+  resetAdminPlan,
+  refundAdminTransaction,
   getAdminSettings,
   revokeAdminLicenseCode,
   restoreAdminLicenseCode,
@@ -602,7 +613,12 @@ const APP_COPY = {
       cvPreviewSoftSkills: "Compétences comportementales",
       cvPreviewLanguages: "Langues",
       cvPreviewCertifications: "Certifications",
-      cvPreviewInterests: "Centres d'intérêt"
+      cvPreviewInterests: "Centres d'intérêt",
+      cvPreviewProjects: "Projets",
+      cvPreviewSocial: "Réseaux sociaux",
+      cvPreviewPortfolio: "Portfolio",
+      cvTemplateClassic: "Classique",
+      cvTemplateSidebar: "Colonne latérale"
     },
     profile: {
       addHeadline: "Ajoute un titre professionnel cible.",
@@ -683,6 +699,8 @@ const APP_COPY = {
       perYear: "/ an",
       creditsIncluded: "jetons inclus",
       seatsIncluded: "sièges inclus",
+      studentSeatsLabel: "Nombre d'étudiants",
+      studentSeatsTotal: "Total à payer :",
       activate: "Activer",
       currentPlan: "Plan actuel",
       licenseCodeTitle: "Vous avez reçu un code de licence ?",
@@ -760,7 +778,14 @@ const APP_COPY = {
       download: "Télécharger en PDF",
       empty: "Importe un CV et analyse une offre pour débloquer ce module.",
       noTokens: "Tu n'as plus de jetons. Passe à un plan supérieur pour générer ta lettre.",
-      generating: "Rédaction en cours..."
+      generating: "Rédaction en cours...",
+      history: "Lettres",
+      newConversation: "Nouvelle lettre",
+      resumeHint: "Reprends une lettre déjà générée.",
+      noHistory: "Aucune lettre pour l'instant.",
+      deleteConversation: "Supprimer",
+      deleteConfirm: "Supprimer cette lettre ?",
+      untitled: "Lettre sans titre"
     },
     negotiation: {
       title: "Simulateur de négociation salariale",
@@ -925,7 +950,12 @@ const APP_COPY = {
       cvPreviewSoftSkills: "Soft skills",
       cvPreviewLanguages: "Languages",
       cvPreviewCertifications: "Certifications",
-      cvPreviewInterests: "Interests"
+      cvPreviewInterests: "Interests",
+      cvPreviewProjects: "Projects",
+      cvPreviewSocial: "Social links",
+      cvPreviewPortfolio: "Portfolio",
+      cvTemplateClassic: "Classic",
+      cvTemplateSidebar: "Sidebar"
     },
     profile: {
       addHeadline: "Add a target professional headline.",
@@ -1006,6 +1036,8 @@ const APP_COPY = {
       perYear: "/ year",
       creditsIncluded: "tokens included",
       seatsIncluded: "seats included",
+      studentSeatsLabel: "Number of students",
+      studentSeatsTotal: "Total to pay:",
       activate: "Activate",
       currentPlan: "Current plan",
       licenseCodeTitle: "Received a license code?",
@@ -1083,7 +1115,14 @@ const APP_COPY = {
       download: "Download as PDF",
       empty: "Import a CV and analyze a job offer to unlock this module.",
       noTokens: "You're out of tokens. Upgrade your plan to generate your letter.",
-      generating: "Writing in progress..."
+      generating: "Writing in progress...",
+      history: "Letters",
+      newConversation: "New letter",
+      resumeHint: "Resume a letter you already generated.",
+      noHistory: "No letter yet.",
+      deleteConversation: "Delete",
+      deleteConfirm: "Delete this letter?",
+      untitled: "Untitled letter"
     },
     negotiation: {
       title: "Salary Negotiation Simulator",
@@ -1200,8 +1239,17 @@ function getFriendlyErrorMessage(error, language = "fr") {
     language === "en"
       ? "Something went wrong. Please try again."
       : "Une erreur est survenue. Réessaie dans quelques instants.";
+  const networkFallback =
+    language === "en"
+      ? "Can't reach the server. Check your internet connection and try again in a moment."
+      : "Impossible de contacter le serveur. Vérifie ta connexion internet et réessaie dans quelques instants.";
 
   if (!message) return fallback;
+
+  const networkPatterns = [/failed to fetch/i, /networkerror/i, /load failed/i, /network request failed/i];
+  if (networkPatterns.some((pattern) => pattern.test(message))) {
+    return networkFallback;
+  }
 
   const technicalPatterns = [
     /is not defined/i,
@@ -1212,8 +1260,6 @@ function getFriendlyErrorMessage(error, language = "fr") {
     /syntaxerror/i,
     /referenceerror/i,
     /typeerror/i,
-    /failed to fetch/i,
-    /networkerror/i,
     /json/i
   ];
 
@@ -1362,6 +1408,12 @@ function UiIcon({ name, className = "" }) {
         fill="currentColor"
       />
     ),
+    bell: (
+      <path
+        d="M10 2.5a1 1 0 011 1v.6c2.3.45 4 2.47 4 4.9v3.1l1.28 1.92a.75.75 0 01-.62 1.17H4.34a.75.75 0 01-.62-1.17L5 12.1V9c0-2.43 1.7-4.45 4-4.9v-.6a1 1 0 011-1zM8.1 16.25a1.9 1.9 0 003.8 0h-3.8z"
+        fill="currentColor"
+      />
+    ),
     matchmark: (
       <>
         <path
@@ -1476,6 +1528,18 @@ function UiIcon({ name, className = "" }) {
         fill="currentColor"
       />
     ),
+    phone: (
+      <path
+        d="M5.1 2.6c.5-.13 1.03.1 1.27.58l1.1 2.2c.22.44.13.97-.22 1.32L6 8a8.6 8.6 0 004 4l1.3-1.25a1.1 1.1 0 011.32-.22l2.2 1.1c.48.24.71.77.58 1.27l-.42 1.65a1.6 1.6 0 01-1.75 1.2A12.8 12.8 0 013 4.77a1.6 1.6 0 011.2-1.75l1.65-.42z"
+        fill="currentColor"
+      />
+    ),
+    pin: (
+      <path
+        d="M10 2.5c-3.04 0-5.5 2.4-5.5 5.42 0 3.9 4.55 8.8 5.03 9.3a.65.65 0 00.94 0c.48-.5 5.03-5.4 5.03-9.3 0-3.02-2.46-5.42-5.5-5.42zm0 7.5a2 2 0 110-4 2 2 0 010 4z"
+        fill="currentColor"
+      />
+    ),
     scale: (
       <path
         d="M10 2.25a.75.75 0 01.75.75v.55c.94.08 1.83.3 2.62.63a.75.75 0 11-.58 1.38 6.6 6.6 0 00-2.04-.51v8.44c1.36.1 2.6.53 3.55 1.18a.75.75 0 01-.85 1.24c-.77-.53-1.85-.9-3.1-1V16.5h2a.75.75 0 010 1.5H7.65a.75.75 0 010-1.5h2v-1.1c-1.25.1-2.33.47-3.1 1a.75.75 0 01-.85-1.24c.95-.65 2.19-1.08 3.55-1.18V4.55a6.6 6.6 0 00-2.04.5.75.75 0 11-.58-1.37c.79-.33 1.68-.55 2.62-.63v-.55A.75.75 0 0110 2.25zM4.9 6.1a.75.75 0 01.68.44l1.9 4.2c.09.2.1.43.02.64-.32.86-1.32 1.62-2.6 1.62s-2.28-.76-2.6-1.62a.75.75 0 01.02-.64l1.9-4.2a.75.75 0 01.68-.44zm0 2.3l-1.05 2.33c.2.24.57.43 1.05.43s.85-.19 1.05-.43L4.9 8.4zm10.2-2.3a.75.75 0 01.68.44l1.9 4.2c.09.2.1.43.02.64-.32.86-1.32 1.62-2.6 1.62s-2.28-.76-2.6-1.62a.75.75 0 01.02-.64l1.9-4.2a.75.75 0 01.68-.44zm0 2.3l-1.05 2.33c.2.24.57.43 1.05.43s.85-.19 1.05-.43l-1.05-2.33z"
@@ -1552,6 +1616,7 @@ export default function App() {
     }
   }, [density]);
   const [stripeEnabled, setStripeEnabled] = useState(false);
+  const [planOverrides, setPlanOverrides] = useState({});
   const [session, setSession] = useState(null);
   const [premium, setPremium] = useState(null);
   const [activePage, setActivePage] = useState("home");
@@ -1627,6 +1692,31 @@ export default function App() {
     syncSession(token);
   }, [token]);
 
+  // Retour depuis Stripe Checkout (success_url/cancel_url pointent vers
+  // #/app/tarifs?stripe=...) : le hash étant rechargé en dur par le
+  // navigateur, activePage repart sinon toujours sur "home" par défaut.
+  // On force la page Tarifs une fois au montage, l'effet de synchro du hash
+  // plus bas se chargera de réécrire l'URL proprement ensuite.
+  useEffect(() => {
+    const hash = window.location.hash || "";
+    const queryIndex = hash.indexOf("?");
+    if (queryIndex === -1) return;
+    const params = new URLSearchParams(hash.slice(queryIndex + 1));
+    const stripeStatus = params.get("stripe");
+    if (stripeStatus !== "success" && stripeStatus !== "cancel") return;
+    setActivePage("tarifs");
+    if (stripeStatus === "success") {
+      setPageMessage(language === "en" ? "Payment confirmed, plan activated." : "Paiement confirmé, plan activé.");
+      // Le webhook Stripe qui active réellement le plan est asynchrone : on
+      // relit la session un peu après le retour pour refléter le nouveau
+      // plan dès qu'il est possible, sans bloquer l'affichage immédiat.
+      const currentToken = localStorage.getItem("career_app_token") || "";
+      if (currentToken) {
+        setTimeout(() => syncSession(currentToken), 1500);
+      }
+    }
+  }, []);
+
   useEffect(() => {
     localStorage.setItem("career_app_language", language);
   }, [language]);
@@ -1639,6 +1729,10 @@ export default function App() {
     getHealth()
       .then((health) => setStripeEnabled(Boolean(health.stripeEnabled)))
       .catch(() => setStripeEnabled(false));
+  }, []);
+
+  useEffect(() => {
+    getPlanOverrides().then(setPlanOverrides);
   }, []);
 
   useEffect(() => {
@@ -1774,7 +1868,7 @@ export default function App() {
       setActivePage("home");
       rememberLastAuthMethod("password");
     } catch (error) {
-      setAuthError(error.message);
+      setAuthError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -1788,7 +1882,7 @@ export default function App() {
       setActivePage("home");
       rememberLastAuthMethod("google");
     } catch (error) {
-      setAuthError(error.message);
+      setAuthError(getFriendlyErrorMessage(error, language));
       throw error;
     }
   }
@@ -1798,7 +1892,7 @@ export default function App() {
       clearMessages();
       return await requestLoginCode(payload);
     } catch (error) {
-      setAuthError(error.message);
+      setAuthError(getFriendlyErrorMessage(error, language));
       throw error;
     }
   }
@@ -1808,7 +1902,7 @@ export default function App() {
       clearMessages();
       return await registerUser(payload);
     } catch (error) {
-      setAuthError(error.message);
+      setAuthError(getFriendlyErrorMessage(error, language));
       throw error;
     }
   }
@@ -1827,7 +1921,7 @@ export default function App() {
           : "Compte vérifié. Bienvenue sur Career App."
       );
     } catch (error) {
-      setAuthError(error.message);
+      setAuthError(getFriendlyErrorMessage(error, language));
       throw error;
     }
   }
@@ -1837,7 +1931,7 @@ export default function App() {
       clearMessages();
       return await requestLoginCode({ identifier, purpose: "signup" });
     } catch (error) {
-      setAuthError(error.message);
+      setAuthError(getFriendlyErrorMessage(error, language));
       throw error;
     }
   }
@@ -1852,7 +1946,7 @@ export default function App() {
       setSession({ user: updated.user, premium: updated.premium });
       setPremium(updated.premium);
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -1981,7 +2075,7 @@ export default function App() {
       setImportStep("job");
       setPageMessage(language === "en" ? "CV saved. Add the target job." : "CV enregistré. Ajoute maintenant le poste visé.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -2005,7 +2099,7 @@ export default function App() {
       const result = await extractJobOffer({ text: offerText });
       setJobReview(result?.parsed || extractOfferSummary(offerText));
     } catch (error) {
-      setProcessingError(error.message || (language === "en" ? "Unable to analyze this job offer." : "Impossible d'analyser cette offre."));
+      setProcessingError(getFriendlyErrorMessage(error, language));
       setJobReview(extractOfferSummary(offerText));
     } finally {
       setIsReviewingJob(false);
@@ -2036,7 +2130,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Profile updated." : "Profil mis à jour.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -2049,7 +2143,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Account information updated." : "Informations compte mises à jour.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -2079,7 +2173,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Profile photo updated." : "Photo de profil mise à jour.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     } finally {
       setAvatarUploading(false);
     }
@@ -2100,7 +2194,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Email address added." : "Adresse e-mail ajoutée.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
       throw error;
     }
   }
@@ -2114,7 +2208,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Primary email updated." : "Adresse principale mise à jour.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -2127,7 +2221,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Email address removed." : "Adresse e-mail supprimée.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -2140,7 +2234,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Connected account removed." : "Compte connecté retiré.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -2153,7 +2247,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Google account linked." : "Compte Google lié.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -2179,7 +2273,7 @@ export default function App() {
       setAccountDrawerOpen(false);
       setUserMenuOpen(false);
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
       throw error;
     }
   }
@@ -2193,7 +2287,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Premium offer activated for 30 days." : "Offre premium activée pour 30 jours.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     }
   }
 
@@ -2215,21 +2309,21 @@ export default function App() {
         setPageMessage(language === "en" ? "Plan activated." : "Plan activé.");
       }
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     } finally {
       setPendingPlanAction(null);
     }
   }
 
-  async function handleStripeCheckout(planId, billingCycle) {
+  async function handleStripeCheckout(planId, billingCycle, quantity = 1) {
     if (!user) return;
     setPendingPlanAction(planId);
     try {
       clearMessages();
-      const { url } = await createStripeCheckoutSession({ userId: user.id, planId, billingCycle });
+      const { url } = await createStripeCheckoutSession({ userId: user.id, planId, billingCycle, quantity });
       window.location.href = url;
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
       setPendingPlanAction(null);
     }
   }
@@ -2244,7 +2338,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "License code activated." : "Code de licence activé.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     } finally {
       setPendingPlanAction(null);
     }
@@ -2316,7 +2410,7 @@ export default function App() {
           : "Analyse terminée. Tu peux ouvrir Analyse, Offres, CV+ et Entretiens."
       );
     } catch (error) {
-      setProcessingError(error.message || "Échec de l'analyse.");
+      setProcessingError(getFriendlyErrorMessage(error, language));
       setImportStep("job");
     } finally {
       setIsAnalysing(false);
@@ -2353,7 +2447,7 @@ export default function App() {
       setPremium(updated.premium);
       setPageMessage(language === "en" ? "Password updated." : "Mot de passe mis à jour.");
     } catch (error) {
-      setProcessingError(error.message);
+      setProcessingError(getFriendlyErrorMessage(error, language));
     } finally {
       setSecuritySaving(false);
     }
@@ -2593,6 +2687,7 @@ export default function App() {
             setCvReview={setCvReview}
             cvFileName={cvFileName}
             cvSourceText={cvSourceText}
+            avatarDataUrl={user?.avatarDataUrl}
           />
         ) : null}
 
@@ -2619,6 +2714,7 @@ export default function App() {
         {activePage === "lettre" ? (
           <CoverLetterPage
             language={language}
+            userId={user?.id}
             candidate={user ? buildCandidatePayload() : null}
             offer={jobReview || extractOfferSummary(offerText)}
             tokensBalance={tokensBalance}
@@ -2667,6 +2763,7 @@ export default function App() {
             language={language}
             currency={currency}
             stripeEnabled={stripeEnabled}
+            planOverrides={planOverrides}
             onActivatePlan={handleActivatePlan}
             onStripeCheckout={handleStripeCheckout}
             onRedeemCode={handleRedeemLicenseCode}
@@ -2726,11 +2823,11 @@ const ADMIN_MODULE_DEFS = [
   { id: "dashboard", icon: "chart" },
   { id: "accounts", icon: "profile" },
   { id: "finance", icon: "scale" },
-  { id: "activity", icon: "history" },
   { id: "licenses", icon: "save" },
   { id: "aiSamples", icon: "spark" },
   { id: "settings", icon: "globe" },
   { id: "announcements", icon: "mail" },
+  { id: "activity", icon: "history" },
   { id: "pricing", icon: "pricetag" }
 ];
 
@@ -2795,8 +2892,13 @@ function AdminApp({
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [searchInput, setSearchInput] = useState("");
   const [accountsSearch, setAccountsSearch] = useState("");
+  const [licenseSearch, setLicenseSearch] = useState("");
+  const [financeSearch, setFinanceSearch] = useState("");
   const [searchSuggestions, setSearchSuggestions] = useState([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const notifRef = useRef(null);
   const userMenuRef = useRef(null);
   const searchBoxRef = useRef(null);
   const searchCopy =
@@ -2813,24 +2915,82 @@ function AdminApp({
   }, []);
 
   useEffect(() => {
-    if (!searchInput.trim() || !allowedModules.includes("accounts")) {
+    const term = searchInput.trim();
+    if (!term) {
       setSearchSuggestions([]);
       return undefined;
     }
     const timer = setTimeout(() => {
-      listAdminUsers(user.id, { search: searchInput.trim() })
-        .then((items) => setSearchSuggestions(items.slice(0, 5)))
-        .catch(() => setSearchSuggestions([]));
+      const lookups = [];
+      if (allowedModules.includes("accounts")) {
+        lookups.push(
+          listAdminUsers(user.id, { search: term })
+            .then((items) => items.slice(0, 4).map((item) => ({ kind: "account", ...item })))
+            .catch(() => [])
+        );
+      }
+      if (allowedModules.includes("licenses")) {
+        lookups.push(
+          getAdminLicenseCodes(user.id, { search: term })
+            .then((items) => items.slice(0, 3).map((item) => ({ kind: "license", ...item })))
+            .catch(() => [])
+        );
+      }
+      if (allowedModules.includes("finance")) {
+        lookups.push(
+          getAdminFinance(user.id, { search: term })
+            .then((data) => (data.items || []).slice(0, 3).map((item) => ({ kind: "transaction", ...item })))
+            .catch(() => [])
+        );
+      }
+      Promise.all(lookups).then((groups) => setSearchSuggestions(groups.flat()));
     }, 250);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchInput]);
 
-  function goToAccount(item) {
-    setAccountsSearch(item.email);
-    setSearchInput(item.email);
+  useEffect(() => {
+    function handleClickOutsideNotif(event) {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutsideNotif);
+    return () => document.removeEventListener("mousedown", handleClickOutsideNotif);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    function load() {
+      getAdminNotifications(user.id)
+        .then((items) => {
+          if (!cancelled) setNotifications(items || []);
+        })
+        .catch(() => {});
+    }
+    load();
+    const interval = setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user.id]);
+
+  function goToResult(item) {
     setShowSuggestions(false);
-    setTab("accounts");
+    if (item.kind === "license") {
+      setLicenseSearch(item.code);
+      setSearchInput(item.code);
+      setTab("licenses");
+    } else if (item.kind === "transaction") {
+      setFinanceSearch(item.userEmail || item.id);
+      setSearchInput(item.userEmail || item.id);
+      setTab("finance");
+    } else {
+      setAccountsSearch(item.email);
+      setSearchInput(item.email);
+      setTab("accounts");
+    }
   }
 
   function submitSearch(event) {
@@ -2935,22 +3095,109 @@ function AdminApp({
           </form>
           {showSuggestions && searchSuggestions.length ? (
             <div className="topbar-suggestions">
-              {searchSuggestions.map((item) => (
-                <button type="button" key={item.id} className="topbar-suggestion-row" onClick={() => goToAccount(item)}>
-                  <AvatarCircle user={item} />
-                  <div>
-                    <strong>
-                      {item.firstName} {item.lastName}
-                    </strong>
-                    <span className="muted">{item.email}</span>
-                  </div>
-                </button>
-              ))}
+              {searchSuggestions.map((item) => {
+                const key = `${item.kind}-${item.id || item.code}`;
+                if (item.kind === "license") {
+                  return (
+                    <button type="button" key={key} className="topbar-suggestion-row" onClick={() => goToResult(item)}>
+                      <span className="topbar-suggestion-icon">
+                        <UiIcon name="shield" />
+                      </span>
+                      <div>
+                        <strong>{item.code}</strong>
+                        <span className="muted">
+                          {item.ownerFirstName} {item.ownerLastName} · {item.seatsUsed}/{item.seatsTotal}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                }
+                if (item.kind === "transaction") {
+                  return (
+                    <button type="button" key={key} className="topbar-suggestion-row" onClick={() => goToResult(item)}>
+                      <span className="topbar-suggestion-icon">
+                        <UiIcon name="scale" />
+                      </span>
+                      <div>
+                        <strong>
+                          {item.userFirstName} {item.userLastName}
+                        </strong>
+                        <span className="muted">
+                          {formatEur(item.amountCollected, item.currency)} · {item.planId}
+                        </span>
+                      </div>
+                    </button>
+                  );
+                }
+                return (
+                  <button type="button" key={key} className="topbar-suggestion-row" onClick={() => goToResult(item)}>
+                    <AvatarCircle user={item} />
+                    <div>
+                      <strong>
+                        {item.firstName} {item.lastName}
+                      </strong>
+                      <span className="muted">{item.email}</span>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           ) : null}
         </div>
 
         <div className="topbar-user" ref={userMenuRef}>
+          <div className="topbar-notif" ref={notifRef}>
+            <button
+              type="button"
+              className="topbar-icon-btn"
+              title={language === "en" ? "Notifications" : "Notifications"}
+              onClick={() => setNotifOpen((prev) => !prev)}
+            >
+              <UiIcon name="bell" />
+              {notifications.length ? (
+                <span className="topbar-notif-badge">{notifications.length > 9 ? "9+" : notifications.length}</span>
+              ) : null}
+            </button>
+            {notifOpen ? (
+              <div className="topbar-notif-panel">
+                <div className="topbar-notif-panel-head">
+                  <strong>{language === "en" ? "Notifications" : "Notifications"}</strong>
+                  <span className="muted">
+                    {notifications.length
+                      ? `${notifications.length} ${language === "en" ? "item(s)" : "élément(s)"}`
+                      : language === "en"
+                      ? "Nothing to report"
+                      : "Rien à signaler"}
+                  </span>
+                </div>
+                {notifications.length ? (
+                  <div className="topbar-notif-list">
+                    {notifications.map((item) => {
+                      const text = adminNotificationText(item, language);
+                      return (
+                        <div key={item.id} className="topbar-notif-row">
+                          <span className="topbar-notif-icon">
+                            <UiIcon name={text.icon} />
+                          </span>
+                          <div>
+                            <strong>{text.title}</strong>
+                            <span className="muted">{text.detail}</span>
+                            {item.createdAt ? <span className="topbar-notif-time">{formatDate(item.createdAt)}</span> : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="muted topbar-notif-empty">
+                    {language === "en"
+                      ? "New signups, payments, full licenses and announcement failures will show up here."
+                      : "Les nouvelles inscriptions, paiements, licences épuisées et échecs d'annonce apparaîtront ici."}
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             className="topbar-icon-btn"
@@ -3038,13 +3285,17 @@ function AdminApp({
           {tab === "accounts" && allowedModules.includes("accounts") ? (
             <AdminAccountsPage user={user} language={language} currency={currency} initialSearch={accountsSearch} />
           ) : null}
-          {tab === "finance" && allowedModules.includes("finance") ? <AdminFinancePage user={user} language={language} currency={currency} /> : null}
+          {tab === "finance" && allowedModules.includes("finance") ? (
+            <AdminFinancePage user={user} language={language} currency={currency} initialSearch={financeSearch} />
+          ) : null}
           {tab === "activity" && allowedModules.includes("activity") ? <AdminActivityLogPage user={user} language={language} /> : null}
-          {tab === "licenses" && allowedModules.includes("licenses") ? <AdminLicenseCodesPage user={user} language={language} /> : null}
+          {tab === "licenses" && allowedModules.includes("licenses") ? (
+            <AdminLicenseCodesPage user={user} language={language} initialSearch={licenseSearch} />
+          ) : null}
           {tab === "aiSamples" && allowedModules.includes("aiSamples") ? <AdminAiSamplesPage user={user} language={language} /> : null}
           {tab === "settings" && allowedModules.includes("settings") ? <AdminSettingsPage user={user} language={language} /> : null}
           {tab === "announcements" && allowedModules.includes("announcements") ? <AdminAnnouncementsPage user={user} language={language} /> : null}
-          {tab === "pricing" && allowedModules.includes("pricing") ? <AdminPricingPage language={language} currency={currency} /> : null}
+          {tab === "pricing" && allowedModules.includes("pricing") ? <AdminPricingPage user={user} language={language} currency={currency} /> : null}
         </main>
       </div>
 
@@ -3405,6 +3656,25 @@ function SchoolApp({
   );
 }
 
+function AdminExportCsvButton({ adminUserId, path, language }) {
+  const [loading, setLoading] = useState(false);
+  async function handleClick() {
+    setLoading(true);
+    try {
+      const base = await getApiBase();
+      window.open(`${base}${path}?adminUserId=${encodeURIComponent(adminUserId)}`, "_blank");
+    } finally {
+      setLoading(false);
+    }
+  }
+  return (
+    <button type="button" className="btn-ghost admin-export-btn" onClick={handleClick} disabled={loading}>
+      {loading ? <span className="btn-spinner" /> : <UiIcon name="download" />}
+      {language === "en" ? "Export CSV" : "Exporter en CSV"}
+    </button>
+  );
+}
+
 function AdminKpiCard({ tone, icon, value, label }) {
   return (
     <div className={`admin-kpi-card tone-${tone}`}>
@@ -3465,7 +3735,7 @@ function SchoolDashboardPage({ user, language }) {
   useEffect(() => {
     getSchoolOverview(user.id)
       .then(setOverview)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
     getSchoolStudents(user.id)
       .then((items) =>
         setRecentStudents([...items].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5))
@@ -3611,7 +3881,7 @@ function SchoolStudentsPage({ user, language, initialSearch }) {
   function reload() {
     getSchoolStudents(user.id, { search })
       .then(setStudents)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }
 
   useEffect(() => {
@@ -3652,7 +3922,7 @@ function SchoolStudentsPage({ user, language, initialSearch }) {
         customClass: { popup: "career-toast", title: "career-toast-title" }
       });
     } catch (err) {
-      Swal.fire({ icon: "error", title: err.message });
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
     }
   }
 
@@ -3776,7 +4046,7 @@ function SchoolInvitationsPage({ user, language }) {
   function reload() {
     getSchoolInvitations(user.id)
       .then(setInvitations)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }
 
   useEffect(() => {
@@ -3795,7 +4065,7 @@ function SchoolInvitationsPage({ user, language }) {
       setEmail("");
       reload();
     } catch (err) {
-      setError(err.message);
+      setError(getFriendlyErrorMessage(err, language));
     } finally {
       setSending(false);
     }
@@ -3979,7 +4249,7 @@ function SchoolLicensePage({ user, language, currency }) {
   useEffect(() => {
     getSchoolLicense(user.id)
       .then(setCodes)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }, [user.id]);
 
   if (error) return <p className="field-error">{error}</p>;
@@ -4052,7 +4322,7 @@ function SchoolInsightsPage({ user, language }) {
   useEffect(() => {
     getSchoolInsights(user.id)
       .then(setInsights)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }, [user.id]);
 
   if (error) return <p className="field-error">{error}</p>;
@@ -4238,7 +4508,15 @@ function AdminDashboardPage({ user, language }) {
           recentActivity: "Recent activity",
           noActivity: "No activity recorded yet.",
           planDistribution: "Active plans breakdown",
-          noPlanData: "No active plan yet."
+          noPlanData: "No active plan yet.",
+          conversionRate: "Free → paid conversion",
+          revenueThisMonth: "Revenue this month",
+          revenueNoData: "No revenue last month to compare",
+          licenseUsage: "License seats used",
+          licenseNoSeats: "No license sold yet",
+          pendingInvitations: "Pending school invitations",
+          emailScoutSearches: "Email Scout searches",
+          inactiveAccounts: "Inactive accounts (30d+)"
         }
       : {
           title: "Dashboard",
@@ -4253,7 +4531,15 @@ function AdminDashboardPage({ user, language }) {
           recentActivity: "Activité récente",
           noActivity: "Aucune activité enregistrée pour l'instant.",
           planDistribution: "Répartition des plans actifs",
-          noPlanData: "Aucun plan actif pour l'instant."
+          noPlanData: "Aucun plan actif pour l'instant.",
+          conversionRate: "Conversion gratuit → payant",
+          revenueThisMonth: "Revenu ce mois-ci",
+          revenueNoData: "Aucun revenu le mois dernier pour comparer",
+          licenseUsage: "Sièges de licence utilisés",
+          licenseNoSeats: "Aucune licence vendue pour l'instant",
+          pendingInvitations: "Invitations école en attente",
+          emailScoutSearches: "Recherches Email Scout",
+          inactiveAccounts: "Comptes inactifs (30j+)"
         };
 
   const DONUT_COLORS = [
@@ -4267,7 +4553,7 @@ function AdminDashboardPage({ user, language }) {
   useEffect(() => {
     getAdminOverview(user.id)
       .then(setOverview)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
     getAdminActivityLog(user.id)
       .then((data) => setRecentActivity(data.items.slice(0, 5)))
       .catch(() => setRecentActivity([]));
@@ -4294,6 +4580,34 @@ function AdminDashboardPage({ user, language }) {
         <AdminKpiCard tone="primary" icon="upload" value={overview.totalCvs} label={copy.cvs} />
         <AdminKpiCard tone="warning" icon="chart" value={overview.totalMatchRuns} label={copy.matches} />
         <AdminKpiCard tone="success" icon="spark" value={overview.signupsLast30Days} label={copy.signups} />
+      </div>
+
+      <div className="admin-kpi-grid admin-kpi-grid-secondary">
+        <AdminKpiCard
+          tone="primary"
+          icon="scale"
+          value={`${Math.round((overview.conversionRate || 0) * 100)}%`}
+          label={copy.conversionRate}
+        />
+        <AdminKpiCard
+          tone="success"
+          icon="pricetag"
+          value={formatEur(overview.revenueThisMonth, "EUR")}
+          label={
+            overview.revenueGrowth == null
+              ? copy.revenueThisMonth
+              : `${copy.revenueThisMonth} (${overview.revenueGrowth >= 0 ? "+" : ""}${Math.round(overview.revenueGrowth * 100)}%)`
+          }
+        />
+        <AdminKpiCard
+          tone="warning"
+          icon="shield"
+          value={overview.licenseSeatsTotal ? `${overview.licenseSeatsUsed}/${overview.licenseSeatsTotal}` : "—"}
+          label={copy.licenseUsage}
+        />
+        <AdminKpiCard tone="primary" icon="mail" value={overview.pendingInvitations} label={copy.pendingInvitations} />
+        <AdminKpiCard tone="success" icon="network" value={overview.emailScoutSearches} label={copy.emailScoutSearches} />
+        <AdminKpiCard tone="warning" icon="alert" value={overview.inactiveAccounts} label={copy.inactiveAccounts} />
       </div>
 
       <div className="admin-panel-grid">
@@ -4379,12 +4693,118 @@ function AdminDashboardPage({ user, language }) {
   );
 }
 
-function AdminPricingPage({ language, currency = "EUR" }) {
+function AdminPricingPage({ user, language, currency = "EUR" }) {
   const copy =
     language === "en"
-      ? { title: "Pricing", subtitle: "Read-only overview of the plans currently in effect." }
-      : { title: "Tarifs", subtitle: "Aperçu en lecture seule des grilles tarifaires en vigueur." };
+      ? {
+          title: "Pricing",
+          subtitle: "Plans currently in effect — prices can be edited here.",
+          edit: "Edit",
+          save: "Save",
+          saving: "Saving…",
+          cancel: "Cancel",
+          reset: "Reset to default",
+          monthly: "Monthly price (€)",
+          annual: "Annual price (€)",
+          singlePrice: "Price (€)",
+          customBadge: "Custom price",
+          confirmStripeTitle: "Changing this price creates a new Stripe price",
+          confirmStripeText:
+            "Stripe prices can't be edited in place — a new one will be created and used from now on for checkout. Existing subscribers keep their current price until they change plans.",
+          confirmBtn: "Confirm"
+        }
+      : {
+          title: "Tarifs",
+          subtitle: "Grilles tarifaires en vigueur — les prix sont modifiables ici.",
+          edit: "Modifier",
+          save: "Enregistrer",
+          saving: "Enregistrement…",
+          cancel: "Annuler",
+          reset: "Réinitialiser au tarif par défaut",
+          monthly: "Prix mensuel (€)",
+          annual: "Prix annuel (€)",
+          singlePrice: "Prix (€)",
+          customBadge: "Tarif personnalisé",
+          confirmStripeTitle: "Modifier ce tarif crée un nouveau prix Stripe",
+          confirmStripeText:
+            "Les tarifs Stripe ne peuvent pas être modifiés sur place — un nouveau sera créé et utilisé désormais pour le paiement. Les abonnés existants gardent leur tarif actuel tant qu'ils ne changent pas de plan.",
+          confirmBtn: "Confirmer"
+        };
   const pricingCopy = APP_COPY[language]?.pricing || APP_COPY.fr.pricing;
+
+  const [overrides, setOverrides] = useState({});
+  const [loaded, setLoaded] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [form, setForm] = useState({ monthlyPrice: "", annualPrice: "" });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  function load() {
+    getAdminPlans(user.id)
+      .then((items) => {
+        setOverrides(Object.fromEntries(items.map((item) => [item.id, item])));
+        setLoaded(true);
+      })
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id]);
+
+  function startEdit(plan, effective) {
+    setEditingId(plan.id);
+    setError("");
+    setForm({
+      monthlyPrice: effective.isSinglePrice ? "" : String(effective.monthlyPrice ?? ""),
+      annualPrice: String(effective.annualPrice ?? "")
+    });
+  }
+
+  async function saveEdit(plan, effective) {
+    if (plan.grantsPremium) {
+      const result = await Swal.fire({
+        icon: "warning",
+        title: copy.confirmStripeTitle,
+        text: copy.confirmStripeText,
+        showCancelButton: true,
+        confirmButtonText: copy.confirmBtn,
+        cancelButtonText: copy.cancel
+      });
+      if (!result.isConfirmed) return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await updateAdminPlan({
+        adminUserId: user.id,
+        planId: plan.id,
+        monthlyPrice: effective.isSinglePrice ? null : Number(form.monthlyPrice),
+        annualPrice: Number(form.annualPrice)
+      });
+      setEditingId(null);
+      load();
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function resetPlan(plan) {
+    setSaving(true);
+    setError("");
+    try {
+      await resetAdminPlan({ adminUserId: user.id, planId: plan.id });
+      setEditingId(null);
+      load();
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <section className="admin-pricing">
@@ -4392,6 +4812,8 @@ function AdminPricingPage({ language, currency = "EUR" }) {
         <h2>{copy.title}</h2>
         <p>{copy.subtitle}</p>
       </header>
+
+      {error ? <p className="field-error">{error}</p> : null}
 
       {PLAN_SEGMENTS.map((segment) => (
         <div key={segment} className="admin-pricing-segment">
@@ -4404,21 +4826,83 @@ function AdminPricingPage({ language, currency = "EUR" }) {
           </h3>
           <div className="pricing-grid admin-pricing-grid">
             {PLANS.filter((plan) => plan.segment === segment).map((plan) => {
-              const price = formatPlanPrice(plan, "monthly", language, pricingCopy, currency);
+              const effective = overrides[plan.id] || {
+                monthlyPrice: plan.monthlyPrice,
+                annualPrice: plan.annualPrice,
+                isSinglePrice: plan.monthlyPrice == null,
+                overridden: false
+              };
+              const price = formatPlanPrice(
+                { ...plan, monthlyPrice: effective.monthlyPrice, annualPrice: effective.annualPrice },
+                "monthly",
+                language,
+                pricingCopy,
+                currency
+              );
+              const isEditing = editingId === plan.id;
               return (
                 <article key={plan.id} className={`pricing-card admin-pricing-card ${plan.highlighted ? "recommended" : ""}`}>
                   {plan.badge ? <span className="pricing-badge">{plan.badge[language] || plan.badge.fr}</span> : null}
+                  {effective.overridden ? <span className="admin-pricing-custom-badge">{copy.customBadge}</span> : null}
                   <h3>{plan.name[language] || plan.name.fr}</h3>
                   <p className="muted">{plan.tagline[language] || plan.tagline.fr}</p>
-                  <div className="pricing-price">
-                    <strong>{price.amount}</strong>
-                    <span>{price.unit}</span>
-                  </div>
-                  <ul className="pricing-feature-list">
-                    {(plan.features[language] || plan.features.fr).map((feature) => (
-                      <li key={feature}>{feature}</li>
-                    ))}
-                  </ul>
+
+                  {isEditing ? (
+                    <div className="admin-pricing-edit-form">
+                      {!effective.isSinglePrice ? (
+                        <label>
+                          {copy.monthly}
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={form.monthlyPrice}
+                            onChange={(event) => setForm((prev) => ({ ...prev, monthlyPrice: event.target.value }))}
+                          />
+                        </label>
+                      ) : null}
+                      <label>
+                        {effective.isSinglePrice ? copy.singlePrice : copy.annual}
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={form.annualPrice}
+                          onChange={(event) => setForm((prev) => ({ ...prev, annualPrice: event.target.value }))}
+                        />
+                      </label>
+                      <div className="admin-pricing-edit-actions">
+                        <button type="button" className="btn-ghost" onClick={() => setEditingId(null)} disabled={saving}>
+                          {copy.cancel}
+                        </button>
+                        <button type="button" className="btn-main" onClick={() => saveEdit(plan, effective)} disabled={saving}>
+                          {saving ? <span className="btn-spinner" /> : null} {saving ? copy.saving : copy.save}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="pricing-price">
+                        <strong>{price.amount}</strong>
+                        <span>{price.unit}</span>
+                      </div>
+                      <ul className="pricing-feature-list">
+                        {(plan.features[language] || plan.features.fr).map((feature) => (
+                          <li key={feature}>{feature}</li>
+                        ))}
+                      </ul>
+                      <div className="admin-pricing-edit-actions">
+                        <button type="button" className="btn-ghost" onClick={() => startEdit(plan, effective)} disabled={!loaded}>
+                          <UiIcon name="edit" /> {copy.edit}
+                        </button>
+                        {effective.overridden ? (
+                          <button type="button" className="btn-ghost" onClick={() => resetPlan(plan)} disabled={saving}>
+                            {copy.reset}
+                          </button>
+                        ) : null}
+                      </div>
+                    </>
+                  )}
                 </article>
               );
             })}
@@ -4753,7 +5237,7 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
       setEditTarget(null);
       reload();
     } catch (err) {
-      setEditError(err.message);
+      setEditError(getFriendlyErrorMessage(err, language));
     } finally {
       setEditSaving(false);
     }
@@ -4797,20 +5281,20 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
         customClass: { popup: "career-toast", title: "career-toast-title" }
       });
     } catch (err) {
-      Swal.fire({ icon: "error", title: err.message });
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
     }
   }
 
   function loadUsers() {
     listAdminUsers(user.id, { search, roleType: subTab === "all" ? "" : subTab })
       .then(setUsers)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }
 
   function loadOrgAccounts() {
     getAdminOrgAccounts(user.id, subTab)
       .then(setOrgAccounts)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }
 
   useEffect(() => {
@@ -4876,7 +5360,7 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
       if (isOrgTab) loadOrgAccounts();
       else loadUsers();
     } catch (err) {
-      setError(err.message);
+      setError(getFriendlyErrorMessage(err, language));
     } finally {
       setCreating(false);
     }
@@ -4889,9 +5373,12 @@ function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) 
           <h2>{copy.title}</h2>
           <p>{copy.subtitle}</p>
         </div>
-        <button type="button" className="btn-main ready" onClick={() => setCreateOpen(true)}>
-          <UiIcon name="profile" /> {copy.addAccount}
-        </button>
+        <div className="admin-header-actions">
+          <AdminExportCsvButton adminUserId={user.id} path="/admin/export/accounts" language={language} />
+          <button type="button" className="btn-main ready" onClick={() => setCreateOpen(true)}>
+            <UiIcon name="profile" /> {copy.addAccount}
+          </button>
+        </div>
       </header>
 
       <div className="admin-subtabs">
@@ -5259,7 +5746,7 @@ function planPriceLabel(planId, billingCycle, freeLabel, currency = "EUR") {
   return `${formatEur(amount, currency)} / ${billingCycle === "annual" ? "an" : "mois"}`;
 }
 
-function AdminFinancePage({ user, language, currency = "EUR" }) {
+function AdminFinancePage({ user, language, currency = "EUR", initialSearch }) {
   const copy =
     language === "en"
       ? {
@@ -5279,7 +5766,15 @@ function AdminFinancePage({ user, language, currency = "EUR" }) {
           colListed: "Listed price",
           colCollected: "Amount collected",
           colSource: "Source",
+          colActions: "Actions",
           empty: "No transaction found.",
+          refund: "Refund",
+          refunded: "Refunded",
+          refunding: "Refunding…",
+          confirmRefundTitle: "Refund this transaction?",
+          confirmRefundText: "This immediately refunds the customer via Stripe. This cannot be undone.",
+          confirmRefundBtn: "Refund",
+          cancel: "Cancel",
           disclaimer:
             "\"Listed price\" is the plan's catalog price at the time of the transaction. \"Amount collected\" is only non-zero for real Stripe payments — instant/admin/license activations are free or already covered by a license seat, so no money changes hands for those."
         }
@@ -5300,7 +5795,15 @@ function AdminFinancePage({ user, language, currency = "EUR" }) {
           colListed: "Prix catalogue",
           colCollected: "Montant encaissé",
           colSource: "Source",
+          colActions: "Actions",
           empty: "Aucune transaction trouvée.",
+          refund: "Rembourser",
+          refunded: "Remboursé",
+          refunding: "Remboursement…",
+          confirmRefundTitle: "Rembourser cette transaction ?",
+          confirmRefundText: "Cela rembourse immédiatement le client via Stripe. Action irréversible.",
+          confirmRefundBtn: "Rembourser",
+          cancel: "Annuler",
           disclaimer:
             "Le \"prix catalogue\" est le tarif du plan au moment de la transaction. Le \"montant encaissé\" n'est non-nul que pour les vrais paiements Stripe — les activations instantanées/admin/licence sont gratuites ou déjà couvertes par un siège de licence, donc aucun argent ne change de main pour celles-ci."
         };
@@ -5322,16 +5825,59 @@ function AdminFinancePage({ user, language, currency = "EUR" }) {
 
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch || "");
   const [source, setSource] = useState("");
   const [page, setPage] = useState(1);
+  const [refundingId, setRefundingId] = useState("");
+
+  useEffect(() => {
+    if (initialSearch) setSearch(initialSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSearch]);
+
+  function load() {
+    getAdminFinance(user.id, { search, source })
+      .then(setData)
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
+  }
 
   useEffect(() => {
     setPage(1);
-    getAdminFinance(user.id, { search, source })
-      .then(setData)
-      .catch((err) => setError(err.message));
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.id, search, source]);
+
+  async function handleRefund(item) {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: copy.confirmRefundTitle,
+      text: copy.confirmRefundText,
+      showCancelButton: true,
+      confirmButtonText: copy.confirmRefundBtn,
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#b91c1c"
+    });
+    if (!result.isConfirmed) return;
+    setRefundingId(item.id);
+    try {
+      await refundAdminTransaction({ adminUserId: user.id, transactionId: item.id });
+      load();
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: language === "en" ? "Refunded." : "Remboursé.",
+        showConfirmButton: false,
+        timer: 2600,
+        timerProgressBar: true,
+        customClass: { popup: "career-toast", title: "career-toast-title" }
+      });
+    } catch (err) {
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+    } finally {
+      setRefundingId("");
+    }
+  }
 
   if (error) return <p className="field-error">{error}</p>;
   if (!data) return <p className="muted">…</p>;
@@ -5343,9 +5889,12 @@ function AdminFinancePage({ user, language, currency = "EUR" }) {
 
   return (
     <section className="admin-finance">
-      <header className="module-header">
-        <h2>{copy.title}</h2>
-        <p>{copy.subtitle}</p>
+      <header className="module-header admin-accounts-header">
+        <div>
+          <h2>{copy.title}</h2>
+          <p>{copy.subtitle}</p>
+        </div>
+        <AdminExportCsvButton adminUserId={user.id} path="/admin/export/transactions" language={language} />
       </header>
 
       <div className="admin-kpi-grid">
@@ -5432,6 +5981,7 @@ function AdminFinancePage({ user, language, currency = "EUR" }) {
               <th>{copy.colListed}</th>
               <th>{copy.colCollected}</th>
               <th>{copy.colSource}</th>
+              <th>{copy.colActions}</th>
             </tr>
           </thead>
           <tbody>
@@ -5463,11 +6013,27 @@ function AdminFinancePage({ user, language, currency = "EUR" }) {
                   <td>
                     <span className="tag">{sourceLabels[item.source] || item.source}</span>
                   </td>
+                  <td>
+                    {item.refunded ? (
+                      <span className="tag tag-danger">{copy.refunded}</span>
+                    ) : item.refundable ? (
+                      <button
+                        type="button"
+                        className="admin-row-action danger"
+                        disabled={refundingId === item.id}
+                        onClick={() => handleRefund(item)}
+                      >
+                        {refundingId === item.id ? copy.refunding : copy.refund}
+                      </button>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                 </tr>
               ))
             ) : (
               <tr>
-                <td colSpan={7} className="admin-table-empty muted">
+                <td colSpan={8} className="admin-table-empty muted">
                   {copy.empty}
                 </td>
               </tr>
@@ -5496,6 +6062,49 @@ const ADMIN_EVENT_LABELS = {
 
 function eventTypeLabel(eventType, language) {
   return ADMIN_EVENT_LABELS[eventType]?.[language] || ADMIN_EVENT_LABELS[eventType]?.fr || eventType;
+}
+
+// Traduit chaque type de notification admin en texte affichable. Chaque type
+// correspond à un événement réel détecté côté serveur (nouvelle inscription,
+// paiement Stripe encaissé, licence épuisée, échec d'envoi d'annonce) — pas
+// de contenu fabriqué.
+function adminNotificationText(item, language) {
+  const name = [item.data?.firstName, item.data?.lastName].filter(Boolean).join(" ") || "—";
+  const planName = item.data?.planId ? getPlanById(item.data.planId)?.name?.[language] || getPlanById(item.data.planId)?.name?.fr || item.data.planId : "";
+  switch (item.type) {
+    case "new_signup":
+      return {
+        icon: "profile",
+        title: language === "en" ? "New account" : "Nouveau compte",
+        detail: `${name} — ${getAccountLabel(item.data?.roleType, language)}`
+      };
+    case "new_org":
+      return {
+        icon: "briefcase",
+        title: language === "en" ? "New organization" : "Nouvelle organisation",
+        detail: `${name} — ${getAccountLabel(item.data?.roleType, language)}`
+      };
+    case "new_payment":
+      return {
+        icon: "scale",
+        title: language === "en" ? "Payment received" : "Paiement encaissé",
+        detail: `${name} — ${formatEur(item.data?.amount, item.data?.currency || "EUR")}${planName ? ` (${planName})` : ""}`
+      };
+    case "license_full":
+      return {
+        icon: "shield",
+        title: language === "en" ? "License fully used" : "Licence épuisée",
+        detail: `${item.data?.code} — ${name} (${item.data?.seatsTotal} ${language === "en" ? "seats" : "sièges"})`
+      };
+    case "announcement_failed":
+      return {
+        icon: "alert",
+        title: language === "en" ? "Announcement send failures" : "Échecs d'envoi d'annonce",
+        detail: `${item.data?.subject} — ${item.data?.failedCount} ${language === "en" ? "failed" : "échec(s)"}`
+      };
+    default:
+      return { icon: "alert", title: item.type, detail: "" };
+  }
 }
 
 function AdminActivityLogPage({ user, language }) {
@@ -5536,7 +6145,7 @@ function AdminActivityLogPage({ user, language }) {
     setPage(1);
     getAdminActivityLog(user.id, { search, eventType })
       .then(setData)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }, [user.id, search, eventType]);
 
   if (error) return <p className="field-error">{error}</p>;
@@ -5627,7 +6236,7 @@ function AdminActivityLogPage({ user, language }) {
   );
 }
 
-function AdminLicenseCodesPage({ user, language }) {
+function AdminLicenseCodesPage({ user, language, initialSearch }) {
   const copy =
     language === "en"
       ? {
@@ -5673,14 +6282,19 @@ function AdminLicenseCodesPage({ user, language }) {
 
   const [items, setItems] = useState([]);
   const [error, setError] = useState("");
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(initialSearch || "");
   const [page, setPage] = useState(1);
   const [busyCode, setBusyCode] = useState("");
+
+  useEffect(() => {
+    if (initialSearch) setSearch(initialSearch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialSearch]);
 
   function load() {
     getAdminLicenseCodes(user.id, { search })
       .then(setItems)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }
 
   useEffect(() => {
@@ -5705,7 +6319,7 @@ function AdminLicenseCodesPage({ user, language }) {
       await revokeAdminLicenseCode(user.id, code);
       load();
     } catch (err) {
-      Swal.fire({ icon: "error", title: err.message });
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
     } finally {
       setBusyCode("");
     }
@@ -5717,7 +6331,7 @@ function AdminLicenseCodesPage({ user, language }) {
       await restoreAdminLicenseCode(user.id, code);
       load();
     } catch (err) {
-      Swal.fire({ icon: "error", title: err.message });
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
     } finally {
       setBusyCode("");
     }
@@ -5728,9 +6342,12 @@ function AdminLicenseCodesPage({ user, language }) {
 
   return (
     <section className="admin-licenses">
-      <header className="module-header">
-        <h2>{copy.title}</h2>
-        <p>{copy.subtitle}</p>
+      <header className="module-header admin-accounts-header">
+        <div>
+          <h2>{copy.title}</h2>
+          <p>{copy.subtitle}</p>
+        </div>
+        <AdminExportCsvButton adminUserId={user.id} path="/admin/export/license-codes" language={language} />
       </header>
 
       {error ? <p className="field-error">{error}</p> : null}
@@ -5858,7 +6475,7 @@ function AdminAiSamplesPage({ user, language }) {
     setPage(1);
     getAdminAiSamples(user.id, { search })
       .then(setData)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }, [user.id, search]);
 
   if (error) return <p className="field-error">{error}</p>;
@@ -5948,8 +6565,6 @@ function AdminSettingsPage({ user, language }) {
           enabled: "Enabled",
           disabled: "Disabled",
           notConfigured: "Not configured in .env — toggle has no effect",
-          announceTitle: "Announcement emails",
-          announceText: "Not built yet — would require a template/audience/sending system. Let me know if you want it next.",
           toggle: "Toggle"
         }
       : {
@@ -5962,8 +6577,6 @@ function AdminSettingsPage({ user, language }) {
           enabled: "Activé",
           disabled: "Désactivé",
           notConfigured: "Non configuré dans .env — le bouton n'a aucun effet",
-          announceTitle: "Emails d'annonce",
-          announceText: "Pas encore construit — nécessiterait un système de modèles/audience/envoi. Dis-moi si tu veux qu'on le fasse ensuite.",
           toggle: "Basculer"
         };
 
@@ -5972,7 +6585,7 @@ function AdminSettingsPage({ user, language }) {
   const [saving, setSaving] = useState("");
 
   useEffect(() => {
-    getAdminSettings(user.id).then(setSettings).catch((err) => setError(err.message));
+    getAdminSettings(user.id).then(setSettings).catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }, [user.id]);
 
   async function toggle(key, currentValue) {
@@ -5981,7 +6594,7 @@ function AdminSettingsPage({ user, language }) {
       const updated = await updateAdminSetting(user.id, key, !currentValue);
       setSettings(updated);
     } catch (err) {
-      setError(err.message);
+      setError(getFriendlyErrorMessage(err, language));
     } finally {
       setSaving("");
     }
@@ -6107,7 +6720,7 @@ function AdminAnnouncementsPage({ user, language }) {
   function loadHistory() {
     getAdminAnnouncements(user.id)
       .then(setHistory)
-      .catch((err) => setError(err.message));
+      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }
 
   useEffect(() => {
@@ -6156,7 +6769,7 @@ function AdminAnnouncementsPage({ user, language }) {
         customClass: { popup: "career-toast", title: "career-toast-title" }
       });
     } catch (err) {
-      setError(err.message);
+      setError(getFriendlyErrorMessage(err, language));
     } finally {
       setSending(false);
     }
@@ -6506,7 +7119,7 @@ function AccountDrawer({
       setPendingEmail(emailForm.trim());
       setEmailCode("");
     } catch (error) {
-      setLocalError(error.message);
+      setLocalError(getFriendlyErrorMessage(error, language));
     } finally {
       setEmailSaving(false);
     }
@@ -6523,7 +7136,7 @@ function AccountDrawer({
       setEmailCode("");
       setAddingEmail(false);
     } catch (error) {
-      setLocalError(error.message);
+      setLocalError(getFriendlyErrorMessage(error, language));
     } finally {
       setEmailSaving(false);
     }
@@ -6536,7 +7149,7 @@ function AccountDrawer({
       setDeleteSaving(true);
       await onDeleteAccount(deleteConfirm);
     } catch (error) {
-      setLocalError(error.message);
+      setLocalError(getFriendlyErrorMessage(error, language));
     } finally {
       setDeleteSaving(false);
     }
@@ -9175,7 +9788,8 @@ function ImportPage({
   cvReview,
   setCvReview,
   cvFileName,
-  cvSourceText
+  cvSourceText,
+  avatarDataUrl
 }) {
   const copy = APP_COPY[language]?.import || APP_COPY.fr.import;
   const activeIndex = importStep === "review" ? 1 : importStep === "job" ? 2 : importStep === "results" ? 3 : 0;
@@ -9583,6 +10197,7 @@ function ImportPage({
           cvSourceText={cvSourceText}
           copy={copy}
           language={language}
+          avatarDataUrl={avatarDataUrl}
         />
       ) : null}
     </section>
@@ -9643,7 +10258,8 @@ function MatchResultsStep({
   cvReview,
   cvSourceText,
   copy,
-  language
+  language,
+  avatarDataUrl
 }) {
   const [feedback, setFeedback] = useState(null);
   const [feedbackSaving, setFeedbackSaving] = useState(false);
@@ -9736,7 +10352,24 @@ function MatchResultsStep({
       onGoToTarifs();
       return;
     }
-    window.print();
+    if (!cvReview) {
+      window.print();
+      return;
+    }
+    // Le bouton doit imprimer uniquement le CV, pas toute la page de
+    // résultats (score, recommandations, réseautage...). On force l'aperçu
+    // CV à s'ouvrir si besoin, on masque le reste via une classe le temps de
+    // l'impression, puis on restaure l'état initial.
+    const wasPreviewOpen = previewOpen;
+    if (!wasPreviewOpen) setPreviewOpen(true);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        document.body.classList.add("print-cv-only");
+        window.print();
+        document.body.classList.remove("print-cv-only");
+        if (!wasPreviewOpen) setPreviewOpen(false);
+      });
+    });
   }
 
   const scoreTier =
@@ -9866,7 +10499,9 @@ function MatchResultsStep({
         ) : null}
       </article>
 
-      {previewOpen ? <CvPreviewCard cvReview={cvReview} copy={copy} onClose={() => setPreviewOpen(false)} /> : null}
+      {previewOpen ? (
+        <CvPreviewCard cvReview={cvReview} copy={copy} language={language} avatarDataUrl={avatarDataUrl} onClose={() => setPreviewOpen(false)} />
+      ) : null}
 
       <div className="match-action-bar no-print">
         <div className="match-language-pill">
@@ -9890,7 +10525,30 @@ function MatchResultsStep({
   );
 }
 
-function CvPreviewCard({ cvReview, copy, onClose }) {
+// Rend une description d'expérience/formation en points distincts (une
+// réalisation par ligne) plutôt qu'un seul paragraphe bloc — bien plus lisible
+// dès qu'il y a plusieurs missions. Le texte source peut arriver déjà
+// découpé par \n (heuristique et prompt IA) ou en un seul bloc plus ancien ;
+// dans ce dernier cas on retombe sur un découpage par phrase.
+function CvEntryDescription({ text }) {
+  if (!text) return null;
+  const rawLines = text.includes("\n") ? text.split("\n") : text.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ý])/);
+  const lines = rawLines.map((line) => line.trim()).filter(Boolean);
+  if (lines.length <= 1) {
+    return <p className="cv-document-entry-desc">{lines[0] || text}</p>;
+  }
+  return (
+    <ul className="cv-document-entry-desc-list">
+      {lines.map((line, index) => (
+        <li key={index}>{line}</li>
+      ))}
+    </ul>
+  );
+}
+
+function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, onClose }) {
+  const [template, setTemplate] = useState("classic");
+
   if (!cvReview) {
     return (
       <article className="card block cv-preview-card no-print">
@@ -9902,20 +10560,40 @@ function CvPreviewCard({ cvReview, copy, onClose }) {
     );
   }
 
-  const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
-  const contactItems = [cvReview.email, cvReview.phone, cvReview.location].filter(Boolean);
-
   return (
     <article className="card block cv-preview-card">
       <div className="cv-preview-toolbar no-print">
         <h3>
           <UiIcon name="profile" /> {copy.matchCvPreviewTitle}
         </h3>
+        <div className="cv-template-switch">
+          <button type="button" className={template === "classic" ? "active" : ""} onClick={() => setTemplate("classic")}>
+            {copy.cvTemplateClassic}
+          </button>
+          <button type="button" className={template === "sidebar" ? "active" : ""} onClick={() => setTemplate("sidebar")}>
+            {copy.cvTemplateSidebar}
+          </button>
+        </div>
         <button type="button" className="cv-preview-close" onClick={onClose}>
           {copy.matchHidePreview}
         </button>
       </div>
 
+      {template === "sidebar" ? (
+        <CvDocumentSidebar cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
+      ) : (
+        <CvDocumentClassic cvReview={cvReview} copy={copy} />
+      )}
+    </article>
+  );
+}
+
+function CvDocumentClassic({ cvReview, copy }) {
+  const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
+  const contactItems = [cvReview.email, cvReview.phone, cvReview.location].filter(Boolean);
+
+  return (
+    <>
       <div className="cv-document" id="cv-preview-document">
         <header className="cv-document-header">
           {fullName ? <h2>{fullName.toUpperCase()}</h2> : null}
@@ -9951,7 +10629,7 @@ function CvPreviewCard({ cvReview, copy, onClose }) {
                   {experience.dates ? <span>{experience.dates}</span> : null}
                 </div>
                 {experience.company ? <p className="cv-document-entry-org">{experience.company}</p> : null}
-                {experience.description ? <p className="cv-document-entry-desc">{experience.description}</p> : null}
+                <CvEntryDescription text={experience.description} />
               </div>
             ))}
           </section>
@@ -9967,7 +10645,7 @@ function CvPreviewCard({ cvReview, copy, onClose }) {
                   {item.dates ? <span>{item.dates}</span> : null}
                 </div>
                 {item.degree ? <p className="cv-document-entry-org">{item.degree}</p> : null}
-                {item.description ? <p className="cv-document-entry-desc">{item.description}</p> : null}
+                <CvEntryDescription text={item.description} />
               </div>
             ))}
           </section>
@@ -9978,62 +10656,274 @@ function CvPreviewCard({ cvReview, copy, onClose }) {
             {(cvReview.skills || []).length ? (
               <div>
                 <h4>{copy.cvPreviewTechnicalSkills}</h4>
-                <ul className="cv-document-list">
+                <div className="cv-document-skill-chips">
                   {cvReview.skills.map((skill) => (
-                    <li key={skill}>{skill}</li>
+                    <span key={skill} className="cv-document-skill-chip">
+                      {skill}
+                    </span>
                   ))}
-                </ul>
+                </div>
               </div>
             ) : null}
             {(cvReview.softSkills || []).length ? (
               <div>
                 <h4>{copy.cvPreviewSoftSkills}</h4>
-                <ul className="cv-document-list">
+                <div className="cv-document-skill-chips">
                   {cvReview.softSkills.map((skill) => (
-                    <li key={skill}>{skill}</li>
+                    <span key={skill} className="cv-document-skill-chip soft">
+                      {skill}
+                    </span>
                   ))}
-                </ul>
+                </div>
               </div>
             ) : null}
           </section>
         ) : null}
 
         {(cvReview.languages || []).length || (cvReview.certifications || []).length || (cvReview.interests || []).length ? (
-          <section className="cv-document-section cv-document-footer-grid">
+          <section className="cv-document-section cv-document-skills-grid">
             {(cvReview.languages || []).length ? (
               <div>
                 <h4>{copy.cvPreviewLanguages}</h4>
-                <ul className="cv-document-list">
+                <div className="cv-document-skill-chips">
                   {cvReview.languages.map((language) => (
-                    <li key={language}>{language}</li>
+                    <span key={language} className="cv-document-skill-chip">
+                      {language}
+                    </span>
                   ))}
-                </ul>
+                </div>
               </div>
             ) : null}
             {(cvReview.certifications || []).length ? (
               <div>
                 <h4>{copy.cvPreviewCertifications}</h4>
-                <ul className="cv-document-list">
+                <div className="cv-document-skill-chips">
                   {cvReview.certifications.map((item, index) => (
-                    <li key={`${item.name}-${index}`}>{[item.name, item.issuer].filter(Boolean).join(" · ")}</li>
+                    <span key={`${item.name}-${index}`} className="cv-document-skill-chip">
+                      {[item.name, item.issuer].filter(Boolean).join(" · ")}
+                    </span>
                   ))}
-                </ul>
+                </div>
               </div>
             ) : null}
             {(cvReview.interests || []).length ? (
               <div>
                 <h4>{copy.cvPreviewInterests}</h4>
-                <ul className="cv-document-list">
+                <div className="cv-document-skill-chips">
                   {cvReview.interests.map((interest) => (
-                    <li key={interest}>{interest}</li>
+                    <span key={interest} className="cv-document-skill-chip soft">
+                      {interest}
+                    </span>
                   ))}
-                </ul>
+                </div>
               </div>
             ) : null}
           </section>
         ) : null}
       </div>
-    </article>
+    </>
+  );
+}
+
+function CvSidebarInitials({ firstName, lastName }) {
+  const initials = [firstName, lastName]
+    .map((part) => (part || "").trim().charAt(0))
+    .filter(Boolean)
+    .join("")
+    .toUpperCase();
+  return <span className="cv-sidebar-avatar-initials">{initials || "?"}</span>;
+}
+
+function CvDocumentSidebar({ cvReview, copy, avatarDataUrl }) {
+  const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
+  const socialLinks = [
+    cvReview.linkedinUrl ? { label: "LinkedIn", url: cvReview.linkedinUrl } : null,
+    cvReview.portfolioUrl ? { label: copy.cvPreviewPortfolio, url: cvReview.portfolioUrl } : null
+  ].filter(Boolean);
+
+  return (
+    <div className="cv-document cv-document-sidebar" id="cv-preview-document">
+      <aside className="cv-sidebar-aside">
+        <div className="cv-sidebar-avatar">
+          {avatarDataUrl ? (
+            <img src={avatarDataUrl} alt={fullName} />
+          ) : (
+            <CvSidebarInitials firstName={cvReview.firstName} lastName={cvReview.lastName} />
+          )}
+        </div>
+
+        {cvReview.email || cvReview.phone || cvReview.location ? (
+          <div className="cv-sidebar-block">
+            {cvReview.email ? (
+              <div className="cv-sidebar-contact-row">
+                <UiIcon name="mail" />
+                <span>{cvReview.email}</span>
+              </div>
+            ) : null}
+            {cvReview.phone ? (
+              <div className="cv-sidebar-contact-row">
+                <UiIcon name="phone" />
+                <span>{cvReview.phone}</span>
+              </div>
+            ) : null}
+            {cvReview.location ? (
+              <div className="cv-sidebar-contact-row">
+                <UiIcon name="pin" />
+                <span>{cvReview.location}</span>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+
+        {(cvReview.certifications || []).length ? (
+          <div className="cv-sidebar-block">
+            <h4>{copy.cvPreviewCertifications}</h4>
+            <ul className="cv-sidebar-list">
+              {cvReview.certifications.map((item, index) => (
+                <li key={`${item.name}-${index}`}>{[item.name, item.issuer].filter(Boolean).join(" · ")}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {(cvReview.languages || []).length ? (
+          <div className="cv-sidebar-block">
+            <h4>{copy.cvPreviewLanguages}</h4>
+            <div className="cv-document-skill-chips">
+              {cvReview.languages.map((item) => (
+                <span key={item} className="cv-document-skill-chip">
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {socialLinks.length ? (
+          <div className="cv-sidebar-block">
+            <h4>{copy.cvPreviewSocial}</h4>
+            <ul className="cv-sidebar-list cv-sidebar-links">
+              {socialLinks.map((item) => (
+                <li key={item.label}>
+                  <a href={item.url} target="_blank" rel="noreferrer">
+                    {item.url}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+
+        {(cvReview.interests || []).length ? (
+          <div className="cv-sidebar-block">
+            <h4>{copy.cvPreviewInterests}</h4>
+            <ul className="cv-sidebar-list">
+              {cvReview.interests.map((interest) => (
+                <li key={interest}>{interest}</li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </aside>
+
+      <main className="cv-sidebar-main">
+        <header className="cv-sidebar-header">
+          {fullName ? <h2>{fullName}</h2> : null}
+          {cvReview.headline ? <p className="cv-document-headline">{cvReview.headline}</p> : null}
+        </header>
+
+        {cvReview.summary ? (
+          <section className="cv-sidebar-summary">
+            <h4>{copy.cvPreviewSummary}</h4>
+            <p>{cvReview.summary}</p>
+          </section>
+        ) : null}
+
+        {(cvReview.skills || []).length || (cvReview.softSkills || []).length ? (
+          <section className="cv-document-section">
+            {(cvReview.skills || []).length ? (
+              <div>
+                <h4>{copy.cvPreviewTechnicalSkills}</h4>
+                <div className="cv-document-skill-chips">
+                  {cvReview.skills.map((skill) => (
+                    <span key={skill} className="cv-document-skill-chip">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {(cvReview.softSkills || []).length ? (
+              <div style={{ marginTop: (cvReview.skills || []).length ? "0.9rem" : 0 }}>
+                <h4>{copy.cvPreviewSoftSkills}</h4>
+                <div className="cv-document-skill-chips">
+                  {cvReview.softSkills.map((skill) => (
+                    <span key={skill} className="cv-document-skill-chip soft">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+          </section>
+        ) : null}
+
+        {(cvReview.experiences || []).length ? (
+          <section className="cv-document-section cv-sidebar-timeline">
+            <h4>{copy.cvPreviewExperience}</h4>
+            {cvReview.experiences.slice(0, 6).map((experience, index) => (
+              <div className="cv-sidebar-timeline-entry" key={`${experience.company}-${index}`}>
+                <div className="cv-document-entry-head">
+                  <strong>{[experience.role, experience.company].filter(Boolean).join(" | ")}</strong>
+                  {experience.dates ? <span>{experience.dates}</span> : null}
+                </div>
+                {experience.location ? <p className="cv-document-entry-org">{experience.location}</p> : null}
+                <CvEntryDescription text={experience.description} />
+              </div>
+            ))}
+          </section>
+        ) : null}
+
+        {(cvReview.projects || []).length ? (
+          <section className="cv-document-section cv-sidebar-timeline">
+            <h4>{copy.cvPreviewProjects}</h4>
+            {cvReview.projects.slice(0, 4).map((project, index) => (
+              <div className="cv-sidebar-timeline-entry" key={`${project.name}-${index}`}>
+                <div className="cv-document-entry-head">
+                  <strong>{project.name}</strong>
+                </div>
+                {(project.technologies || []).length ? (
+                  <div className="cv-document-skill-chips">
+                    {project.technologies.map((tech) => (
+                      <span key={tech} className="cv-document-skill-chip soft">
+                        {tech}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <CvEntryDescription text={project.description} />
+              </div>
+            ))}
+          </section>
+        ) : null}
+
+        {(cvReview.educationItems || []).length ? (
+          <section className="cv-document-section cv-sidebar-timeline">
+            <h4>{copy.cvPreviewEducation}</h4>
+            {cvReview.educationItems.slice(0, 4).map((item, index) => (
+              <div className="cv-sidebar-timeline-entry" key={`${item.school}-${index}`}>
+                <div className="cv-document-entry-head">
+                  <strong>{item.school}</strong>
+                  {item.dates ? <span>{item.dates}</span> : null}
+                </div>
+                {item.degree ? <p className="cv-document-entry-org">{item.degree}</p> : null}
+                <CvEntryDescription text={item.description} />
+              </div>
+            ))}
+          </section>
+        ) : null}
+      </main>
+    </div>
   );
 }
 
@@ -10698,6 +11588,7 @@ function PricingPage({
   language,
   currency,
   stripeEnabled,
+  planOverrides = {},
   onActivatePlan,
   onStripeCheckout,
   onRedeemCode,
@@ -10709,6 +11600,7 @@ function PricingPage({
   const [segment, setSegment] = useState(allowedSegments[0]);
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [licenseCode, setLicenseCode] = useState("");
+  const [studentSeats, setStudentSeats] = useState(30);
 
   useEffect(() => {
     if (!allowedSegments.includes(segment)) {
@@ -10718,7 +11610,18 @@ function PricingPage({
 
   const subscription = user?.subscription || {};
   const currentBalance = Number(subscription.credits || 0);
-  const segmentPlans = PLANS.filter((plan) => plan.segment === segment);
+  // Un admin a pu modifier un tarif depuis Tarifs (admin) — l'affichage
+  // candidat/cabinet/école doit refléter le prix réellement facturé, pas la
+  // valeur par défaut figée dans plans.js.
+  const segmentPlans = PLANS.filter((plan) => plan.segment === segment).map((plan) => {
+    const override = planOverrides[plan.id];
+    if (!override) return plan;
+    return {
+      ...plan,
+      monthlyPrice: override.monthlyPrice != null ? override.monthlyPrice : plan.monthlyPrice,
+      annualPrice: override.annualPrice != null ? override.annualPrice : plan.annualPrice
+    };
+  });
   const hasRecurringPlans = segmentPlans.some((plan) => plan.monthlyPrice > 0);
 
   return (
@@ -10800,13 +11703,32 @@ function PricingPage({
                   <li key={feature}>{feature}</li>
                 ))}
               </ul>
+              {plan.id === "school_license" ? (
+                <label className="pricing-seats-input">
+                  <span>{copy.studentSeatsLabel}</span>
+                  <input
+                    type="number"
+                    min={plan.seats}
+                    step={1}
+                    value={studentSeats}
+                    onChange={(event) => {
+                      const next = Number(event.target.value.replace(/\D/g, "")) || plan.seats;
+                      setStudentSeats(Math.max(plan.seats, next));
+                    }}
+                  />
+                  <span className="pricing-seats-total">
+                    {copy.studentSeatsTotal}{" "}
+                    <strong>{formatAmountInCurrency(plan.annualPrice * studentSeats, currency)}</strong>
+                  </span>
+                </label>
+              ) : null}
               <button
                 type="button"
                 className={`btn-main ${plan.highlighted ? "ready" : ""}`}
                 disabled={isCurrentPlan || Boolean(pendingPlanAction)}
                 onClick={() =>
                   stripeEnabled && plan.grantsPremium
-                    ? onStripeCheckout(plan.id, billingCycle)
+                    ? onStripeCheckout(plan.id, billingCycle, plan.id === "school_license" ? studentSeats : 1)
                     : onActivatePlan(plan.id, billingCycle)
                 }
               >
@@ -11219,7 +12141,7 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
       setResult(data);
       await onConsumeToken();
     } catch (err) {
-      setError(err.message || "Erreur de recherche.");
+      setError(getFriendlyErrorMessage(err, language));
     } finally {
       setIsSearching(false);
     }
@@ -11353,7 +12275,7 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
   );
 }
 
-function CoverLetterPage({ language, candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
+function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
   const copy = APP_COPY[language]?.coverLetter || APP_COPY.fr.coverLetter;
   const [tone, setTone] = useState("formal");
   const [template, setTemplate] = useState("classic");
@@ -11364,15 +12286,84 @@ function CoverLetterPage({ language, candidate, offer, tokensBalance, onGoToTari
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draftLetter, setDraftLetter] = useState("");
+  const [conversations, setConversations] = useState([]);
+  const [conversationId, setConversationId] = useState(null);
 
   const hasContext = Boolean(candidate && offer && (offer.title || offer.skills?.length));
   const outOfTokens = tokensBalance < 999 && tokensBalance <= 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId) return undefined;
+    listCoverLetters(userId)
+      .then((items) => {
+        if (!cancelled) setConversations(items || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   const tones = [
     { id: "formal", label: copy.toneFormal },
     { id: "enthusiastic", label: copy.toneEnthusiastic },
     { id: "direct", label: copy.toneDirect }
   ];
+
+  function conversationTitle() {
+    return offer?.title ? `${offer.title}${offer.company ? ` · ${offer.company}` : ""}` : copy.untitled;
+  }
+
+  async function persistConversation(nextLetter, nextSubject) {
+    if (!userId) return;
+    const payload = { letter: nextLetter, subject: nextSubject, tone, template, offer };
+    try {
+      if (conversationId) {
+        await updateCoverLetter({ userId, conversationId, payload });
+        setConversations((prev) =>
+          prev.map((item) => (item.id === conversationId ? { ...item, ...payload, updatedAt: new Date().toISOString() } : item))
+        );
+      } else {
+        const created = await saveCoverLetter({ userId, title: conversationTitle(), payload });
+        setConversationId(created.id);
+        setConversations((prev) => [{ ...created }, ...prev]);
+      }
+    } catch (_err) {
+      // La sauvegarde de l'historique est secondaire : la lettre reste utilisable même si elle échoue.
+    }
+  }
+
+  function handleNewConversation() {
+    setLetter("");
+    setSubject("");
+    setConversationId(null);
+    setIsEditing(false);
+    setError("");
+  }
+
+  function handleResumeConversation(conv) {
+    setConversationId(conv.id);
+    setLetter(conv.letter || "");
+    setSubject(conv.subject || "");
+    if (conv.tone) setTone(conv.tone);
+    if (conv.template) setTemplate(conv.template);
+    setIsEditing(false);
+    setError("");
+  }
+
+  async function handleDeleteConversation(event, conv) {
+    event.stopPropagation();
+    if (!userId) return;
+    if (typeof window !== "undefined" && !window.confirm(copy.deleteConfirm)) return;
+    try {
+      await deleteCoverLetter({ userId, conversationId: conv.id });
+      setConversations((prev) => prev.filter((item) => item.id !== conv.id));
+      if (conversationId === conv.id) handleNewConversation();
+    } catch (_err) {
+      // Non bloquant.
+    }
+  }
 
   async function handleGenerate() {
     if (!hasContext || isGenerating) return;
@@ -11388,8 +12379,9 @@ function CoverLetterPage({ language, candidate, offer, tokensBalance, onGoToTari
       setLetter(result.letter);
       setSubject(result.subject || "");
       await onConsumeToken();
+      await persistConversation(result.letter, result.subject || "");
     } catch (err) {
-      setError(err.message || "Erreur de génération.");
+      setError(getFriendlyErrorMessage(err, language));
     } finally {
       setIsGenerating(false);
     }
@@ -11410,9 +12402,10 @@ function CoverLetterPage({ language, candidate, offer, tokensBalance, onGoToTari
     setIsEditing(true);
   }
 
-  function saveEditing() {
+  async function saveEditing() {
     setLetter(draftLetter);
     setIsEditing(false);
+    await persistConversation(draftLetter, subject);
   }
 
   function cancelEditing() {
@@ -11433,8 +12426,42 @@ function CoverLetterPage({ language, candidate, offer, tokensBalance, onGoToTari
     );
   }
 
+  const historySidebar = (
+    <aside className="negotiation-history">
+      <button type="button" className="negotiation-new-btn" onClick={handleNewConversation}>
+        <UiIcon name="plus" /> {copy.newConversation}
+      </button>
+      <span className="negotiation-history-label">{copy.history}</span>
+      {conversations.length ? (
+        <ul className="negotiation-history-list">
+          {conversations.map((conv) => (
+            <li
+              key={conv.id}
+              className={`negotiation-history-item${conv.id === conversationId ? " active" : ""}`}
+              onClick={() => handleResumeConversation(conv)}
+            >
+              <span className="negotiation-history-title">{conv.title || copy.untitled}</span>
+              <button
+                type="button"
+                className="negotiation-history-delete"
+                onClick={(event) => handleDeleteConversation(event, conv)}
+                aria-label={copy.deleteConversation}
+              >
+                <UiIcon name="trash" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="negotiation-history-empty">{copy.noHistory}</p>
+      )}
+    </aside>
+  );
+
   return (
-    <section className="cover-letter-page">
+    <div className="negotiation-layout">
+      {historySidebar}
+      <section className="cover-letter-page">
       <header className="module-header feature-page-header">
         <span className="feature-page-header-icon">
           <UiIcon name="mail" />
@@ -11541,7 +12568,8 @@ function CoverLetterPage({ language, candidate, offer, tokensBalance, onGoToTari
           )}
         </div>
       )}
-    </section>
+      </section>
+    </div>
   );
 }
 
@@ -11694,7 +12722,7 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
       setStarted(true);
       await persistConversation(nextMessages, result.salaryReference || null, null);
     } catch (err) {
-      setError(err.message || "Erreur de démarrage.");
+      setError(getFriendlyErrorMessage(err, language));
     } finally {
       setIsStarting(false);
     }
@@ -11722,7 +12750,7 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
       setMessages(nextMessages);
       await persistConversation(nextMessages, salaryReference, null);
     } catch (err) {
-      setError(err.message || "Erreur de réponse.");
+      setError(getFriendlyErrorMessage(err, language));
     } finally {
       setIsSending(false);
     }
@@ -11744,7 +12772,7 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
       setSummary(result);
       await persistConversation(messages, salaryReference, result);
     } catch (err) {
-      setError(err.message || "Erreur de bilan.");
+      setError(getFriendlyErrorMessage(err, language));
     } finally {
       setIsFinishing(false);
     }

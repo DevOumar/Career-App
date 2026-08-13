@@ -17,7 +17,7 @@ import Stripe from "stripe";
 import { OFFERS } from "../src/data/offers.js";
 import { EDUCATION_LEVELS, SKILL_KEYWORDS } from "../src/data/skills.js";
 import { buildLocalMatchInsights } from "../src/lib/matchingService.js";
-import { getPlanById } from "../src/data/plans.js";
+import { PLANS, getPlanById } from "../src/data/plans.js";
 import {
   applyStripeWebhookEvent,
   buildCheckoutSessionParams,
@@ -294,7 +294,7 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
     const result = await applyStripeWebhookEvent(event, {
       db,
       parseJsonField,
-      getPlanById,
+      getPlanById: getEffectivePlanById,
       applyPlanToUser,
       generateLicenseCodeForPlan
     });
@@ -441,6 +441,15 @@ await db.exec(`
     payload_json TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS cover_letters (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS match_feedback (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -486,6 +495,15 @@ await db.exec(`
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS plan_overrides (
+    plan_id TEXT PRIMARY KEY,
+    monthly_price NUMERIC,
+    annual_price NUMERIC,
+    stripe_price_id_monthly TEXT,
+    stripe_price_id_annual TEXT,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS transactions (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
@@ -498,6 +516,9 @@ await db.exec(`
     license_code TEXT,
     stripe_customer_id TEXT,
     stripe_subscription_id TEXT,
+    stripe_payment_intent_id TEXT,
+    refunded INTEGER NOT NULL DEFAULT 0,
+    refunded_at TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -530,6 +551,9 @@ await db.exec(`
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT '';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip_address TEXT NOT NULL DEFAULT '';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at TEXT NOT NULL DEFAULT '';
+  ALTER TABLE transactions ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT;
+  ALTER TABLE transactions ADD COLUMN IF NOT EXISTS refunded INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE transactions ADD COLUMN IF NOT EXISTS refunded_at TEXT;
 `);
 
 await db.query("UPDATE users SET updated_at = created_at WHERE COALESCE(updated_at, '') = ''");
@@ -2053,14 +2077,18 @@ function cleanLocation(value) {
     .trim();
 }
 
+// Repli générique : cherche un titre de section "profil/résumé/summary" et
+// prend les lignes qui suivent, plutôt que de reconnaître une formulation
+// figée (une version antérieure ne reconnaissait que le résumé d'un CV de
+// test précis, ce qui ne fonctionnait pour aucun autre candidat).
 function extractProfessionalSummary(sourceText, current = "") {
   const currentText = coerceString(current);
   if (currentText.length >= 220) return currentText;
   const lines = cleanExtractedText(sourceText).split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  const start = lines.findIndex((line) => /professionnel de la data|business intelligence|valorisation des donnees|valorisation des données/i.test(line));
+  const start = lines.findIndex((line) => /^(profil|résumé|resume|summary|professional summary|à propos|a propos|about)\b/i.test(normalizeText(line)));
   if (start < 0) return currentText;
   const block = [];
-  for (const line of lines.slice(start, start + 8)) {
+  for (const line of lines.slice(start + 1, start + 9)) {
     if (/^(experience|expériences|formation|certifications?|competences|compétences|langues)\b/i.test(normalizeText(line))) break;
     block.push(line);
   }
@@ -2162,76 +2190,21 @@ function hasRoleLikeText(value) {
   return /(data manager|data analyst|stage|alternance|business intelligence|digital|bim|analyst|manager)/i.test(coerceString(value));
 }
 
-function detectExperiencesFromText(sourceText) {
-  const text = cleanExtractedText(sourceText);
-  const specs = [
-    {
-      company: "VINCI CONSTRUCTION",
-      role: "Data Manager BIM",
-      dateRegex: new RegExp(DATE_RANGE_PATTERN, "i")
-    },
-    {
-      company: "EIFFAGE ENERGIE SYSTEMS",
-      role: "STAGE DATA / DIGITAL",
-      dateRegex: new RegExp(DATE_RANGE_PATTERN, "i")
-    },
-    {
-      company: "ECOBANK INTERNATIONAL",
-      role: "STAGE - DATA ANALYST",
-      dateRegex: new RegExp(DATE_RANGE_PATTERN, "i")
-    }
-  ];
-
-  return specs
-    .filter((spec) => normalizeText(text).includes(normalizeText(spec.company)))
-    .map((spec) => {
-      const windowText = textWindowAroundCompany(text, spec.company);
-      const date = dateAfterLabel(text, spec.company) || windowText.match(spec.dateRegex)?.[0] || "";
-      const sentences = windowText
-        .split(/\n|(?<=[.!?])\s+/)
-        .map((line) => line.trim())
-        .filter((line) => line.length > 35)
-        .filter((line) => !line.toUpperCase().includes(spec.company))
-        .filter((line) => !new RegExp(DATE_RANGE_PATTERN, "i").test(line))
-        .slice(0, 4);
-      return {
-        company: spec.company,
-        role: spec.role,
-        dates: cleanExperienceDate(date),
-        location: windowText.match(/(Nanterre|Courbevoie|Île-de-France|Ile-de-France|France)/i)?.[0] || "",
-        description: sentences.join("\n")
-      };
-    });
+// NOTE: cette fonction ne fait plus de détection "en dur" par nom d'entreprise
+// (une version antérieure ne reconnaissait que VINCI/EIFFAGE/ECOBANK, ce qui
+// ne fonctionnait que pour un seul CV de test et ne détectait rien pour les
+// autres candidats). L'extraction générique des expériences est assurée par
+// extractCvWithAi (IA) et, en repli, par parseCvLocally — cette fonction est
+// gardée en no-op pour ne pas casser mergeExperiencesForReview qui l'appelle.
+function detectExperiencesFromText(_sourceText) {
+  return [];
 }
 
-function detectEducationFromText(sourceText) {
-  const text = cleanExtractedText(sourceText);
-  const normalized = normalizeText(text);
-  const compact = normalized.replace(/[^a-z0-9]+/g, "");
-  const items = [];
-  if (normalized.includes("hetic") || compact.includes("hetic")) {
-    const rawIndex = Math.max(text.search(/h\s*e\s*t\s*i\s*c/i), 0);
-    const windowText = text.slice(Math.max(0, rawIndex - 250), rawIndex + 650);
-    items.push({
-      school: "HETIC",
-      degree: windowText.match(/Mast[èe]re[^,\n|.]*/i)?.[0]?.trim() || "Mastère Big Data & Intelligence Artificielle",
-      dates: dateAfterLabel(text, "HETIC") || cleanExperienceDate(windowText.match(new RegExp(DATE_RANGE_PATTERN, "i"))?.[0] || "sept. 2025 - sept. 2026"),
-      location: "",
-      description: ""
-    });
-  }
-  if (normalized.includes("paris-saclay") || normalized.includes("paris saclay") || normalized.includes("miage") || compact.includes("parissaclay")) {
-    const idx = Math.max(text.search(/paris[-\s]?saclay/i), text.search(/miage/i), 0);
-    const windowText = text.slice(Math.max(0, idx - 200), idx + 500);
-    items.push({
-      school: "Université Paris-Saclay",
-      degree: windowText.match(/M1\s*-\s*M2[^,\n|.]*/i)?.[0]?.trim() || "M1 - M2 MIAGE - Informatique Décisionnelle",
-      dates: dateAfterLabel(text, "Université Paris-Saclay") || dateAfterLabel(text, "MIAGE") || cleanExperienceDate(windowText.match(new RegExp(DATE_RANGE_PATTERN, "i"))?.[0] || "sept. 2023 - sept. 2025"),
-      location: "",
-      description: ""
-    });
-  }
-  return items;
+// Même remarque que detectExperiencesFromText ci-dessus : plus de détection
+// en dur par nom d'école (HETIC/MIAGE). No-op générique, gardé pour la
+// compatibilité de mergeEducationForReview.
+function detectEducationFromText(_sourceText) {
+  return [];
 }
 
 function normalizeExperienceForReview(item, sourceText) {
@@ -2262,7 +2235,7 @@ function mergeExperiencesForReview(sourceText, detected, aiItems) {
     if (item.role) score += 2;
     if (item.location) score += 1;
     if (item.description && item.description.length > 50) score += 2;
-    if (/linkedin\.com|technical skills|vinci construction \| data manager/i.test(item.description || "")) score -= 4;
+    if (/linkedin\.com|technical skills/i.test(item.description || "")) score -= 4;
     return score;
   };
   for (const item of [...(detected || []), ...(aiItems || [])].map((entry) => normalizeExperienceForReview(entry, sourceText))) {
@@ -2288,7 +2261,7 @@ function mergeEducationForReview(primary, secondary) {
     if (coerceString(item?.school)) score += 2;
     if (coerceString(item?.degree)) score += 2;
     if (cleanExperienceDate(item?.dates)) score += 3;
-    if (/hetic|paris[-\s‑]?saclay|miage|master|mast[èe]re|licence|bachelor/i.test(`${item?.school || ""} ${item?.degree || ""}`)) score += 2;
+    if (/master|mast[èe]re|licence|bachelor/i.test(`${item?.school || ""} ${item?.degree || ""}`)) score += 2;
     return score;
   };
   for (const item of [...(primary || []), ...(secondary || [])]) {
@@ -2335,7 +2308,7 @@ function detectCertificationsFromText(sourceText) {
   const keywordLines = lines.filter((line) => {
     const normalized = normalizeText(line);
     if (/^(formation|education|certifications?|certificats?|technical skills|compétences|competences)$/i.test(normalized)) return false;
-    if (/universite|university|ecole|school|master|mastère|mastere|licence|bachelor|miage|hetic/.test(normalized)) return false;
+    if (/universite|university|ecole|school|master|mastère|mastere|licence|bachelor/.test(normalized)) return false;
     return /certification|certificate|certificat|formation|academy|coursera|udemy|google|microsoft|aws|azure|oracle|cisco|scrum|salesforce|databricks|snowflake/.test(normalized);
   });
 
@@ -2380,25 +2353,48 @@ function mergeCollections(primary, secondary, keyFields) {
   return output;
 }
 
+// Détecte quand une description d'expérience/formation a en fait "aspiré"
+// le résumé professionnel (bug d'extraction fréquent sur les CV en PDF à
+// colonnes, quand le texte brut mélange l'ordre des blocs) — dans ce cas
+// mieux vaut n'afficher aucune description que d'en afficher une fausse.
+// Générique : ne dépend d'aucun nom de candidat ni d'entreprise particulier.
+function textLeaksSummary(text, summary) {
+  const a = normalizeText(text).replace(/\s+/g, " ").trim();
+  const b = normalizeText(summary).replace(/\s+/g, " ").trim();
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const probe = b.slice(0, 60);
+  return probe.length >= 40 && a.includes(probe);
+}
+
 function postProcessCvExtraction(sourceText, parsed) {
   const base = parsed || parseCvLocally(sourceText);
   const detectedSkills = detectSkillsFromText(sourceText);
   const detectedExperiences = detectExperiencesFromText(sourceText);
   const detectedEducation = detectEducationFromText(sourceText);
   const detectedCertifications = detectCertificationsFromText(sourceText);
+  const summary = extractProfessionalSummary(sourceText, base.summary);
   const next = {
     ...base,
     linkedinUrl: repairLinkedinWithName(extractRobustLinkedin(sourceText, base.linkedinUrl), base.firstName, base.lastName),
     phone: formatFrenchPhone(base.phone),
     location: cleanLocation(base.location),
     headline: extractHeadline(sourceText, base.headline),
-    summary: extractProfessionalSummary(sourceText, base.summary),
+    summary,
     skills: uniqueByNormalized([...detectedSkills, ...(base.skills || [])]),
     languages: uniqueByNormalized([...(base.languages || []), ...(normalizeText(sourceText).includes("anglais") ? ["Anglais"] : []), ...(normalizeText(sourceText).includes("francais") || normalizeText(sourceText).includes("français") ? ["Français"] : [])]),
     experiences: mergeExperiencesForReview(sourceText, detectedExperiences, base.experiences || []),
     educationItems: mergeEducationForReview(detectedEducation, base.educationItems || []),
     certifications: mergeCertificationsForReview(detectedCertifications, base.certifications || [])
   };
+  if (summary) {
+    next.experiences = next.experiences.map((item) =>
+      item.description && textLeaksSummary(item.description, summary) ? { ...item, description: "" } : item
+    );
+    next.educationItems = next.educationItems.map((item) =>
+      item.description && textLeaksSummary(item.description, summary) ? { ...item, description: "" } : item
+    );
+  }
   next.education = next.education || next.educationItems?.[0]?.degree || "";
   return next;
 }
@@ -2416,7 +2412,7 @@ async function extractCvWithAi(sourceText) {
     {
       role: "user",
       content:
-        "Structure ce CV. Cherche précisément: identité, titre, résumé, compétences techniques, soft skills, langues, expériences, formations, certifications, projets et centres d'intérêt. Pour les formations, repère les écoles/universités et diplômes comme HETIC, MIAGE, Master, Mastère, Licence, Bachelor, Université. Pour les expériences, repère VINCI, EIFFAGE, ECOBANK, stages, alternances, CDI, dates et descriptions.\n\n" +
+        "Structure ce CV. Cherche précisément: identité, titre, résumé, compétences techniques, soft skills, langues, expériences, formations, certifications, projets et centres d'intérêt. Pour les formations, repère toute école, université ou diplôme mentionné (quel que soit son nom : Master, Mastère, Licence, Bachelor, BTS, DUT, etc.), même écrits sans titre de section clair. Pour les expériences, repère chaque entreprise mentionnée (quel que soit son nom), stages, alternances, CDI, CDD, dates et descriptions. Pour le champ description de chaque expérience et formation, découpe le texte en plusieurs points distincts (une réalisation/mission par ligne, phrases courtes et concrètes) séparés par des retours à la ligne (\\n) plutôt qu'un seul paragraphe continu — ne fusionne jamais deux idées différentes sur la même ligne.\n\n" +
         `CV:\n${sourceText.slice(0, 120000)}`
     }
   ];
@@ -2484,6 +2480,24 @@ function requireFields(payload, fields) {
 async function getUserRowById(userId) {
   const { rows } = await db.query("SELECT * FROM users WHERE id = $1 LIMIT 1", [userId]);
   return rows[0] || null;
+}
+
+// Fusionne un plan statique (src/data/plans.js) avec une éventuelle
+// surcharge de tarif admin (table plan_overrides) : mêmes nom/features/segment,
+// prix potentiellement différents. Utilisé partout où un montant réel doit
+// être calculé (checkout Stripe, enregistrement de transaction) pour ne
+// jamais utiliser un prix figé et périmé après une modification admin.
+async function getEffectivePlanById(planId) {
+  const plan = getPlanById(planId);
+  if (!plan) return null;
+  const { rows } = await db.query("SELECT monthly_price, annual_price FROM plan_overrides WHERE plan_id = $1", [planId]);
+  const override = rows[0];
+  if (!override) return plan;
+  return {
+    ...plan,
+    monthlyPrice: override.monthly_price != null ? Number(override.monthly_price) : plan.monthlyPrice,
+    annualPrice: override.annual_price != null ? Number(override.annual_price) : plan.annualPrice
+  };
 }
 
 async function requireAdmin(adminUserId) {
@@ -3733,6 +3747,7 @@ app.delete("/api/account", async (req, res) => {
     await db.query("DELETE FROM cvs WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM match_runs WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM negotiation_conversations WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM cover_letters WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_candidate_profiles WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_recruiter_profiles WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_org_profiles WHERE user_id = $1", [userId]);
@@ -3842,11 +3857,12 @@ app.post("/api/premium/activate", async (req, res) => {
   }
 });
 
-async function generateLicenseCodeForPlan(userId, plan) {
+async function generateLicenseCodeForPlan(userId, plan, seatsOverride = null) {
   const code = generateLicenseCode();
+  const seatsTotal = seatsOverride && seatsOverride > 0 ? seatsOverride : plan.seats;
   await db.query(
     "INSERT INTO license_codes (code, owner_user_id, plan_id, seats_total, seats_used, created_at) VALUES ($1,$2,$3,$4,0,$5)",
-    [code, userId, plan.id, plan.seats, nowIso()]
+    [code, userId, plan.id, seatsTotal, nowIso()]
   );
   return code;
 }
@@ -3889,8 +3905,8 @@ async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeId
   await db.query(
     `INSERT INTO transactions (
       id, user_id, plan_id, billing_cycle, listed_amount, amount_collected, currency, source,
-      license_code, stripe_customer_id, stripe_subscription_id, created_at
-    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+      license_code, stripe_customer_id, stripe_subscription_id, stripe_payment_intent_id, created_at
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
     [
       `txn-${crypto.randomUUID()}`,
       userId,
@@ -3903,6 +3919,7 @@ async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeId
       licenseCode || null,
       stripeIds?.stripeCustomerId || null,
       stripeIds?.stripeSubscriptionId || null,
+      stripeIds?.stripePaymentIntentId || null,
       nowIso()
     ]
   );
@@ -3926,16 +3943,40 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
-    const plan = getPlanById(planId);
+    const plan = await getEffectivePlanById(planId);
     if (!plan || !plan.grantsPremium) {
       return res.status(400).json({ error: "Ce plan ne nécessite pas de paiement Stripe." });
     }
 
+    // Un admin a pu changer le tarif depuis Tarifs > Modifier, ce qui crée un
+    // nouveau Price Stripe (les Price sont immuables) et l'enregistre ici.
+    // Cette valeur prime sur le price_id figé dans .env.
+    const { rows: overrideRows } = await db.query(
+      "SELECT stripe_price_id_monthly, stripe_price_id_annual FROM plan_overrides WHERE plan_id = $1",
+      [planId]
+    );
+    const overrideRow = overrideRows[0];
+    const overridePriceId = overrideRow
+      ? plan.monthlyPrice == null
+        ? overrideRow.stripe_price_id_annual
+        : billingCycle === "annual"
+        ? overrideRow.stripe_price_id_annual
+        : overrideRow.stripe_price_id_monthly
+      : null;
+
     const priceEnvVar = resolveStripePriceEnvVar(plan, billingCycle);
-    const priceId = String(process.env[priceEnvVar] || "").trim();
+    const priceId = overridePriceId || String(process.env[priceEnvVar] || "").trim();
     if (!priceId) {
       return res.status(500).json({ error: `${priceEnvVar} manquant dans .env pour ce plan.` });
     }
+
+    // Seul school_license est tarifé "par étudiant" : la quantité vient du
+    // formulaire (nombre d'étudiants), avec le minimum de sièges du plan comme
+    // plancher. Pour tous les autres plans, un seul exemplaire du bundle est
+    // vendu (ignorer toute quantité fournie par le client évite un montant
+    // gonflé accidentellement pour un plan à prix fixe).
+    const requestedQuantity = Math.round(Number(req.body?.quantity) || 1);
+    const quantity = plan.id === "school_license" ? Math.max(plan.seats || 1, requestedQuantity) : 1;
 
     const subscription = parseJsonField(user.subscription_json, {});
     const params = buildCheckoutSessionParams({
@@ -3947,7 +3988,8 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       planId: plan.id,
       billingCycle,
       successUrl: `${APP_URL}/#/app/tarifs?stripe=success`,
-      cancelUrl: `${APP_URL}/#/app/tarifs?stripe=cancel`
+      cancelUrl: `${APP_URL}/#/app/tarifs?stripe=cancel`,
+      quantity
     });
 
     const session = await stripe.checkout.sessions.create(params);
@@ -3973,7 +4015,7 @@ app.post("/api/plans/activate", async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
-    const plan = getPlanById(planId);
+    const plan = await getEffectivePlanById(planId);
     if (!plan) {
       return res.status(400).json({ error: "Plan inconnu." });
     }
@@ -4014,7 +4056,7 @@ app.post("/api/plans/redeem", async (req, res) => {
       return res.status(410).json({ error: "Ce code de licence a été révoqué." });
     }
 
-    const plan = getPlanById(licenseRow.plan_id);
+    const plan = await getEffectivePlanById(licenseRow.plan_id);
     if (!plan) {
       return res.status(400).json({ error: "Plan associé au code introuvable." });
     }
@@ -4088,6 +4130,70 @@ app.get("/api/admin/overview", async (req, res) => {
       count: bucket.count
     }));
 
+    // Taux de conversion gratuit -> payant : part des comptes dont le plan
+    // actif "grantsPremium" (donc réellement payant), calculé sur les mêmes
+    // lignes déjà chargées ci-dessus (pas de requête supplémentaire).
+    let paidUsers = 0;
+    for (const row of userRows) {
+      const subscription = parseJsonField(row.subscription_json, {});
+      const plan = getPlanById(subscription.planId);
+      if (plan?.grantsPremium) paidUsers += 1;
+    }
+    const conversionRate = userRows.length ? paidUsers / userRows.length : 0;
+
+    // Revenu encaissé ce mois-ci vs le mois précédent (croissance).
+    const monthStart = new Date();
+    monthStart.setUTCDate(1);
+    monthStart.setUTCHours(0, 0, 0, 0);
+    const prevMonthStart = new Date(monthStart);
+    prevMonthStart.setUTCMonth(prevMonthStart.getUTCMonth() - 1);
+    const { rows: revenueRows } = await db.query(
+      `SELECT
+         COALESCE(SUM(amount_collected) FILTER (WHERE created_at >= $1), 0) AS current_month,
+         COALESCE(SUM(amount_collected) FILTER (WHERE created_at >= $2 AND created_at < $1), 0) AS previous_month
+       FROM transactions`,
+      [monthStart.toISOString(), prevMonthStart.toISOString()]
+    );
+    const revenueThisMonth = Number(revenueRows[0]?.current_month || 0);
+    const revenuePreviousMonth = Number(revenueRows[0]?.previous_month || 0);
+    const revenueGrowth = revenuePreviousMonth > 0 ? (revenueThisMonth - revenuePreviousMonth) / revenuePreviousMonth : null;
+
+    // Utilisation des sièges de licence, agrégée sur tous les codes actifs
+    // (non révoqués).
+    const { rows: licenseUsageRows } = await db.query(
+      "SELECT COALESCE(SUM(seats_used),0)::int AS used, COALESCE(SUM(seats_total),0)::int AS total FROM license_codes WHERE COALESCE(revoked,0) = 0"
+    );
+    const seatsUsed = licenseUsageRows[0]?.used || 0;
+    const seatsTotal = licenseUsageRows[0]?.total || 0;
+
+    // Invitations école envoyées mais jamais activées.
+    const { rows: pendingInviteRows } = await db.query(
+      "SELECT COUNT(*)::int AS count FROM school_invitations WHERE status = 'pending'"
+    );
+
+    // Recherches Email Scout effectuées (event déjà loggé par la fonctionnalité).
+    const { rows: emailScoutRows } = await db.query(
+      "SELECT COUNT(*)::int AS count FROM account_security_events WHERE event_type = 'email_finder_search'"
+    );
+
+    // Comptes inactifs : créés il y a plus de 30 jours et sans aucune
+    // connexion enregistrée depuis 30 jours (les comptes tout juste créés ne
+    // sont pas comptés comme "inactifs", ils n'ont simplement pas encore eu
+    // l'occasion de se reconnecter).
+    const { rows: inactiveRows } = await db.query(
+      `SELECT COUNT(*)::int AS count
+       FROM users u
+       WHERE u.created_at < $1
+         AND NOT EXISTS (
+           SELECT 1 FROM account_security_events e
+           WHERE e.user_id = u.id
+             AND e.event_type IN ('login_password', 'login_google')
+             AND e.created_at >= $1
+         )`,
+      [new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()]
+    );
+    const inactiveAccounts = inactiveRows[0]?.count || 0;
+
     return res.json({
       usersByRole: Object.fromEntries(roleCounts.map((row) => [row.role_type, row.count])),
       totalCvs: cvCountRows[0]?.count || 0,
@@ -4095,8 +4201,396 @@ app.get("/api/admin/overview", async (req, res) => {
       signupsLast30Days: signupRows[0]?.count || 0,
       planCounts,
       planCountsByRole,
-      signupsTrend
+      signupsTrend,
+      conversionRate,
+      revenueThisMonth,
+      revenuePreviousMonth,
+      revenueGrowth,
+      licenseSeatsUsed: seatsUsed,
+      licenseSeatsTotal: seatsTotal,
+      pendingInvitations: pendingInviteRows[0]?.count || 0,
+      emailScoutSearches: emailScoutRows[0]?.count || 0,
+      inactiveAccounts
     });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/notifications", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [signupRes, paymentRes, fullCodesRes, failedAnnouncementsRes] = await Promise.all([
+      db.query(
+        "SELECT id, first_name, last_name, role_type, created_at FROM users WHERE created_at >= $1 ORDER BY created_at DESC LIMIT 10",
+        [sevenDaysAgo]
+      ),
+      db.query(
+        `SELECT t.id, t.amount_collected, t.currency, t.plan_id, t.created_at, u.first_name, u.last_name
+         FROM transactions t
+         LEFT JOIN users u ON u.id = t.user_id
+         WHERE t.source = 'stripe' AND t.amount_collected > 0 AND t.created_at >= $1
+         ORDER BY t.created_at DESC LIMIT 10`,
+        [sevenDaysAgo]
+      ),
+      db.query(
+        `SELECT code, owner_user_id, plan_id, seats_total, seats_used, u.first_name, u.last_name
+         FROM license_codes
+         LEFT JOIN users u ON u.id = license_codes.owner_user_id
+         WHERE COALESCE(revoked,0) = 0 AND seats_total > 0 AND seats_used >= seats_total
+         ORDER BY license_codes.created_at DESC LIMIT 10`
+      ),
+      db.query(
+        "SELECT id, subject, audience, failed_count, created_at FROM announcements WHERE failed_count > 0 ORDER BY created_at DESC LIMIT 10"
+      )
+    ]);
+
+    const items = [];
+
+    for (const row of signupRes.rows) {
+      const isOrg = row.role_type === "school" || row.role_type === "recruiter_firm";
+      items.push({
+        id: `signup-${row.id}`,
+        type: isOrg ? "new_org" : "new_signup",
+        createdAt: row.created_at,
+        data: { firstName: row.first_name, lastName: row.last_name, roleType: row.role_type }
+      });
+    }
+
+    for (const row of paymentRes.rows) {
+      items.push({
+        id: `payment-${row.id}`,
+        type: "new_payment",
+        createdAt: row.created_at,
+        data: {
+          firstName: row.first_name,
+          lastName: row.last_name,
+          amount: Number(row.amount_collected),
+          currency: row.currency,
+          planId: row.plan_id
+        }
+      });
+    }
+
+    for (const row of fullCodesRes.rows) {
+      items.push({
+        id: `license-full-${row.code}`,
+        type: "license_full",
+        createdAt: null,
+        data: {
+          code: row.code,
+          firstName: row.first_name,
+          lastName: row.last_name,
+          planId: row.plan_id,
+          seatsTotal: row.seats_total
+        }
+      });
+    }
+
+    for (const row of failedAnnouncementsRes.rows) {
+      items.push({
+        id: `announcement-failed-${row.id}`,
+        type: "announcement_failed",
+        createdAt: row.created_at,
+        data: { subject: row.subject, audience: row.audience, failedCount: row.failed_count }
+      });
+    }
+
+    items.sort((a, b) => {
+      if (!a.createdAt && !b.createdAt) return 0;
+      if (!a.createdAt) return -1;
+      if (!b.createdAt) return 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    return res.json({ items: items.slice(0, 30) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+function csvCell(value) {
+  const text = value === null || value === undefined ? "" : String(value);
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function toCsv(headers, rows) {
+  const lines = [headers.map(csvCell).join(",")];
+  for (const row of rows) {
+    lines.push(row.map(csvCell).join(","));
+  }
+  // BOM UTF-8 : Excel ouvre correctement les accents sans ça.
+  return `﻿${lines.join("\r\n")}`;
+}
+
+function sendCsv(res, filename, headers, rows) {
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+  return res.send(toCsv(headers, rows));
+}
+
+app.get("/api/admin/export/accounts", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const { rows } = await db.query(
+      "SELECT id, first_name, last_name, email, role_type, subscription_json, created_at FROM users ORDER BY created_at DESC"
+    );
+    const csvRows = rows.map((row) => {
+      const subscription = parseJsonField(row.subscription_json, {});
+      return [
+        row.id,
+        row.first_name,
+        row.last_name,
+        row.email,
+        row.role_type,
+        subscription.planId || "",
+        subscription.billingCycle || "",
+        row.created_at
+      ];
+    });
+    return sendCsv(
+      res,
+      "comptes.csv",
+      ["ID", "Prénom", "Nom", "Email", "Rôle", "Plan", "Cycle de facturation", "Créé le"],
+      csvRows
+    );
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/export/transactions", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const { rows } = await db.query(
+      `SELECT t.id, t.plan_id, t.billing_cycle, t.listed_amount, t.amount_collected, t.currency, t.source, t.created_at,
+              t.refunded, t.refunded_at, u.first_name, u.last_name, u.email
+       FROM transactions t
+       LEFT JOIN users u ON u.id = t.user_id
+       ORDER BY t.created_at DESC`
+    );
+    const csvRows = rows.map((row) => [
+      row.id,
+      row.created_at,
+      `${row.first_name || ""} ${row.last_name || ""}`.trim(),
+      row.email || "",
+      row.plan_id,
+      row.billing_cycle,
+      row.listed_amount,
+      row.amount_collected,
+      row.currency,
+      row.source,
+      Number(row.refunded) ? `Remboursé le ${row.refunded_at}` : ""
+    ]);
+    return sendCsv(
+      res,
+      "transactions.csv",
+      ["ID", "Date", "Utilisateur", "Email", "Plan", "Cycle", "Prix catalogue", "Montant encaissé", "Devise", "Source", "Remboursement"],
+      csvRows
+    );
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/export/license-codes", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const { rows } = await db.query(
+      `SELECT lc.code, lc.plan_id, lc.seats_total, lc.seats_used, lc.revoked, lc.created_at,
+              u.first_name, u.last_name, u.email
+       FROM license_codes lc
+       LEFT JOIN users u ON u.id = lc.owner_user_id
+       ORDER BY lc.created_at DESC`
+    );
+    const csvRows = rows.map((row) => [
+      row.code,
+      `${row.first_name || ""} ${row.last_name || ""}`.trim(),
+      row.email || "",
+      row.plan_id,
+      row.seats_used,
+      row.seats_total,
+      Number(row.revoked) ? "Révoqué" : "Actif",
+      row.created_at
+    ]);
+    return sendCsv(
+      res,
+      "codes-de-licence.csv",
+      ["Code", "Propriétaire", "Email", "Plan", "Sièges utilisés", "Sièges totaux", "Statut", "Créé le"],
+      csvRows
+    );
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Public : nécessaire pour que les pages tarifs (visiteurs non connectés
+// inclus) affichent le prix réellement en vigueur si un admin l'a modifié.
+app.get("/api/plans/overrides", async (_req, res) => {
+  try {
+    const { rows } = await db.query("SELECT plan_id, monthly_price, annual_price FROM plan_overrides");
+    const overrides = {};
+    for (const row of rows) {
+      overrides[row.plan_id] = {
+        monthlyPrice: row.monthly_price != null ? Number(row.monthly_price) : null,
+        annualPrice: row.annual_price != null ? Number(row.annual_price) : null
+      };
+    }
+    return res.json({ overrides });
+  } catch (_error) {
+    return res.json({ overrides: {} });
+  }
+});
+
+app.get("/api/admin/plans", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const { rows } = await db.query("SELECT * FROM plan_overrides");
+    const overrideByPlan = Object.fromEntries(rows.map((row) => [row.plan_id, row]));
+
+    const items = PLANS.map((plan) => {
+      const override = overrideByPlan[plan.id];
+      return {
+        id: plan.id,
+        segment: plan.segment,
+        name: plan.name,
+        grantsPremium: plan.grantsPremium,
+        isSinglePrice: plan.monthlyPrice == null,
+        monthlyPrice: override?.monthly_price != null ? Number(override.monthly_price) : plan.monthlyPrice,
+        annualPrice: override?.annual_price != null ? Number(override.annual_price) : plan.annualPrice,
+        defaultMonthlyPrice: plan.monthlyPrice,
+        defaultAnnualPrice: plan.annualPrice,
+        overridden: Boolean(override),
+        updatedAt: override?.updated_at || null
+      };
+    });
+
+    return res.json({ items });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.put("/api/admin/plans/:id", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const planId = coerceString(req.params.id);
+    const plan = getPlanById(planId);
+    if (!plan) {
+      return res.status(404).json({ error: "Plan inconnu." });
+    }
+
+    const { rows: existingRows } = await db.query("SELECT * FROM plan_overrides WHERE plan_id = $1", [planId]);
+    const existing = existingRows[0] || null;
+    const isSinglePrice = plan.monthlyPrice == null;
+
+    const currentMonthly = existing?.monthly_price != null ? Number(existing.monthly_price) : plan.monthlyPrice;
+    const currentAnnual = existing?.annual_price != null ? Number(existing.annual_price) : plan.annualPrice;
+
+    const nextMonthly = isSinglePrice ? null : Number(req.body?.monthlyPrice);
+    const nextAnnual = Number(req.body?.annualPrice);
+
+    if (!isSinglePrice && (!Number.isFinite(nextMonthly) || nextMonthly < 0)) {
+      return res.status(400).json({ error: "Prix mensuel invalide." });
+    }
+    if (!Number.isFinite(nextAnnual) || nextAnnual < 0) {
+      return res.status(400).json({ error: "Prix annuel invalide." });
+    }
+
+    // Les Price Stripe sont immuables : changer un montant nécessite d'en
+    // créer un nouveau et de pointer dessus, plutôt que de modifier l'ancien.
+    // On ne recrée que ce qui a réellement changé, pour ne pas polluer le
+    // dashboard Stripe de Price inutiles à chaque sauvegarde.
+    let stripePriceIdMonthly = null;
+    let stripePriceIdAnnual = null;
+
+    if (plan.grantsPremium && stripe) {
+      if (isSinglePrice) {
+        if (nextAnnual !== currentAnnual || !existing?.stripe_price_id_annual) {
+          const product = await stripe.products.create({ name: `Career App - ${plan.name.fr} (tarif admin)` });
+          const price = await stripe.prices.create({
+            product: product.id,
+            unit_amount: Math.round(nextAnnual * 100),
+            currency: "eur"
+          });
+          stripePriceIdAnnual = price.id;
+        }
+      } else {
+        if (nextMonthly !== currentMonthly || !existing?.stripe_price_id_monthly) {
+          const product = await stripe.products.create({ name: `Career App - ${plan.name.fr} (mensuel, tarif admin)` });
+          const price = await stripe.prices.create({
+            product: product.id,
+            unit_amount: Math.round(nextMonthly * 100),
+            currency: "eur",
+            recurring: { interval: "month" }
+          });
+          stripePriceIdMonthly = price.id;
+        }
+        if (nextAnnual !== currentAnnual || !existing?.stripe_price_id_annual) {
+          const product = await stripe.products.create({ name: `Career App - ${plan.name.fr} (annuel, tarif admin)` });
+          const price = await stripe.prices.create({
+            product: product.id,
+            unit_amount: Math.round(nextAnnual * 100),
+            currency: "eur",
+            recurring: { interval: "year" }
+          });
+          stripePriceIdAnnual = price.id;
+        }
+      }
+    }
+
+    const updatedAt = nowIso();
+    await db.query(
+      `INSERT INTO plan_overrides (plan_id, monthly_price, annual_price, stripe_price_id_monthly, stripe_price_id_annual, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (plan_id) DO UPDATE SET
+         monthly_price = $2,
+         annual_price = $3,
+         stripe_price_id_monthly = COALESCE($4, plan_overrides.stripe_price_id_monthly),
+         stripe_price_id_annual = COALESCE($5, plan_overrides.stripe_price_id_annual),
+         updated_at = $6`,
+      [planId, isSinglePrice ? null : nextMonthly, nextAnnual, stripePriceIdMonthly, stripePriceIdAnnual, updatedAt]
+    );
+
+    await logSecurityEvent(req, adminUserId, "admin_plan_price_changed", {
+      planId,
+      monthlyPrice: isSinglePrice ? null : nextMonthly,
+      annualPrice: nextAnnual
+    });
+
+    return res.json({
+      ok: true,
+      planId,
+      monthlyPrice: isSinglePrice ? null : nextMonthly,
+      annualPrice: nextAnnual
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/plans/:id/reset", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+    const planId = coerceString(req.params.id);
+    await db.query("DELETE FROM plan_overrides WHERE plan_id = $1", [planId]);
+    await logSecurityEvent(req, adminUserId, "admin_plan_price_reset", { planId });
+    return res.json({ ok: true });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
@@ -4594,7 +5088,13 @@ app.get("/api/admin/finance", async (req, res) => {
         currency: row.currency,
         source: row.source,
         licenseCode: row.license_code,
-        createdAt: row.created_at
+        createdAt: row.created_at,
+        refunded: Boolean(Number(row.refunded)),
+        refundedAt: row.refunded_at || null,
+        // Un remboursement n'est proposable que si un payment_intent réel a
+        // été capturé (sessions Stripe "payment", pas les abonnements) et
+        // qu'un montant a bien été encaissé.
+        refundable: row.source === "stripe" && Boolean(row.stripe_payment_intent_id) && Number(row.amount_collected) > 0 && !Number(row.refunded)
       };
     });
 
@@ -4637,6 +5137,48 @@ app.get("/api/admin/finance", async (req, res) => {
       countBySource,
       revenueTrend
     });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/admin/transactions/:id/refund", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    if (!stripe) {
+      return res.status(503).json({ error: "Paiement Stripe non configuré côté serveur." });
+    }
+
+    const txnId = coerceString(req.params.id);
+    const { rows } = await db.query("SELECT * FROM transactions WHERE id = $1", [txnId]);
+    const txn = rows[0];
+    if (!txn) {
+      return res.status(404).json({ error: "Transaction introuvable." });
+    }
+    if (txn.source !== "stripe" || !txn.stripe_payment_intent_id) {
+      return res.status(400).json({
+        error:
+          "Remboursement impossible pour cette transaction (pas de paiement Stripe direct — probablement un abonnement, à gérer depuis le dashboard Stripe)."
+      });
+    }
+    if (Number(txn.refunded)) {
+      return res.status(400).json({ error: "Cette transaction a déjà été remboursée." });
+    }
+
+    await stripe.refunds.create({ payment_intent: txn.stripe_payment_intent_id });
+
+    const refundedAt = nowIso();
+    await db.query("UPDATE transactions SET refunded = 1, refunded_at = $1 WHERE id = $2", [refundedAt, txnId]);
+
+    await logSecurityEvent(req, adminUserId, "admin_transaction_refunded", {
+      transactionId: txnId,
+      userId: txn.user_id,
+      amount: Number(txn.amount_collected)
+    });
+
+    return res.json({ ok: true, refundedAt });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
@@ -4732,7 +5274,7 @@ app.post("/api/admin/users", async (req, res) => {
 
     let licenseCode = null;
     if (planId) {
-      const plan = getPlanById(planId);
+      const plan = await getEffectivePlanById(planId);
       if (!plan) {
         return res.status(400).json({ error: "Plan inconnu." });
       }
@@ -4794,7 +5336,7 @@ app.post("/api/admin/users/update", async (req, res) => {
     }
 
     if (planId) {
-      const plan = getPlanById(planId);
+      const plan = await getEffectivePlanById(planId);
       if (!plan) {
         return res.status(400).json({ error: "Plan inconnu." });
       }
@@ -4835,6 +5377,7 @@ app.post("/api/admin/users/delete", async (req, res) => {
     await db.query("DELETE FROM match_runs WHERE user_id = $1", [targetUserId]);
     await db.query("DELETE FROM match_feedback WHERE user_id = $1", [targetUserId]);
     await db.query("DELETE FROM negotiation_conversations WHERE user_id = $1", [targetUserId]);
+    await db.query("DELETE FROM cover_letters WHERE user_id = $1", [targetUserId]);
     await db.query("DELETE FROM user_candidate_profiles WHERE user_id = $1", [targetUserId]);
     await db.query("DELETE FROM user_recruiter_profiles WHERE user_id = $1", [targetUserId]);
     await db.query("DELETE FROM user_org_profiles WHERE user_id = $1", [targetUserId]);
@@ -5723,6 +6266,117 @@ app.delete("/api/negotiation/conversations/:id", async (req, res) => {
     }
 
     await db.query("DELETE FROM negotiation_conversations WHERE id = $1 AND user_id = $2", [conversationId, userId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/coverletter/conversations", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+
+    const { rows } = await db.query(
+      "SELECT id, title, created_at, updated_at, payload_json FROM cover_letters WHERE user_id = $1 ORDER BY updated_at DESC",
+      [userId]
+    );
+
+    const items = rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+      ...parseJsonField(row.payload_json, {})
+    }));
+
+    return res.json({ items });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/coverletter/conversations", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const payload = req.body?.payload;
+    const title = coerceString(req.body?.title) || "Lettre de motivation";
+
+    if (!userId || !payload) {
+      return res.status(400).json({ error: "userId et payload requis." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const id = `letter-${crypto.randomUUID()}`;
+    const createdAt = nowIso();
+
+    await db.query(
+      `INSERT INTO cover_letters (id, user_id, title, created_at, updated_at, payload_json)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [id, userId, title, createdAt, createdAt, JSON.stringify(payload)]
+    );
+
+    return res.status(201).json({
+      conversation: { id, userId, title, createdAt, updatedAt: createdAt, ...payload }
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.put("/api/coverletter/conversations/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const conversationId = coerceString(req.params.id);
+    const payload = req.body?.payload;
+    const title = coerceString(req.body?.title);
+
+    if (!userId || !conversationId || !payload) {
+      return res.status(400).json({ error: "userId, id et payload requis." });
+    }
+
+    const { rows } = await db.query(
+      "SELECT id FROM cover_letters WHERE id = $1 AND user_id = $2",
+      [conversationId, userId]
+    );
+    if (!rows[0]) {
+      return res.status(404).json({ error: "Lettre introuvable." });
+    }
+
+    const updatedAt = nowIso();
+    if (title) {
+      await db.query(
+        "UPDATE cover_letters SET payload_json = $1, updated_at = $2, title = $3 WHERE id = $4",
+        [JSON.stringify(payload), updatedAt, title, conversationId]
+      );
+    } else {
+      await db.query(
+        "UPDATE cover_letters SET payload_json = $1, updated_at = $2 WHERE id = $3",
+        [JSON.stringify(payload), updatedAt, conversationId]
+      );
+    }
+
+    return res.json({ ok: true, updatedAt });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.delete("/api/coverletter/conversations/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    const conversationId = coerceString(req.params.id);
+    if (!userId || !conversationId) {
+      return res.status(400).json({ error: "userId et id requis." });
+    }
+
+    await db.query("DELETE FROM cover_letters WHERE id = $1 AND user_id = $2", [conversationId, userId]);
     return res.json({ ok: true });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });

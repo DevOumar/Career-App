@@ -105,6 +105,12 @@ async function request(path, options = {}) {
   return data;
 }
 
+// Utilisé pour construire des liens de téléchargement directs (export CSV)
+// qu'un simple <a href> peut suivre, sans passer par fetch/blob.
+export async function getApiBase() {
+  return resolveApiBase();
+}
+
 export async function registerUser(payload) {
   return request("/auth/register", { method: "POST", body: payload });
 }
@@ -243,10 +249,10 @@ export async function activatePlan({ userId, planId, billingCycle }) {
   });
 }
 
-export async function createStripeCheckoutSession({ userId, planId, billingCycle }) {
+export async function createStripeCheckoutSession({ userId, planId, billingCycle, quantity = 1 }) {
   return request("/stripe/create-checkout-session", {
     method: "POST",
-    body: { userId, planId, billingCycle }
+    body: { userId, planId, billingCycle, quantity }
   });
 }
 
@@ -384,12 +390,79 @@ export async function deleteNegotiationConversation({ userId, conversationId }) 
   });
 }
 
+export async function listCoverLetters(userId) {
+  if (!userId) return [];
+  const data = await request(`/coverletter/conversations?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function saveCoverLetter({ userId, title, payload }) {
+  const data = await request("/coverletter/conversations", {
+    method: "POST",
+    body: { userId, title, payload }
+  });
+  return data.conversation;
+}
+
+export async function updateCoverLetter({ userId, conversationId, title, payload }) {
+  return request(`/coverletter/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "PUT",
+    body: { userId, title, payload }
+  });
+}
+
+export async function deleteCoverLetter({ userId, conversationId }) {
+  return request(`/coverletter/conversations/${encodeURIComponent(conversationId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
+}
+
 export async function getPremiumSnapshot(userId) {
   return request(`/premium?userId=${encodeURIComponent(userId)}`);
 }
 
+export async function refundAdminTransaction({ adminUserId, transactionId }) {
+  return request(`/admin/transactions/${encodeURIComponent(transactionId)}/refund`, {
+    method: "POST",
+    body: { adminUserId }
+  });
+}
+
+export async function getPlanOverrides() {
+  try {
+    const data = await request("/plans/overrides");
+    return data.overrides || {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+export async function getAdminPlans(adminUserId) {
+  const data = await request(`/admin/plans?adminUserId=${encodeURIComponent(adminUserId)}`);
+  return data.items;
+}
+
+export async function updateAdminPlan({ adminUserId, planId, monthlyPrice, annualPrice }) {
+  return request(`/admin/plans/${encodeURIComponent(planId)}`, {
+    method: "PUT",
+    body: { adminUserId, monthlyPrice, annualPrice }
+  });
+}
+
+export async function resetAdminPlan({ adminUserId, planId }) {
+  return request(`/admin/plans/${encodeURIComponent(planId)}/reset`, {
+    method: "POST",
+    body: { adminUserId }
+  });
+}
+
 export async function getAdminOverview(adminUserId) {
   return request(`/admin/overview?adminUserId=${encodeURIComponent(adminUserId)}`);
+}
+
+export async function getAdminNotifications(adminUserId) {
+  const data = await request(`/admin/notifications?adminUserId=${encodeURIComponent(adminUserId)}`);
+  return data.items;
 }
 
 export async function listAdminUsers(adminUserId, { search = "", roleType = "" } = {}) {

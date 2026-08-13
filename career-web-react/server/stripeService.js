@@ -26,16 +26,16 @@ export function resolveStripeMode(plan) {
  * Stripe refuse `customer` ET `customer_email` en même temps, donc un seul
  * des deux doit être présent selon qu'un stripeCustomerId existe déjà.
  */
-export function buildCheckoutSessionParams({ userId, userEmail, subscription, priceId, mode, planId, billingCycle, successUrl, cancelUrl }) {
+export function buildCheckoutSessionParams({ userId, userEmail, subscription, priceId, mode, planId, billingCycle, successUrl, cancelUrl, quantity = 1 }) {
   if (!userId) throw new Error("userId requis pour construire la session Checkout.");
   if (!priceId) throw new Error("priceId requis pour construire la session Checkout.");
 
   const params = {
     mode,
     payment_method_types: ["card"],
-    line_items: [{ price: priceId, quantity: 1 }],
+    line_items: [{ price: priceId, quantity: Math.max(1, Math.round(Number(quantity) || 1)) }],
     client_reference_id: userId,
-    metadata: { userId, planId, billingCycle: billingCycle || "" },
+    metadata: { userId, planId, billingCycle: billingCycle || "", quantity: String(Math.max(1, Math.round(Number(quantity) || 1))) },
     success_url: successUrl,
     cancel_url: cancelUrl
   };
@@ -51,10 +51,12 @@ export function buildCheckoutSessionParams({ userId, userEmail, subscription, pr
 
 /** Lit l'identifiant utilisateur et le plan visé depuis une session Checkout Stripe. */
 export function extractPlanActivationFromSession(session) {
+  const rawQuantity = Number(session?.metadata?.quantity);
   return {
     userId: session?.client_reference_id || session?.metadata?.userId || "",
     planId: session?.metadata?.planId || "",
-    billingCycle: session?.metadata?.billingCycle || ""
+    billingCycle: session?.metadata?.billingCycle || "",
+    quantity: Number.isFinite(rawQuantity) && rawQuantity > 0 ? Math.round(rawQuantity) : null
   };
 }
 
@@ -78,12 +80,16 @@ export async function applyStripeWebhookEvent(
   switch (event.type) {
     case "checkout.session.completed": {
       const session = event.data.object;
-      const { userId, planId, billingCycle } = extractPlanActivationFromSession(session);
+      const { userId, planId, billingCycle, quantity } = extractPlanActivationFromSession(session);
       if (!userId || !planId) {
         return { handled: false, reason: "missing_user_or_plan" };
       }
 
-      const plan = getPlanById(planId);
+      // getPlanById peut être sync (plan statique) ou async (fusionné avec
+      // une éventuelle surcharge de tarif admin) selon ce qui est injecté —
+      // await fonctionne dans les deux cas (await sur une valeur non-Promise
+      // la résout simplement telle quelle).
+      const plan = await getPlanById(planId);
       if (!plan) {
         return { handled: false, reason: "unknown_plan" };
       }
@@ -95,14 +101,22 @@ export async function applyStripeWebhookEvent(
         null,
         {
           stripeCustomerId: session.customer || null,
-          stripeSubscriptionId: session.subscription || null
+          stripeSubscriptionId: session.subscription || null,
+          // Présent uniquement pour les sessions mode "payment" (achat
+          // unique) — permet un remboursement admin ultérieur. Les
+          // abonnements (mode "subscription") n'ont pas de payment_intent
+          // direct ici ; le remboursement n'est pas proposé pour ceux-là.
+          stripePaymentIntentId: session.payment_intent || null
         },
         "stripe"
       );
 
       let licenseCode = null;
       if (plan.seats && generateLicenseCodeForPlan) {
-        licenseCode = await generateLicenseCodeForPlan(userId, plan);
+        // Pour school_license (tarifé par étudiant), le nombre de sièges achetés
+        // (quantity Stripe) prime sur le minimum par défaut du plan.
+        const seatsOverride = plan.id === "school_license" && quantity ? quantity : null;
+        licenseCode = await generateLicenseCodeForPlan(userId, plan, seatsOverride);
       }
 
       return { handled: true, userId, planId, licenseCode };
