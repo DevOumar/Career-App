@@ -22,8 +22,9 @@ src/ingestion/            Chargement et nettoyage des sources
 src/chunking/              Découpage des documents en chunks
 src/indexing/                Embeddings + construction de l'index vectoriel
 src/retrieval/               Recherche sémantique dans l'index
-src/generation/               Construction du prompt + appel au LLM (Groq)
+src/generation/               Construction du prompt + appel au LLM (Groq) + logique d'entretien
 src/cli/                        Point d'entrée en ligne de commande
+src/web/                        Petite plateforme web locale de test (http.server + page de chat)
 tests/eval_questions.json        Jeu de questions d'évaluation
 ```
 
@@ -84,3 +85,17 @@ Pose une question, choisis éventuellement un type d'entretien (RH / technique
 / direction) et un domaine, et l'assistant renvoie une réponse construite à
 partir des chunks les plus pertinents du corpus, générée par Groq, avec la
 mention de non-substitution systématiquement ajoutée à la fin.
+
+## Plateforme de test web
+
+```bash
+python -m src.web.server
+# puis ouvrir http://127.0.0.1:8000
+```
+
+Petite interface de chat locale pour tester la simulation d'entretien sans
+passer par le terminal : choix du type d'entretien et du domaine, puis
+conversation avec le recruteur simulé. Implémentée uniquement avec la
+bibliothèque standard Python (`http.server`) côté serveur et une page
+HTML/CSS/JS statique côté client, sans nouvelle dépendance. Usage local
+mono-utilisateur (une seule session en mémoire à la fois).

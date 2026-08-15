@@ -14,9 +14,7 @@ Usage :
 
 from __future__ import annotations
 
-from src.generation.llm import call_llm
-from src.generation.prompt import DISCLAIMER, KICKOFF_MESSAGE, build_interview_prompt
-from src.retrieval.search import search
+from src.generation.interview import KICKOFF_MESSAGE, run_turn
 
 TYPES_ENTRETIEN = {"1": "RH", "2": "technique", "3": "direction"}
 
@@ -34,20 +32,6 @@ def ask_type_entretien() -> str | None:
     return TYPES_ENTRETIEN.get(choice)
 
 
-def run_turn(candidate_message: str, type_entretien: str | None, domaine: str | None, history: list[dict]) -> str:
-    chunks = search(candidate_message, type_entretien=type_entretien, domaine=domaine)
-    system_message, user_message = build_interview_prompt(
-        candidate_message, chunks, type_entretien=type_entretien, domaine=domaine
-    )
-    messages = [system_message, *history, user_message]
-    answer = call_llm(messages)
-
-    clean_answer = answer.replace(DISCLAIMER, "").strip()
-    history.append(user_message)
-    history.append({"role": "assistant", "content": clean_answer})
-    return answer
-
-
 def main() -> None:
     print("=== Simulation d'entretien d'embauche ===")
     print("L'assistant joue le rôle du recruteur. Réponds comme si tu y étais.")
@@ -60,7 +44,7 @@ def main() -> None:
     history: list[dict] = []
 
     try:
-        answer = run_turn(KICKOFF_MESSAGE, type_entretien, domaine, history)
+        answer = run_turn(KICKOFF_MESSAGE, history, type_entretien, domaine)
     except FileNotFoundError as exc:
         print(f"\nErreur : {exc}\n")
         return
@@ -74,7 +58,7 @@ def main() -> None:
             break
 
         try:
-            answer = run_turn(candidate_message, type_entretien, domaine, history)
+            answer = run_turn(candidate_message, history, type_entretien, domaine)
         except RuntimeError as exc:
             print(f"\nErreur : {exc}\n")
             continue
