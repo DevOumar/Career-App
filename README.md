@@ -57,6 +57,9 @@ python -m src.indexing.build_index
 
 # Rechercher dans l'index (rechargé depuis le disque, sans réindexation)
 python -m src.retrieval.search "Comment répondre à la question sur mes défauts ?"
+
+# Évaluer la qualité de la recherche sur tests/eval_questions.json
+python -m tests.run_eval
 ```
 
 Le modèle d'embedding utilisé par défaut est `paraphrase-multilingual-MiniLM-L12-v2`
