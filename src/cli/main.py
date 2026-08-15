@@ -32,6 +32,18 @@ def ask_type_entretien() -> str | None:
     return TYPES_ENTRETIEN.get(choice)
 
 
+def ask_offre() -> str | None:
+    """Lit un texte multi-lignes optionnel (offre d'emploi) jusqu'à une ligne vide."""
+    print("Colle l'offre d'emploi visée (optionnel). Termine par une ligne vide :")
+    lines: list[str] = []
+    while True:
+        line = input()
+        if not line:
+            break
+        lines.append(line)
+    return "\n".join(lines) or None
+
+
 def main() -> None:
     print("=== Simulation d'entretien d'embauche ===")
     print("L'assistant joue le rôle du recruteur. Réponds comme si tu y étais.")
@@ -39,12 +51,13 @@ def main() -> None:
 
     type_entretien = ask_type_entretien()
     domaine = ask_optional("Domaine du poste visé (ex: tech, commerce ; vide = générique) : ")
+    offre = ask_offre()
     print()
 
     history: list[dict] = []
 
     try:
-        answer = run_turn(KICKOFF_MESSAGE, history, type_entretien, domaine)
+        answer = run_turn(KICKOFF_MESSAGE, history, type_entretien, domaine, offre)
     except FileNotFoundError as exc:
         print(f"\nErreur : {exc}\n")
         return
@@ -58,7 +71,7 @@ def main() -> None:
             break
 
         try:
-            answer = run_turn(candidate_message, history, type_entretien, domaine)
+            answer = run_turn(candidate_message, history, type_entretien, domaine, offre)
         except RuntimeError as exc:
             print(f"\nErreur : {exc}\n")
             continue

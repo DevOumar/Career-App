@@ -88,13 +88,16 @@ main {
 }
 
 .field select,
-.field input {
+.field input,
+.field textarea {
   font-size: 1rem;
   padding: 0.55rem 0.65rem;
   border-radius: 8px;
   border: 1px solid var(--border);
   background: var(--bg);
   color: var(--text);
+  font-family: inherit;
+  resize: vertical;
 }
 
 .primary-btn {

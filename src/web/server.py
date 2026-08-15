@@ -31,7 +31,7 @@ HOST = "127.0.0.1"
 PORT = 8000
 
 # Session unique en mémoire (usage local mono-utilisateur).
-SESSION: dict = {"history": [], "type_entretien": None, "domaine": None}
+SESSION: dict = {"history": [], "type_entretien": None, "domaine": None, "offre": None}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -84,9 +84,14 @@ class Handler(BaseHTTPRequestHandler):
         SESSION["history"] = []
         SESSION["type_entretien"] = payload.get("type_entretien") or None
         SESSION["domaine"] = payload.get("domaine") or None
+        SESSION["offre"] = (payload.get("offre") or "").strip() or None
 
         answer = run_turn(
-            KICKOFF_MESSAGE, SESSION["history"], SESSION["type_entretien"], SESSION["domaine"]
+            KICKOFF_MESSAGE,
+            SESSION["history"],
+            SESSION["type_entretien"],
+            SESSION["domaine"],
+            SESSION["offre"],
         )
         self._send_json({"message": answer})
 
@@ -98,7 +103,11 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         answer = run_turn(
-            candidate_message, SESSION["history"], SESSION["type_entretien"], SESSION["domaine"]
+            candidate_message,
+            SESSION["history"],
+            SESSION["type_entretien"],
+            SESSION["domaine"],
+            SESSION["offre"],
         )
         self._send_json({"message": answer})
 
