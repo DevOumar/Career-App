@@ -1,1 +1,112 @@
-[]
+[
+  {
+    "id": "q01",
+    "question": "Comment expliquer pourquoi je veux rejoindre cette entreprise précisément ?",
+    "type": "retrieval",
+    "expected_sous_theme": "motivation_parcours"
+  },
+  {
+    "id": "q02",
+    "question": "Le recruteur me demande de me présenter, comment structurer ma réponse ?",
+    "type": "retrieval",
+    "expected_sous_theme": "motivation_parcours"
+  },
+  {
+    "id": "q03",
+    "question": "Je ne sais pas quoi répondre quand on me demande ma motivation pour le poste, j'ai peur d'être trop générique.",
+    "type": "retrieval",
+    "expected_sous_theme": "motivation_parcours"
+  },
+  {
+    "id": "q04",
+    "question": "Quelle qualité mettre en avant en entretien pour qu'elle paraisse crédible ?",
+    "type": "retrieval",
+    "expected_sous_theme": "qualites_defauts"
+  },
+  {
+    "id": "q05",
+    "question": "Est-ce que dire 'je suis trop perfectionniste' comme défaut est une bonne idée ?",
+    "type": "retrieval",
+    "expected_sous_theme": "qualites_defauts"
+  },
+  {
+    "id": "q06",
+    "question": "Comment choisir mes qualités selon que je postule pour un poste technique ou commercial ?",
+    "type": "retrieval",
+    "expected_sous_theme": "qualites_defauts"
+  },
+  {
+    "id": "q07",
+    "question": "Le recruteur me demande ma date de disponibilité, que dire si je suis encore en poste ailleurs ?",
+    "type": "retrieval",
+    "expected_sous_theme": "disponibilite_mobilite"
+  },
+  {
+    "id": "q08",
+    "question": "Comment répondre à une question sur ma mobilité géographique si je ne veux pas déménager n'importe où ?",
+    "type": "retrieval",
+    "expected_sous_theme": "disponibilite_mobilite"
+  },
+  {
+    "id": "q09",
+    "question": "On me demande si je suis d'accord pour être en télétravail complet, comment cadrer ma réponse ?",
+    "type": "retrieval",
+    "expected_sous_theme": "disponibilite_mobilite"
+  },
+  {
+    "id": "q10",
+    "question": "Qu'est-ce que la méthode STAR et comment l'utiliser pour raconter une expérience ?",
+    "type": "retrieval",
+    "expected_sous_theme": "methode_star"
+  },
+  {
+    "id": "q11",
+    "question": "On me demande de raconter un échec, quelle structure de réponse utiliser ?",
+    "type": "retrieval",
+    "expected_sous_theme": "methode_star"
+  },
+  {
+    "id": "q12",
+    "question": "Comment rendre la partie résultat de mon exemple plus convaincante et mesurable ?",
+    "type": "retrieval",
+    "expected_sous_theme": "methode_star"
+  },
+  {
+    "id": "q13",
+    "question": "Quelle fourchette de salaire annoncer pour un poste de développeur backend ?",
+    "type": "retrieval",
+    "expected_sous_theme": "pretentions_salariales",
+    "expected_domaine": "tech"
+  },
+  {
+    "id": "q14",
+    "question": "Comment négocier ma rémunération pour un poste commercial avec une part variable ?",
+    "type": "retrieval",
+    "expected_sous_theme": "pretentions_salariales",
+    "expected_domaine": "commerce"
+  },
+  {
+    "id": "q15",
+    "question": "Quels éléments prendre en compte pour mes prétentions salariales dans un poste en usine ?",
+    "type": "retrieval",
+    "expected_sous_theme": "pretentions_salariales",
+    "expected_domaine": "industrie"
+  },
+  {
+    "id": "q16",
+    "question": "Comment justifier mes prétentions salariales pour un poste en finance avec des certifications ?",
+    "type": "retrieval",
+    "expected_sous_theme": "pretentions_salariales",
+    "expected_domaine": "finance"
+  },
+  {
+    "id": "q17",
+    "question": "Quelle est la meilleure recette de pâtes à la carbonara ?",
+    "type": "out_of_scope"
+  },
+  {
+    "id": "q18",
+    "question": "Quel temps va-t-il faire demain à Paris ?",
+    "type": "out_of_scope"
+  }
+]
