@@ -19,16 +19,19 @@ def run_turn(
     history: list[dict],
     type_entretien: str | None = None,
     domaine: str | None = None,
+    offre: str | None = None,
 ) -> str:
     """
     Joue un tour de l'entretien simulé et renvoie la réponse du recruteur
     (avec le disclaimer). Modifie `history` en place en y ajoutant le tour
     candidat/recruteur, sans le disclaimer, pour éviter que le modèle ne
-    l'imite aux tours suivants.
+    l'imite aux tours suivants. `offre` est le texte optionnel de l'offre
+    d'emploi collée par le candidat, pour ancrer l'entretien dans un poste
+    réel.
     """
     chunks = search(candidate_message, type_entretien=type_entretien, domaine=domaine)
     system_message, user_message = build_interview_prompt(
-        candidate_message, chunks, type_entretien=type_entretien, domaine=domaine
+        candidate_message, chunks, type_entretien=type_entretien, domaine=domaine, offre=offre
     )
     messages = [system_message, *history, user_message]
     answer = call_llm(messages)

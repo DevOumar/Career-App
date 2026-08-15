@@ -64,9 +64,10 @@ startBtn.addEventListener("click", async () => {
 
   const type_entretien = document.getElementById("type-entretien").value;
   const domaine = document.getElementById("domaine").value.trim();
+  const offre = document.getElementById("offre").value.trim();
 
   try {
-    const data = await postJSON("/api/start", { type_entretien, domaine });
+    const data = await postJSON("/api/start", { type_entretien, domaine, offre });
     messagesEl.innerHTML = "";
     addMessage("recruiter", data.message);
     setupPanel.classList.add("hidden");

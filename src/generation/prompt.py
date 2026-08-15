@@ -78,7 +78,12 @@ INTERVIEWER_SYSTEM_PROMPT = (
     "non-responsabilité, de confidentialité ou d'avertissement légal, sous "
     "quelque forme que ce soit : une mention officielle est ajoutée "
     "automatiquement après ta réponse, il ne faut pas la doubler ni "
-    "l'anticiper."
+    "l'anticiper.\n"
+    "- Si une offre d'emploi est fournie ci-dessous, mets-toi dans la peau "
+    "de l'entreprise qui recrute pour CE poste précis : ancre tes questions "
+    "et tes retours dans son contenu réel (intitulé, missions, compétences "
+    "demandées, contexte de l'entreprise), au lieu de questions "
+    "génériques."
 )
 
 KICKOFF_MESSAGE = (
@@ -92,13 +97,16 @@ def build_interview_prompt(
     chunks: list[dict],
     type_entretien: str | None = None,
     domaine: str | None = None,
+    offre: str | None = None,
 ) -> list[dict]:
     """
     Construit les messages pour le mode simulation d'entretien : le LLM joue
     le rôle du recruteur, `candidate_message` est la dernière réponse du
-    candidat (ou KICKOFF_MESSAGE pour démarrer l'entretien), et `chunks` sont
+    candidat (ou KICKOFF_MESSAGE pour démarrer l'entretien), `chunks` sont
     les bonnes pratiques du corpus pertinentes pour évaluer/orienter la
-    réponse du recruteur.
+    réponse du recruteur, et `offre` est le texte optionnel de l'offre
+    d'emploi collée par le candidat, pour ancrer l'entretien dans un poste
+    réel plutôt que de rester générique.
     """
     scenario_bits = []
     if type_entretien:
@@ -113,6 +121,9 @@ def build_interview_prompt(
         f"Bonnes pratiques (pour toi, recruteur — ne pas réciter telles "
         f"quelles) :\n{context}"
     )
+    if offre:
+        system_content += f"\n\nOffre d'emploi visée par le candidat :\n{offre.strip()}"
+
     return [
         {"role": "system", "content": system_content},
         {"role": "user", "content": candidate_message},

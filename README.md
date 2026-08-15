@@ -94,8 +94,11 @@ python -m src.web.server
 ```
 
 Petite interface de chat locale pour tester la simulation d'entretien sans
-passer par le terminal : choix du type d'entretien et du domaine, puis
-conversation avec le recruteur simulé. Implémentée uniquement avec la
-bibliothèque standard Python (`http.server`) côté serveur et une page
-HTML/CSS/JS statique côté client, sans nouvelle dépendance. Usage local
-mono-utilisateur (une seule session en mémoire à la fois).
+passer par le terminal : choix du type d'entretien, du domaine et,
+optionnellement, collage du texte d'une offre d'emploi réelle pour que le
+recruteur simulé se mette dans la peau de l'entreprise et ancre ses
+questions sur ce poste précis (intitulé, missions, stack, contexte).
+Implémentée uniquement avec la bibliothèque standard Python (`http.server`)
+côté serveur et une page HTML/CSS/JS statique côté client, sans nouvelle
+dépendance. Usage local mono-utilisateur (une seule session en mémoire à la
+fois). Le CLI (`python -m src.cli.main`) propose la même option.
