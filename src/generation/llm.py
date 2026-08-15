@@ -1,13 +1,45 @@
 """
-Appel au LLM (Groq) pour générer la réponse finale.
+Appel au LLM (Groq) pour générer la réponse finale à partir du prompt
+construit par generation/prompt.py.
 
-Ce module enverra le prompt construit par generation/prompt.py à l'API Groq
-(via le SDK groq) et renverra la réponse générée, en s'assurant que la
-mention de non-substitution à un accompagnement RH/coach carrière est bien
-présente dans la sortie finale.
-
-Non implémenté pour l'instant.
+La mention "Cet assistant propose des conseils génériques de préparation et
+ne remplace pas un accompagnement RH ou un coach carrière personnalisé." est
+ajoutée systématiquement après la réponse du modèle, pour garantir sa
+présence indépendamment de ce que le LLM a généré.
 """
 
-# TODO: implémenter call_llm(prompt) -> str, avec lecture de GROQ_API_KEY
-# depuis les variables d'environnement (python-dotenv).
+from __future__ import annotations
+
+import os
+
+from dotenv import load_dotenv
+from groq import Groq
+
+from src.generation.prompt import DISCLAIMER
+
+load_dotenv()
+
+DEFAULT_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+
+
+def call_llm(messages: list[dict], model: str = DEFAULT_MODEL, temperature: float = 0.4) -> str:
+    """
+    Envoie les messages (format chat, voir prompt.build_prompt) au LLM Groq
+    et renvoie la réponse générée, avec la mention obligatoire ajoutée à la
+    fin.
+    """
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key:
+        raise RuntimeError("GROQ_API_KEY manquant : renseignez-le dans votre fichier .env")
+
+    client = Groq(api_key=api_key)
+    response = client.chat.completions.create(
+        model=model,
+        messages=messages,
+        temperature=temperature,
+    )
+    content = response.choices[0].message.content.strip()
+    # Le modèle imite parfois le disclaimer déjà présent dans l'historique de
+    # conversation malgré la consigne : on évite de le dupliquer.
+    content = content.replace(DISCLAIMER, "").strip()
+    return f"{content}\n\n{DISCLAIMER}"

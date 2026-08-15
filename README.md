@@ -68,5 +68,16 @@ le corpus indexé.
 ## État d'avancement
 
 - [x] Ingestion / chunking / indexation / recherche (structure + corpus RH initial)
-- [ ] Génération de prompt et appel LLM (Groq)
-- [ ] CLI interactive
+- [x] Génération de prompt et appel LLM (Groq)
+- [x] CLI interactive
+
+## Utilisation (assistant complet)
+
+```bash
+python -m src.cli.main
+```
+
+Pose une question, choisis éventuellement un type d'entretien (RH / technique
+/ direction) et un domaine, et l'assistant renvoie une réponse construite à
+partir des chunks les plus pertinents du corpus, générée par Groq, avec la
+mention de non-substitution systématiquement ajoutée à la fin.
