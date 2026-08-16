@@ -1947,7 +1947,7 @@ export default function App() {
   const [planOverrides, setPlanOverrides] = useState({});
   const [session, setSession] = useState(null);
   const [premium, setPremium] = useState(null);
-  const [activePage, setActivePage] = useState("home");
+  const [activePage, setActivePage] = useState(readInitialActivePage);
 
   const [authError, setAuthError] = useState("");
   const [pageMessage, setPageMessage] = useState("");
