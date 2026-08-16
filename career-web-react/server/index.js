@@ -4163,7 +4163,7 @@ app.post("/api/account/connected-accounts/link-google", async (req, res) => {
     const credential = coerceString(req.body?.credential);
     const user = await getUserRowById(userId);
     if (!user || !credential) {
-      return res.status(400).json({ error: "ParamÃ¨tres invalides." });
+      return res.status(400).json({ error: "Paramètres invalides." });
     }
 
     const ticket = await googleOAuthClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
