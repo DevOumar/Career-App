@@ -13568,7 +13568,7 @@ function CvDocumentClassic({ cvReview, copy }) {
               <div>
                 <h4>{copy.cvPreviewLanguages}</h4>
                 <div className="cv-document-skill-chips">
-                  {cvReview.languages.map((language) => (
+                  {cvReview.languages.filter(Boolean).map((language) => (
                     <span key={language} className="cv-document-skill-chip">
                       {language}
                     </span>
