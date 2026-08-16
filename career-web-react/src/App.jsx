@@ -2354,9 +2354,28 @@ export default function App() {
     };
   }
 
-  async function saveCvToDb({ fileName, text, parsed }) {
+  // Le bouton "+ Ajouter" du réviseur de CV insère volontairement une entrée
+  // vide (à remplir par l'utilisateur) dans les listes compétences/langues/
+  // centres d'intérêt. Si elle n'est jamais remplie, on ne veut pas
+  // l'enregistrer telle quelle : elle réapparaîtrait comme un badge vide
+  // partout où le CV est ensuite affiché en lecture seule (aperçu, export,
+  // optimisation ATS...).
+  function sanitizeCvReviewArrays(parsed) {
+    if (!parsed) return parsed;
+    const trimList = (list) => (Array.isArray(list) ? list.map((item) => String(item || "").trim()).filter(Boolean) : list);
+    return {
+      ...parsed,
+      skills: trimList(parsed.skills),
+      softSkills: trimList(parsed.softSkills),
+      languages: trimList(parsed.languages),
+      interests: trimList(parsed.interests)
+    };
+  }
+
+  async function saveCvToDb({ fileName, text, parsed: rawParsed }) {
     if (!user) return;
 
+    const parsed = sanitizeCvReviewArrays(rawParsed);
     const cvRecord = createCvRecord({ fileName, sourceText: text, parsed });
     const saved = await addCvRecord(user.id, cvRecord);
     setLatestCv(saved);
