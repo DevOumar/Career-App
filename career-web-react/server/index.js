@@ -2861,12 +2861,26 @@ async function extractCvWithAi(sourceText) {
       if (!response.ok) {
         throw new Error(payload?.error?.message || payload?.error || `Erreur IA ${response.status}`);
       }
-      const content = payload?.choices?.[0]?.message?.content;
+      const choice = payload?.choices?.[0];
+      const content = choice?.message?.content;
       if (!content) throw new Error("Réponse IA vide.");
       const start = content.indexOf("{");
       const end = content.lastIndexOf("}");
       const jsonText = start >= 0 && end > start ? content.slice(start, end + 1) : content;
-      return sanitizeAiCvExtraction(JSON.parse(jsonText));
+      try {
+        return sanitizeAiCvExtraction(JSON.parse(jsonText));
+      } catch (parseError) {
+        // La réponse a probablement été coupée par la limite de tokens
+        // (fréquent sur les CV longs/riches en expériences) — on tente de
+        // récupérer un maximum de champs déjà générés avant d'abandonner.
+        if (choice?.finish_reason === "length" || start >= 0) {
+          const repaired = repairTruncatedJson(start >= 0 ? content.slice(start) : content);
+          const parsedRepaired = JSON.parse(repaired);
+          console.warn("Extraction IA: JSON tronqué détecté et réparé automatiquement.");
+          return sanitizeAiCvExtraction(parsedRepaired);
+        }
+        throw parseError;
+      }
     } finally {
       clearTimeout(timeout);
     }
