@@ -71,15 +71,15 @@ export const PLANS = [
     seats: null,
     grantsPremium: true,
     highlighted: true,
-    badge: { fr: "RecommandÃ©", en: "Recommended" },
+    badge: { fr: "Recommandé", en: "Recommended" },
     features: {
       fr: [
         "130 jetons d'analyse",
-        "Simulateur d'entretiens illimitÃ©",
-        "Lettre de motivation IA illimitÃ©e",
-        "Simulateur de nÃ©gociation salariale illimitÃ©",
-        "Email Scout illimitÃ© (recherche d'email pro)",
-        "Suggestions de rÃ©seautage avancÃ©es",
+        "Simulateur d'entretiens illimité",
+        "Lettre de motivation IA illimitée",
+        "Simulateur de négociation salariale illimité",
+        "Email Scout illimité (recherche d'email pro)",
+        "Suggestions de réseautage avancées",
         "Support prioritaire"
       ],
       en: [
