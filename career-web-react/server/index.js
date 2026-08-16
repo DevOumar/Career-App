@@ -3848,7 +3848,7 @@ app.get("/api/auth/session", async (req, res) => {
     const sessionRows = await db.query("SELECT user_id FROM sessions WHERE token = $1 LIMIT 1", [token]);
     const session = sessionRows.rows[0];
     if (!session) {
-      return res.status(401).json({ error: "Session expirÃ©e." });
+      return res.status(401).json({ error: "Session expirée." });
     }
 
     await db.query(
