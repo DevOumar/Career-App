@@ -4115,7 +4115,7 @@ app.patch("/api/account/emails/primary", async (req, res) => {
       return res.status(404).json({ error: "Adresse e-mail introuvable." });
     }
     if (!Number(target.is_verified || 0)) {
-      return res.status(400).json({ error: "Cette adresse doit Ãªtre vÃ©rifiÃ©e avant de devenir principale." });
+      return res.status(400).json({ error: "Cette adresse doit être vérifiée avant de devenir principale." });
     }
 
     const timestamp = nowIso();
