@@ -3170,6 +3170,10 @@ export default function App() {
 
       {showRoleQuizModal ? <RoleQuizModal language={language} onComplete={handleCompleteRoleQuiz} /> : null}
 
+      {!showRoleQuizModal && satisfactionEligible && user ? (
+        <SatisfactionSurveyModal userId={user.id} language={language} onClose={() => setSatisfactionEligible(false)} />
+      ) : null}
+
       {accountDrawerOpen ? (
         <AccountDrawer
           user={user}
