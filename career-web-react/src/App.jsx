@@ -1986,6 +1986,26 @@ export default function App() {
 
   const analysisUnlocked = Boolean(latestMatch);
   const user = session?.user;
+  const [satisfactionEligible, setSatisfactionEligible] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let cancelled = false;
+    // Petit délai pour ne pas afficher le sondage pile au chargement de la
+    // page, laisser l'utilisateur atterrir avant de lui demander un avis.
+    const timer = setTimeout(() => {
+      getSatisfactionStatus(user.id)
+        .then((eligible) => {
+          if (!cancelled && eligible) setSatisfactionEligible(true);
+        })
+        .catch(() => {});
+    }, 2000);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [user?.id]);
+
   const showRoleQuizModal =
     Boolean(user) &&
     !user?.profile?.onboardingQuizSeen &&
