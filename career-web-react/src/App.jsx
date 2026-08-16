@@ -10378,6 +10378,48 @@ function LandingPage({
   );
 }
 
+function FaqSection({ copy }) {
+  const [openIndex, setOpenIndex] = useState(0);
+  const items = copy.faq || [];
+  if (!items.length) return null;
+
+  return (
+    <section className="faq-section" id="section-faq">
+      <div className="section-heading">
+        <span className="section-eyebrow">{copy.faqEyebrow}</span>
+        <h2>{copy.faqTitle}</h2>
+        <p>{copy.faqText}</p>
+      </div>
+      <div className="faq-list">
+        {items.map((item, index) => {
+          const isOpen = index === openIndex;
+          return (
+            <article key={item.q} className={`faq-item ${isOpen ? "open" : ""}`}>
+              <button
+                type="button"
+                className="faq-question"
+                aria-expanded={isOpen}
+                onClick={() => setOpenIndex(isOpen ? -1 : index)}
+              >
+                <span className="faq-index">{String(index + 1).padStart(2, "0")}</span>
+                <span className="faq-question-text">{item.q}</span>
+                <span className="faq-toggle" aria-hidden="true">
+                  <UiIcon name="plus" />
+                </span>
+              </button>
+              <div className="faq-answer-wrap">
+                <div className="faq-answer-inner">
+                  <p className="faq-answer">{item.a}</p>
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 function FooterColumn({ title, links, onLinkClick }) {
   return (
     <div className="footer-column">
