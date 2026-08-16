@@ -109,7 +109,7 @@ export const PLANS = [
     highlighted: false,
     badge: null,
     features: {
-      fr: ["3 siÃ¨ges recruteurs", "Analyses candidats illimitÃ©es", "Code de licence Ã  distribuer"],
+      fr: ["3 sièges recruteurs", "Analyses candidats illimitées", "Code de licence à distribuer"],
       en: ["3 recruiter seats", "Unlimited candidate analyses", "License code to distribute"]
     }
   },
