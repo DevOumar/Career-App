@@ -1452,6 +1452,13 @@ function formatDate(value) {
   return new Date(value).toLocaleDateString("fr-FR");
 }
 
+function formatShortDate(value, language) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString(language === "en" ? "en-GB" : "fr-FR", { day: "2-digit", month: "short" });
+}
+
 function withInitials(user) {
   const first = user?.firstName?.[0] || "U";
   const last = user?.lastName?.[0] || "X";
