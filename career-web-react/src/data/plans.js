@@ -143,14 +143,14 @@ export const PLANS = [
     },
     monthlyPrice: null,
     annualPrice: 3,
-    annualPriceUnit: { fr: "/ Ã©tudiant / an (min. 30)", en: "/ student / year (min. 30)" },
+    annualPriceUnit: { fr: "/ étudiant / an (min. 30)", en: "/ student / year (min. 30)" },
     credits: 999,
     seats: 30,
     grantsPremium: true,
     highlighted: false,
     badge: null,
     features: {
-      fr: ["30 siÃ¨ges Ã©tudiants minimum", "Plan Trajectoire Pro pour chaque Ã©tudiant", "Code de licence Ã  distribuer"],
+      fr: ["30 sièges étudiants minimum", "Plan Trajectoire Pro pour chaque étudiant", "Code de licence à distribuer"],
       en: ["Minimum 30 student seats", "Pro Track plan for every student", "License code to distribute"]
     }
   }
