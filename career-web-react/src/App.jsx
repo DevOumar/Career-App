@@ -1035,6 +1035,7 @@ const APP_COPY = {
       planLabel: "Plan",
       tokens: "tokens",
       unlimitedTokens: "unlimited",
+      schoolMember: "🎓 Account activated via",
       seeTarifs: "See pricing",
       importedCv: "CV(s) imported",
       noCv: "No CV imported",
