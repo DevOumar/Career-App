@@ -2430,6 +2430,18 @@ export default function App() {
     }
   }
 
+  // Enregistre le CV directement en base sans changer d'étape du wizard —
+  // utilisé après une optimisation ATS, où renvoyer l'utilisateur vers
+  // l'étape "Réviser le profil" ferait perdre sa progression (l'étape
+  // "review" fait automatiquement avancer vers "job" une fois enregistrée).
+  async function persistCvReview(nextReview) {
+    await saveCvToDb({
+      fileName: cvFileName || `cv-${new Date().toISOString().slice(0, 10)}.txt`,
+      text: cvSourceText,
+      parsed: nextReview
+    });
+  }
+
   async function handleCvReviewSave(nextReview) {
     try {
       clearMessages();
