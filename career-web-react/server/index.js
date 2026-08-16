@@ -4701,6 +4701,133 @@ app.get("/api/admin/overview", async (req, res) => {
   }
 });
 
+// Sondage de satisfaction (CSAT 1-10) : on ne relance pas un utilisateur
+// avant SATISFACTION_COOLDOWN_MS depuis la dernière fois où le sondage lui
+// a été montré — qu'il ait répondu ou fermé sans répondre. On ne le propose
+// pas non plus avant qu'il ait un minimum d'usage réel (au moins un CV
+// importé), pour ne pas demander un avis à un compte encore vide.
+const SATISFACTION_COOLDOWN_MS = 21 * 24 * 60 * 60 * 1000;
+
+app.get("/api/satisfaction/status", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!userId) return res.status(400).json({ error: "userId requis." });
+
+    const user = await getUserRowById(userId);
+    if (!user) return res.status(404).json({ error: "Utilisateur introuvable." });
+
+    const { rows: cvRows } = await db.query("SELECT COUNT(*)::int AS count FROM cvs WHERE user_id = $1", [userId]);
+    const hasUsage = (cvRows[0]?.count || 0) > 0;
+
+    const lastPromptedAt = user.satisfaction_last_prompted_at || "";
+    const lastPromptedMs = lastPromptedAt ? new Date(lastPromptedAt).getTime() : 0;
+    const eligible = hasUsage && (!lastPromptedMs || Date.now() - lastPromptedMs >= SATISFACTION_COOLDOWN_MS);
+
+    return res.json({ eligible });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/satisfaction/dismiss", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!userId) return res.status(400).json({ error: "userId requis." });
+    await db.query("UPDATE users SET satisfaction_last_prompted_at = $1 WHERE id = $2", [nowIso(), userId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/satisfaction", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const score = Number(req.body?.score);
+    if (!userId) return res.status(400).json({ error: "userId requis." });
+    if (!Number.isInteger(score) || score < 1 || score > 10) {
+      return res.status(422).json({ error: "La note doit être un entier entre 1 et 10." });
+    }
+    const user = await getUserRowById(userId);
+    if (!user) return res.status(404).json({ error: "Utilisateur introuvable." });
+
+    const id = `csat-${crypto.randomUUID()}`;
+    const now = nowIso();
+    await db.query(
+      "INSERT INTO satisfaction_surveys (id, user_id, score, comment, created_at) VALUES ($1,$2,$3,$4,$5)",
+      [id, userId, score, coerceString(req.body?.comment).slice(0, 2000), now]
+    );
+    await db.query("UPDATE users SET satisfaction_last_prompted_at = $1 WHERE id = $2", [now, userId]);
+
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/admin/satisfaction", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    await requireAdmin(adminUserId);
+
+    const { rows } = await db.query(
+      `SELECT s.id, s.user_id, s.score, s.comment, s.created_at, u.first_name, u.last_name, u.email
+       FROM satisfaction_surveys s
+       LEFT JOIN users u ON u.id = s.user_id
+       ORDER BY s.created_at DESC
+       LIMIT 500`
+    );
+
+    const scores = rows.map((row) => Number(row.score)).filter((score) => Number.isFinite(score));
+    const average = scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null;
+    const promoters = scores.filter((score) => score >= 9).length;
+    const passives = scores.filter((score) => score >= 7 && score <= 8).length;
+    const detractors = scores.filter((score) => score <= 6).length;
+    const nps = scores.length ? Math.round(((promoters - detractors) / scores.length) * 100) : null;
+
+    const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
+    const weekCount = 8;
+    const now = Date.now();
+    const buckets = Array.from({ length: weekCount }, (_, index) => {
+      const weeksAgo = weekCount - 1 - index;
+      const start = now - (weeksAgo + 1) * WEEK_MS;
+      const end = now - weeksAgo * WEEK_MS;
+      return { start, end, scores: [] };
+    });
+    for (const row of rows) {
+      const createdAt = new Date(row.created_at).getTime();
+      if (Number.isNaN(createdAt)) continue;
+      const bucket = buckets.find((item) => createdAt >= item.start && createdAt < item.end);
+      if (bucket) bucket.scores.push(Number(row.score));
+    }
+    const trend = buckets.map((bucket) => ({
+      weekStart: new Date(bucket.start).toISOString(),
+      average: bucket.scores.length ? bucket.scores.reduce((sum, score) => sum + score, 0) / bucket.scores.length : null,
+      count: bucket.scores.length
+    }));
+
+    return res.json({
+      average,
+      nps,
+      totalResponses: scores.length,
+      promoters,
+      passives,
+      detractors,
+      trend,
+      responses: rows.map((row) => ({
+        id: row.id,
+        userId: row.user_id,
+        userName: `${row.first_name || ""} ${row.last_name || ""}`.trim() || row.email || "—",
+        score: Number(row.score),
+        comment: row.comment || "",
+        createdAt: row.created_at
+      }))
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.get("/api/admin/notifications", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
