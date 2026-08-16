@@ -2435,23 +2435,25 @@ function cleanExperienceDate(value) {
   if (match) return `${match[1].replace(/^de\s+/i, "")} - ${match[2]}`.replace(/\s{2,}/g, " ");
 
   const normalized = normalizeText(text).replace(/\s+/g, " ");
-  const looseMonth = "(?:janv?\\.?|fevr?\\.?|f.vr\\.?|mars|avr\\.?|mai|juin|juil\\.?|aout|ao.t|sept\\.?|oct\\.?|nov\\.?|dec\\.?|d.c\\.?)";
+  // Même remarque que pour DATE_MONTH_PATTERN : accepter les noms de mois
+  // complets ("janvier", "fevrier"...) en plus des abréviations.
+  const looseMonth = "(?:janv(?:ier)?\\.?|fevr(?:ier)?\\.?|f.vr(?:ier)?\\.?|mars|avr(?:il)?\\.?|mai|juin|juil(?:let)?\\.?|aout|ao.t|sept(?:embre)?\\.?|oct(?:obre)?\\.?|nov(?:embre)?\\.?|dec(?:embre)?\\.?|d.c(?:embre)?\\.?)";
   const loose = normalized.match(new RegExp(`(?:de\\s+)?(${looseMonth}\\s*\\d{4})\\s*(?:-|\\u2013|\\u2014|a|au|to|\\?)\\s*(${looseMonth}\\s*\\d{4}|aujourd'hui|present|pr.sent)`, "i"));
   if (!loose) return "";
   const cleanPart = (part) =>
     coerceString(part)
-      .replace(/^janv?\.?/i, "jan.")
-      .replace(/^f.vr\.?/i, "févr.")
-      .replace(/^fevr?\.?/i, "févr.")
-      .replace(/^avr\.?/i, "avr.")
-      .replace(/^juil\.?/i, "juil.")
+      .replace(/^janv(?:ier)?\.?/i, "jan.")
+      .replace(/^f.vr(?:ier)?\.?/i, "févr.")
+      .replace(/^fevr(?:ier)?\.?/i, "févr.")
+      .replace(/^avr(?:il)?\.?/i, "avr.")
+      .replace(/^juil(?:let)?\.?/i, "juil.")
       .replace(/^ao.t/i, "août")
       .replace(/^aout/i, "août")
-      .replace(/^sept\.?/i, "sept.")
-      .replace(/^oct\.?/i, "oct.")
-      .replace(/^nov\.?/i, "nov.")
-      .replace(/^d.c\.?/i, "déc.")
-      .replace(/^dec\.?/i, "déc.");
+      .replace(/^sept(?:embre)?\.?/i, "sept.")
+      .replace(/^oct(?:obre)?\.?/i, "oct.")
+      .replace(/^nov(?:embre)?\.?/i, "nov.")
+      .replace(/^d.c(?:embre)?\.?/i, "déc.")
+      .replace(/^dec(?:embre)?\.?/i, "déc.");
   return `${cleanPart(loose[1])} - ${cleanPart(loose[2])}`.replace(/\s{2,}/g, " ");
 }
 
