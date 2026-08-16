@@ -12145,7 +12145,7 @@ function ImportPage({
               onClick={isReachable ? () => onStepClick(stepKeys[index]) : undefined}
               aria-current={index === activeIndex ? "step" : undefined}
             >
-              <span>{index < activeIndex ? "?" : index + 1}</span>
+              <span>{index < activeIndex ? <UiIcon name="check" /> : index + 1}</span>
               <div>
                 <strong>{step.title}</strong>
                 <small>{step.text}</small>
