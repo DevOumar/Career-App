@@ -1902,7 +1902,7 @@ function UiIcon({ name, className = "" }) {
   };
 
   return (
-    <svg className={className} viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+    <svg className={`ui-icon ${className}`.trim()} viewBox="0 0 20 20" aria-hidden="true" focusable="false">
       {map[name] || map.chart}
     </svg>
   );
