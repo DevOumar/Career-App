@@ -6781,6 +6781,7 @@ app.put("/api/school/profile", async (req, res) => {
       [
         userId,
         coerceString(profile.organizationName),
+        coerceString(profile.acronym),
         coerceString(profile.organizationType),
         coerceString(profile.department),
         coerceString(profile.website),
