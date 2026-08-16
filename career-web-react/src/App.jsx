@@ -12557,13 +12557,80 @@ function MatchResultsStep({
   cvSourceText,
   copy,
   language,
-  avatarDataUrl
+  avatarDataUrl,
+  cvId,
+  tokensBalance,
+  onApplyOptimization,
+  onSaveCvReview,
+  onConsumeToken
 }) {
   const [feedback, setFeedback] = useState(null);
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [networkingState, setNetworkingState] = useState("idle");
   const [previewOpen, setPreviewOpen] = useState(false);
   const [shareStatus, setShareStatus] = useState("idle");
+  const [trackerStatus, setTrackerStatus] = useState("idle");
+  const [trackerApplicationId, setTrackerApplicationId] = useState(null);
+  const trackerLockRef = useRef(false);
+  const cvCopy = APP_COPY[language]?.cv || APP_COPY.fr.cv;
+  const applicationsCopy = APP_COPY[language]?.applications || APP_COPY.fr.applications;
+  const [atsOptimization, setAtsOptimization] = useState(null);
+  const [isAtsOptimizing, setIsAtsOptimizing] = useState(false);
+  const [atsError, setAtsError] = useState("");
+  const [atsApplied, setAtsApplied] = useState(false);
+  const [atsSaving, setAtsSaving] = useState(false);
+  const hasOfferContext = Boolean(cvReview?.experiences?.length || cvReview?.summary) && Boolean(jobReview?.title);
+  const outOfTokens = tokensBalance < 999 && tokensBalance <= 0;
+
+  async function handleAtsOptimize() {
+    if (!hasOfferContext || isAtsOptimizing) return;
+    if (outOfTokens) {
+      onGoToTarifs();
+      return;
+    }
+    setAtsError("");
+    setAtsApplied(false);
+    setIsAtsOptimizing(true);
+    try {
+      const result = await optimizeCvForAts({ candidate: cvReview, offer: jobReview, language });
+      setAtsOptimization(result);
+      await onConsumeToken();
+    } catch (err) {
+      setAtsError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setIsAtsOptimizing(false);
+    }
+  }
+
+  async function handleAtsApply() {
+    if (!atsOptimization || atsSaving) return;
+    const compact = (value) => String(value || "").toLowerCase().trim();
+    const nextExperiences = (cvReview.experiences || []).map((exp) => {
+      const match = atsOptimization.experiences.find((item) => compact(item.company) === compact(exp.company));
+      return match ? { ...exp, description: match.optimizedDescription } : exp;
+    });
+    const nextReview = {
+      ...cvReview,
+      headline: atsOptimization.optimizedHeadline || cvReview.headline,
+      summary: atsOptimization.optimizedSummary || cvReview.summary,
+      skills: atsOptimization.prioritizedSkills?.length ? atsOptimization.prioritizedSkills : cvReview.skills,
+      experiences: nextExperiences
+    };
+    onApplyOptimization(nextReview);
+    setAtsSaving(true);
+    setAtsError("");
+    try {
+      // Enregistré tout de suite en base, sans faire naviguer l'utilisateur
+      // vers une autre étape du wizard (qui ferait perdre sa progression).
+      await onSaveCvReview(nextReview);
+      setAtsApplied(true);
+    } catch (err) {
+      setAtsApplied(false);
+      setAtsError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setAtsSaving(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
