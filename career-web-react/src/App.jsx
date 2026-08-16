@@ -13580,11 +13580,13 @@ function CvDocumentClassic({ cvReview, copy }) {
               <div>
                 <h4>{copy.cvPreviewCertifications}</h4>
                 <div className="cv-document-skill-chips">
-                  {cvReview.certifications.map((item, index) => (
-                    <span key={`${item.name}-${index}`} className="cv-document-skill-chip">
-                      {[item.name, item.issuer].filter(Boolean).join(" · ")}
-                    </span>
-                  ))}
+                  {cvReview.certifications
+                    .filter((item) => item?.name || item?.issuer)
+                    .map((item, index) => (
+                      <span key={`${item.name}-${index}`} className="cv-document-skill-chip">
+                        {[item.name, item.issuer].filter(Boolean).join(" · ")}
+                      </span>
+                    ))}
                 </div>
               </div>
             ) : null}
