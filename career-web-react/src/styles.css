@@ -5739,6 +5739,13 @@ input[aria-invalid="true"] {
   font-size: 0.78rem;
 }
 
+.user-dropdown-school {
+  margin-top: 0.3rem !important;
+  color: var(--primary) !important;
+  font-weight: 700;
+  font-size: 0.72rem !important;
+}
+
 .user-dropdown button {
   width: 100%;
   border: 0;
