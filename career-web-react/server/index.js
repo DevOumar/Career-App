@@ -6346,6 +6346,7 @@ async function getSchoolOrgProfile(userId) {
   const row = rows[0] || {};
   return {
     organizationName: row.organization_name || "",
+    acronym: row.acronym || "",
     organizationType: row.organization_type || "",
     department: row.department || "",
     website: row.website || "",
