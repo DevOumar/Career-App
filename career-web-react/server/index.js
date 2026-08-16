@@ -7834,6 +7834,186 @@ app.get("/api/cv", async (req, res) => {
   }
 });
 
+const JOB_APPLICATION_STATUSES = new Set(["to_apply", "applied", "interview", "offer", "rejected"]);
+
+function toPublicJobApplication(row) {
+  return {
+    id: row.id,
+    userId: row.user_id,
+    status: row.status,
+    title: row.title,
+    company: row.company,
+    location: row.location,
+    offerUrl: row.offer_url,
+    offerText: row.offer_text,
+    matchScore: row.match_score === null || row.match_score === undefined ? null : Number(row.match_score),
+    cvId: row.cv_id,
+    notes: row.notes,
+    appliedAt: row.applied_at,
+    nextActionAt: row.next_action_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
+app.get("/api/applications", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+    const { rows } = await db.query(
+      `SELECT id, user_id, status, title, company, location, offer_url, offer_text, match_score, cv_id, notes,
+              applied_at, next_action_at, created_at, updated_at
+       FROM job_applications WHERE user_id = $1 ORDER BY updated_at DESC`,
+      [userId]
+    );
+    return res.json({ items: rows.map(toPublicJobApplication) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/applications", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+    const title = coerceString(req.body?.title);
+    const company = coerceString(req.body?.company);
+    if (!title && !company) {
+      return res.status(422).json({ error: "Indique au moins un poste ou une entreprise." });
+    }
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const status = JOB_APPLICATION_STATUSES.has(coerceString(req.body?.status)) ? coerceString(req.body.status) : "to_apply";
+    const id = `app-${crypto.randomUUID()}`;
+    const now = nowIso();
+    const matchScoreInput = req.body?.matchScore;
+    const matchScore = matchScoreInput === null || matchScoreInput === undefined || matchScoreInput === "" ? null : Number(matchScoreInput);
+
+    await db.query(
+      `INSERT INTO job_applications
+         (id, user_id, status, title, company, location, offer_url, offer_text, match_score, cv_id, notes, applied_at, next_action_at, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+      [
+        id,
+        userId,
+        status,
+        title,
+        company,
+        coerceString(req.body?.location),
+        coerceString(req.body?.offerUrl),
+        stripNullBytes(coerceString(req.body?.offerText)),
+        Number.isFinite(matchScore) ? matchScore : null,
+        coerceString(req.body?.cvId),
+        coerceString(req.body?.notes),
+        coerceString(req.body?.appliedAt),
+        coerceString(req.body?.nextActionAt),
+        now,
+        now
+      ]
+    );
+
+    const { rows } = await db.query(
+      `SELECT id, user_id, status, title, company, location, offer_url, offer_text, match_score, cv_id, notes,
+              applied_at, next_action_at, created_at, updated_at
+       FROM job_applications WHERE id = $1`,
+      [id]
+    );
+    return res.json({ item: toPublicJobApplication(rows[0]) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Création de la candidature impossible." });
+  }
+});
+
+app.put("/api/applications/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    const id = coerceString(req.params.id);
+    if (!userId || !id) {
+      return res.status(400).json({ error: "userId et id requis." });
+    }
+    const { rows: existingRows } = await db.query("SELECT * FROM job_applications WHERE id = $1 AND user_id = $2", [id, userId]);
+    const existing = existingRows[0];
+    if (!existing) {
+      return res.status(404).json({ error: "Candidature introuvable." });
+    }
+
+    const patch = req.body || {};
+    const status = patch.status !== undefined ? (JOB_APPLICATION_STATUSES.has(coerceString(patch.status)) ? coerceString(patch.status) : existing.status) : existing.status;
+    const matchScoreProvided = Object.prototype.hasOwnProperty.call(patch, "matchScore");
+    const nextMatchScore = matchScoreProvided
+      ? (patch.matchScore === null || patch.matchScore === "" ? null : Number(patch.matchScore))
+      : existing.match_score;
+
+    const next = {
+      status,
+      title: patch.title !== undefined ? coerceString(patch.title) : existing.title,
+      company: patch.company !== undefined ? coerceString(patch.company) : existing.company,
+      location: patch.location !== undefined ? coerceString(patch.location) : existing.location,
+      offerUrl: patch.offerUrl !== undefined ? coerceString(patch.offerUrl) : existing.offer_url,
+      offerText: patch.offerText !== undefined ? stripNullBytes(coerceString(patch.offerText)) : existing.offer_text,
+      matchScore: Number.isFinite(nextMatchScore) ? nextMatchScore : null,
+      cvId: patch.cvId !== undefined ? coerceString(patch.cvId) : existing.cv_id,
+      notes: patch.notes !== undefined ? coerceString(patch.notes) : existing.notes,
+      appliedAt: patch.appliedAt !== undefined ? coerceString(patch.appliedAt) : existing.applied_at,
+      nextActionAt: patch.nextActionAt !== undefined ? coerceString(patch.nextActionAt) : existing.next_action_at
+    };
+
+    await db.query(
+      `UPDATE job_applications SET
+         status=$1, title=$2, company=$3, location=$4, offer_url=$5, offer_text=$6, match_score=$7, cv_id=$8,
+         notes=$9, applied_at=$10, next_action_at=$11, updated_at=$12
+       WHERE id=$13 AND user_id=$14`,
+      [
+        next.status,
+        next.title,
+        next.company,
+        next.location,
+        next.offerUrl,
+        next.offerText,
+        next.matchScore,
+        next.cvId,
+        next.notes,
+        next.appliedAt,
+        next.nextActionAt,
+        nowIso(),
+        id,
+        userId
+      ]
+    );
+
+    const { rows } = await db.query(
+      `SELECT id, user_id, status, title, company, location, offer_url, offer_text, match_score, cv_id, notes,
+              applied_at, next_action_at, created_at, updated_at
+       FROM job_applications WHERE id = $1`,
+      [id]
+    );
+    return res.json({ item: toPublicJobApplication(rows[0]) });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Mise à jour de la candidature impossible." });
+  }
+});
+
+app.delete("/api/applications/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    const id = coerceString(req.params.id);
+    if (!userId || !id) {
+      return res.status(400).json({ error: "userId et id requis." });
+    }
+    await db.query("DELETE FROM job_applications WHERE id = $1 AND user_id = $2", [id, userId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Suppression impossible." });
+  }
+});
+
 app.get("/api/offers", async (_req, res) => {
   const { rows } = await db.query(
     `SELECT id, company, title, location, contract, premium, sector, experience_min, education, skills_json, missions_json
