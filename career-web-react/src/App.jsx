@@ -13731,7 +13731,7 @@ function CvDocumentSidebar({ cvReview, copy, avatarDataUrl }) {
               <div>
                 <h4>{copy.cvPreviewTechnicalSkills}</h4>
                 <div className="cv-document-skill-chips">
-                  {cvReview.skills.map((skill) => (
+                  {cvReview.skills.filter(Boolean).map((skill) => (
                     <span key={skill} className="cv-document-skill-chip">
                       {skill}
                     </span>
