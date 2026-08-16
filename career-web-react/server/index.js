@@ -634,6 +634,7 @@ await db.exec(`
   ALTER TABLE cvs ADD COLUMN IF NOT EXISTS file_name TEXT NOT NULL DEFAULT 'CV importé';
   ALTER TABLE cvs ADD COLUMN IF NOT EXISTS source_text TEXT NOT NULL DEFAULT '';
   ALTER TABLE cvs ADD COLUMN IF NOT EXISTS parsed_json TEXT NOT NULL DEFAULT '{}';
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS satisfaction_last_prompted_at TEXT NOT NULL DEFAULT '';
 `);
 
 await db.query("UPDATE users SET updated_at = created_at WHERE COALESCE(updated_at, '') = ''");
