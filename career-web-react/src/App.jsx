@@ -5366,8 +5366,11 @@ function SchoolSettingsPage({ user, language }) {
       return;
     }
     try {
+      // fileToBase64 renvoie le base64 brut sans préfixe "data:" (pensé pour
+      // l'upload de CV, où le mimeType part séparément côté serveur) — pour
+      // un <img src>, il faut reconstruire une vraie data URL avec son type MIME.
       const content = await fileToBase64(file);
-      update("logoDataUrl", content);
+      update("logoDataUrl", `data:${file.type};base64,${content}`);
     } catch (_error) {
       setError(language === "en" ? "Unable to read this image." : "Impossible de lire cette image.");
     } finally {
