@@ -13704,7 +13704,7 @@ function CvDocumentSidebar({ cvReview, copy, avatarDataUrl }) {
           <div className="cv-sidebar-block">
             <h4>{copy.cvPreviewInterests}</h4>
             <ul className="cv-sidebar-list">
-              {cvReview.interests.map((interest) => (
+              {cvReview.interests.filter(Boolean).map((interest) => (
                 <li key={interest}>{interest}</li>
               ))}
             </ul>
