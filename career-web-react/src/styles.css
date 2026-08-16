@@ -2743,6 +2743,24 @@ input[aria-invalid="true"] {
   text-align: center;
 }
 
+.match-tracker-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.match-tracker-btn-remove {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.match-tracker-btn-remove:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
+}
+
+
 .match-score-card h3 {
   display: flex;
   align-items: center;
