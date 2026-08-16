@@ -1920,6 +1920,142 @@ async function generateCoverLetterWithAi(candidate, offer, tone, language) {
   }
 }
 
+const CV_ATS_OPTIMIZATION_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    optimizedHeadline: { type: "string" },
+    optimizedSummary: { type: "string" },
+    experiences: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          company: { type: "string" },
+          role: { type: "string" },
+          optimizedDescription: { type: "string" }
+        },
+        required: ["company", "role", "optimizedDescription"]
+      }
+    },
+    prioritizedSkills: { type: "array", items: { type: "string" } },
+    missingKeywords: { type: "array", items: { type: "string" } },
+    atsNotes: { type: "string" }
+  },
+  required: ["optimizedHeadline", "optimizedSummary", "experiences", "prioritizedSkills", "missingKeywords", "atsNotes"]
+};
+
+// Garde-fou anti-fabrication : même si le prompt l'interdit déjà, on ne fait
+// jamais confiance aveuglément à une sortie IA pour un document aussi
+// sensible qu'un CV. On force prioritizedSkills à rester un sous-ensemble
+// des compétences réellement présentes dans le CV d'origine (aucune
+// compétence "inventée" ne peut donc jamais atterrir dans le CV du candidat),
+// et missingKeywords ne peut contenir que des mots-clés qui n'y figurent pas
+// déjà (évite les doublons/incohérences).
+function sanitizeAiCvOptimization(raw, { candidate, offer }) {
+  const parsed = raw && typeof raw === "object" ? raw : {};
+  const originalSkills = uniqueByNormalized([...(candidate?.skills || []), ...(candidate?.softSkills || [])]);
+  const originalSkillsNormalized = new Set(originalSkills.map((skill) => normalizeText(skill)));
+  const originalExperiences = Array.isArray(candidate?.experiences) ? candidate.experiences : [];
+
+  const prioritizedSkills = Array.isArray(parsed.prioritizedSkills)
+    ? uniqueByNormalized(parsed.prioritizedSkills.map((skill) => coerceString(skill)).filter((skill) => originalSkillsNormalized.has(normalizeText(skill))))
+    : originalSkills;
+  // Complète avec les compétences réelles qui n'auraient pas été reprises
+  // par l'IA, pour ne jamais perdre une compétence existante du candidat.
+  const finalSkills = uniqueByNormalized([...prioritizedSkills, ...originalSkills]);
+
+  const missingKeywords = Array.isArray(parsed.missingKeywords)
+    ? uniqueByNormalized(parsed.missingKeywords.map((skill) => coerceString(skill)).filter((skill) => skill && !originalSkillsNormalized.has(normalizeText(skill))))
+    : [];
+
+  const experiences = Array.isArray(parsed.experiences)
+    ? parsed.experiences
+        .map((item) => {
+          const company = coerceString(item?.company);
+          const match = originalExperiences.find((exp) => normalizeText(exp.company) === normalizeText(company));
+          const optimizedDescription = coerceString(item?.optimizedDescription);
+          // On ne garde une réécriture que si une expérience du même nom
+          // existe réellement dans le CV d'origine — impossible d'injecter
+          // une expérience fictive via cette réponse.
+          if (!match || !optimizedDescription) return null;
+          return { company: match.company, role: match.role || coerceString(item?.role), optimizedDescription };
+        })
+        .filter(Boolean)
+    : [];
+
+  return {
+    optimizedHeadline: coerceString(parsed.optimizedHeadline) || coerceString(candidate?.headline),
+    optimizedSummary: coerceString(parsed.optimizedSummary) || coerceString(candidate?.summary),
+    experiences,
+    prioritizedSkills: finalSkills,
+    missingKeywords,
+    atsNotes: coerceString(parsed.atsNotes)
+  };
+}
+
+async function generateCvAtsOptimizationWithAi(candidate, offer, language) {
+  const config = aiExtractionConfig();
+  if (!config?.apiKey) return null;
+
+  const langLabel = language === "en" ? "in English" : "en francais";
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Tu es un expert CV et systemes ATS (Applicant Tracking System). Ta mission: reformuler un CV existant pour qu'il soit mieux lu par les ATS et mieux aligne avec une offre precise, SANS JAMAIS inventer une competence, un outil, une experience, un diplome ou un resultat chiffre absent du CV fourni. Tu peux reformuler ce qui existe deja avec un vocabulaire plus standard et aligne aux mots-cles du poste, reordonner les competences existantes pour mettre en avant celles qui matchent l'offre, et signaler separement les mots-cles demandes par l'offre qui manquent reellement au CV (sans jamais les ajouter au CV lui-meme). Reponds uniquement en JSON."
+    },
+    {
+      role: "user",
+      content:
+        `Optimise ce CV pour le poste vise, ${langLabel}. Reformule l'accroche (headline), le resume (summary) et la description de chaque experience listee, en gardant strictement les memes faits (memes entreprises, memes missions, memes resultats) mais avec une formulation plus percutante et des mots-cles du poste quand c'est honnetement applicable. Propose un ordre de competences (prioritizedSkills) qui met en avant celles qui matchent le poste — n'invente aucune nouvelle competence. Liste separement dans missingKeywords les competences demandees par l'offre qui ne sont vraiment pas dans le CV. Ajoute une note atsNotes de 1-2 phrases expliquant les changements cles.\n\n` +
+        `CV ORIGINAL:\n${JSON.stringify(candidate).slice(0, 12000)}\n\n` +
+        `OFFRE VISEE:\n${JSON.stringify(offer).slice(0, 6000)}`
+    }
+  ];
+
+  async function callAi(responseFormat) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    try {
+      const response = await fetch(config.url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: config.model,
+          temperature: 0.3,
+          messages,
+          response_format: responseFormat
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Optimisation ATS indisponible.");
+      }
+      return JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  let raw;
+  try {
+    raw = await callAi({
+      type: "json_schema",
+      json_schema: { name: "cv_ats_optimization", strict: false, schema: CV_ATS_OPTIMIZATION_SCHEMA }
+    });
+  } catch (_schemaError) {
+    raw = await callAi({ type: "json_object" });
+  }
+  return sanitizeAiCvOptimization(raw, { candidate, offer });
+}
+
 const NEGOTIATION_REPLY_SCHEMA = {
   type: "object",
   additionalProperties: false,
