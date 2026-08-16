@@ -14415,32 +14415,6 @@ function OffersPage({ matchData, premium, language }) {
   );
 }
 
-function CvAdvicePage({ matchData, language }) {
-  const copy = APP_COPY[language]?.cv || APP_COPY.fr.cv;
-  if (!matchData) {
-    return <Placeholder title={copy.unavailableTitle} text={copy.unavailableText} />;
-  }
-
-  return (
-    <section className="cv-page">
-      <div className="card block">
-        <h2>{copy.title}</h2>
-        <p className="muted">{copy.text}</p>
-      </div>
-
-      {matchData.recommendations.map((item, index) => (
-        <article key={`${item.title}-${index}`} className={`advice-card ${levelTag(item.level)}`}>
-          <div className="advice-head">
-            <h3>{item.title}</h3>
-            <span className="tag">{item.level}</span>
-          </div>
-          <p>{item.detail}</p>
-        </article>
-      ))}
-    </section>
-  );
-}
-
 const PRICING_SEGMENTS = [
   { id: "candidate", labelKey: "segmentCandidate" },
   { id: "agency", labelKey: "segmentAgency" },
