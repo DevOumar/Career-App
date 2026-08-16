@@ -3529,12 +3529,12 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(400).json({ error: "Email invalide." });
     }
     if (password.length < 8) {
-      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractÃ¨res." });
+      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractères." });
     }
 
     const existingUser = await getUserRowByAnyEmail(email);
     if (existingUser) {
-      return res.status(409).json({ error: "Un compte existe dÃ©jÃ  avec cet email." });
+      return res.status(409).json({ error: "Un compte existe déjà avec cet email." });
     }
 
     if (requestedUsername && (await getUserRowByUsername(requestedUsername))) {
