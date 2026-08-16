@@ -385,6 +385,14 @@ export async function getMatchFeedback({ userId, matchRunId }) {
   return data.feedback;
 }
 
+export async function optimizeCvForAts({ candidate, offer, language }) {
+  const data = await request("/cv/optimize-ats", {
+    method: "POST",
+    body: { candidate, offer, language }
+  });
+  return data.optimization;
+}
+
 export async function generateCoverLetter({ candidate, offer, tone, language }) {
   return request("/coverletter/generate", {
     method: "POST",
