@@ -433,6 +433,32 @@ await db.exec(`
     payload_json TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS job_applications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'to_apply',
+    title TEXT NOT NULL DEFAULT '',
+    company TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    offer_url TEXT NOT NULL DEFAULT '',
+    offer_text TEXT NOT NULL DEFAULT '',
+    match_score INTEGER,
+    cv_id TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    applied_at TEXT NOT NULL DEFAULT '',
+    next_action_at TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS satisfaction_surveys (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    score INTEGER NOT NULL,
+    comment TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS negotiation_conversations (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
