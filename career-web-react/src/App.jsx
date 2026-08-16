@@ -349,11 +349,40 @@ const LANDING_COPY = {
     ],
     careersTitle: "Explorer les carrières populaires",
     careerSubtitle: "Guide complet & analyse",
+    faqEyebrow: "Questions fréquentes",
+    faqTitle: "Des questions ?",
+    faqText: "Réponses courtes et claires sur ce que Career App fait réellement.",
+    faq: [
+      {
+        q: "Mon CV sera-t-il compatible ATS ?",
+        a: "Le modèle Classique utilise une seule colonne et des titres standards, pensés pour être bien lus par la plupart des ATS. Le modèle Sidebar (photo, mise en page en colonnes) est plus visuel mais certains ATS stricts le lisent moins bien : on vous conseille le modèle Classique si vous postulez via un ATS. Le module d'optimisation IA repère aussi les mots-clés de l'offre encore absents de votre CV."
+      },
+      {
+        q: "Puis-je importer un CV existant ?",
+        a: "Oui. Importez votre CV (PDF, DOCX ou texte) : l'IA en extrait automatiquement votre profil (identité, expériences, formations, compétences) pour le pré-remplir. Vous gardez la main pour tout corriger avant d'enregistrer."
+      },
+      {
+        q: "Générez-vous des lettres de motivation personnalisées ?",
+        a: "Oui, depuis l'onglet Lettre IA : collez l'offre visée, l'IA rédige une lettre basée sur votre profil réel, que vous pouvez modifier avant de l'exporter."
+      },
+      {
+        q: "Comment fonctionne le score de compatibilité avec une offre ?",
+        a: "On compare vos compétences, votre expérience et votre formation avec les exigences réelles extraites de l'offre que vous collez, puis on calcule un score et la liste des compétences manquantes — jamais un chiffre générique."
+      },
+      {
+        q: "Dans quels formats puis-je exporter mon CV ?",
+        a: "Le PDF est le format proposé actuellement, depuis l'aperçu CV (modèle Classique ou Sidebar)."
+      },
+      {
+        q: "Comment modifier ou résilier mon abonnement ?",
+        a: "Contactez notre support depuis la page Contact : chaque demande liée à un abonnement est traitée manuellement pour l'instant."
+      }
+    ],
     footerText: "Career App aide les candidats à optimiser leur CV, cibler les bonnes offres et préparer leurs entretiens.",
     footerProduct: "Produit",
     footerCompany: "Entreprise",
     footerLegal: "Légal",
-    linksProduct: ["Fonctionnalités", "Matching CV", "Entretiens", "Offres", "Tarifs"],
+    linksProduct: ["Fonctionnalités", "Matching CV", "Entretiens", "Offres", "Tarifs", "FAQ"],
     linksCompany: ["À propos", "Contact", "Partenariats"],
     linksLegal: ["Confidentialité", "CGU", "Cookies", "Sécurité"]
   },
