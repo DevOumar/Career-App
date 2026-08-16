@@ -671,6 +671,7 @@ const APP_COPY = {
       jobSummaryText: "Vérifiez les détails extraits avant de lancer l'analyse.",
       technicalSkills: "Compétences techniques",
       softSkills: "Soft skills",
+      noSkillsDetected: "Aucune détectée dans le texte collé",
       backToEdit: "Retour à l'édition",
       reviewJob: "Vérifier le poste",
       analyseJob: "Analyser le job",
