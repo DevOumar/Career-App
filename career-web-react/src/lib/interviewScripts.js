@@ -8,33 +8,33 @@
     },
     feedback: {
       positive: [
-        "Relier tes expériences à des résultats concrets.",
+        "Relier vos expériences à des résultats concrets.",
         "Montrer une motivation claire pour la GenAI et l'impact business.",
-        "Illustrer ta communication avec des équipes non techniques."
+        "Illustrer votre communication avec des équipes non techniques."
       ],
       improve: [
-        "Préparer un exemple de situation difficile et ta résolution.",
+        "Préparer un exemple de situation difficile et votre résolution.",
         "Terminer l'entretien avec 2 questions à valeur (culture, formation, mission).",
-        "Clarifier ta disponibilité et ta mobilité géographique."
+        "Clarifier votre disponibilité et votre mobilité géographique."
       ],
-      key: "Ancre chaque réponse avec Situation, Action, Résultat."
+      key: "Ancrez chaque réponse avec Situation, Action, Résultat."
     },
     steps: [
       {
         question:
-          "Bonjour ! Présente ton parcours en 2 minutes, avec un focus sur ce qui te rend pertinente pour ce poste.",
+          "Bonjour ! Présentez votre parcours en 2 minutes, avec un focus sur ce qui vous rend pertinente pour ce poste.",
         hint: "Structure : formation -> expériences -> impact -> pourquoi ce rôle.",
         model:
           "Je suis data scientist avec un socle ML fort, et j'ai livré des projets utilisés en production. Je vise ce rôle pour accélérer sur la GenAI en contexte business exigeant."
       },
       {
-        question: "Pourquoi la GenAI t'intéresse plus qu'un poste data classique ?",
+        question: "Pourquoi la GenAI vous intéresse plus qu'un poste data classique ?",
         hint: "Évite l'effet de mode, parle impact produit et usage métier.",
         model:
           "La GenAI crée un impact direct pour les équipes métier. Je veux construire des assistants utiles, avec évaluation et garde-fous, pas seulement des POC."
       },
       {
-        question: "Comment gères-tu la pression et les deadlines ?",
+        question: "Comment gérez-vous la pression et les deadlines ?",
         hint: "Donne un exemple réel avec priorisation et communication.",
         model:
           "Je sécurise d'abord le livrable minimal, puis j'itère. Je communique les risques tôt et je propose des plans B pour tenir les délais."
