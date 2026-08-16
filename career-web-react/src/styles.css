@@ -3054,6 +3054,9 @@ input[aria-invalid="true"] {
 }
 
 .match-feedback-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: 999px;
