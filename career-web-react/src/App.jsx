@@ -623,6 +623,7 @@ const APP_COPY = {
       planLabel: "Plan",
       tokens: "jetons",
       unlimitedTokens: "illimité",
+      schoolMember: "🎓 Compte activé via",
       seeTarifs: "Voir les tarifs",
       importedCv: "CV importé(s)",
       noCv: "Aucun CV importé",
