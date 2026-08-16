@@ -5308,6 +5308,7 @@ function SchoolSettingsPage({ user, language }) {
         schoolBlock: "Institution",
         save: "Save settings",
         orgName: "Official institution name",
+        acronym: "Acronym / short name",
         orgType: "Type",
         website: "Website",
         emailDomain: "Email domain",
