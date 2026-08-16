@@ -10347,6 +10347,10 @@ function LandingPage({
               onPricingClick?.();
               return;
             }
+            if (index === 5) {
+              document.getElementById("section-faq")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              return;
+            }
             document.getElementById(PRODUCT_SECTION_IDS[index])?.scrollIntoView({ behavior: "smooth", block: "start" });
           }}
         />
