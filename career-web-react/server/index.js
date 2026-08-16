@@ -4080,7 +4080,7 @@ app.post("/api/account/emails/verify", async (req, res) => {
 
     const existing = await getUserRowByAnyEmail(email);
     if (existing && existing.id !== userId) {
-      return res.status(409).json({ error: "Cette adresse e-mail est dÃ©jÃ  utilisÃ©e par un autre compte." });
+      return res.status(409).json({ error: "Cette adresse e-mail est déjà utilisée par un autre compte." });
     }
 
     const timestamp = nowIso();
