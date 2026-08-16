@@ -9649,6 +9649,73 @@ function AccountDrawer({
                     </>
                   )}
                 </div>
+
+                {user.schoolLicense && !user.schoolLicense.revoked && user.schoolLicense.organizationName ? (
+                  <div className="account-row account-row-school">
+                    <span>{copy.schoolSection}</span>
+                    <div className="account-school-card">
+                      <div className="account-school-head">
+                        {user.schoolLicense.logoDataUrl ? (
+                          <img src={user.schoolLicense.logoDataUrl} alt="" className="account-school-logo" />
+                        ) : (
+                          <span className="account-school-logo account-school-logo-fallback">
+                            <UiIcon name="briefcase" />
+                          </span>
+                        )}
+                        <div>
+                          <strong>{user.schoolLicense.organizationName}</strong>
+                          {user.schoolLicense.acronym ? <span className="muted">{user.schoolLicense.acronym}</span> : null}
+                        </div>
+                      </div>
+                      <ul className="account-school-details">
+                        {user.schoolLicense.organizationType ? (
+                          <li>
+                            <span className="muted">{copy.schoolType}</span>
+                            <span>{user.schoolLicense.organizationType}</span>
+                          </li>
+                        ) : null}
+                        {user.schoolLicense.website ? (
+                          <li>
+                            <span className="muted">{copy.schoolWebsite}</span>
+                            <a href={/^https?:\/\//i.test(user.schoolLicense.website) ? user.schoolLicense.website : `https://${user.schoolLicense.website}`} target="_blank" rel="noreferrer">
+                              {user.schoolLicense.website}
+                            </a>
+                          </li>
+                        ) : null}
+                        {user.schoolLicense.address || user.schoolLicense.city || user.schoolLicense.country ? (
+                          <li>
+                            <span className="muted">{copy.schoolLocation}</span>
+                            <span>{[user.schoolLicense.address, user.schoolLicense.city, user.schoolLicense.country].filter(Boolean).join(", ")}</span>
+                          </li>
+                        ) : null}
+                        {user.schoolLicense.emailDomain ? (
+                          <li>
+                            <span className="muted">{copy.schoolEmailDomain}</span>
+                            <span>{user.schoolLicense.emailDomain}</span>
+                          </li>
+                        ) : null}
+                        {user.schoolLicense.primaryContactName ? (
+                          <li>
+                            <span className="muted">{copy.schoolContactPerson}</span>
+                            <span>{user.schoolLicense.primaryContactName}</span>
+                          </li>
+                        ) : null}
+                        {user.schoolLicense.contactEmail ? (
+                          <li>
+                            <span className="muted">{copy.schoolContact}</span>
+                            <span>{user.schoolLicense.contactEmail}</span>
+                          </li>
+                        ) : null}
+                        {user.schoolLicense.contactPhone ? (
+                          <li>
+                            <span className="muted">{copy.schoolPhone}</span>
+                            <span>{user.schoolLicense.contactPhone}</span>
+                          </li>
+                        ) : null}
+                      </ul>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             </>
           ) : activePanel === "preferences" ? (
