@@ -14921,7 +14921,7 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
           title: "Email Scout",
           subtitle: "Guess a professional email address from a name and a company — free, pattern-based.",
           disclaimer:
-            "We generate the most common email patterns and check that the domain can receive mail. We only confirm real deliverability when the mail server responds during the search (not guaranteed) — never a fabricated score.",
+            "Find the right professional email in seconds, for free. We test the most common formats and check live that the domain can receive mail — with an honest confidence level every time, never a made-up score.",
           company: "Company name",
           companyPlaceholder: "e.g. Google",
           domain: "Or domain directly (optional)",
