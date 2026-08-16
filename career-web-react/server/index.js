@@ -2321,7 +2321,11 @@ const CV_SKILL_LABELS = [
   "Reporting"
 ];
 
-const DATE_MONTH_PATTERN = "(?:jan\\.?|janv\\.?|févr\\.?|fevr\\.?|f.vr\\.?|mars|avr\\.?|mai|juin|juil\\.?|août|aout|ao.t|sept\\.?|oct\\.?|nov\\.?|déc\\.?|dec\\.?|d.c\\.?)";
+// Couvre à la fois les abréviations ("jan.", "févr.") et les noms complets
+// ("Janvier", "Février") — un mois écrit en toutes lettres brisait le match
+// suivant ("\s*\d{4}") car seule l'abréviation était consommée, laissant le
+// reste du mot ("vier", "rier", "let"...) juste avant l'année.
+const DATE_MONTH_PATTERN = "(?:jan(?:vier)?\\.?|f.vr(?:ier)?\\.?|fevr(?:ier)?\\.?|mars|avr(?:il)?\\.?|mai|juin|juil(?:let)?\\.?|ao.t|aout|sept(?:embre)?\\.?|oct(?:obre)?\\.?|nov(?:embre)?\\.?|d.c(?:embre)?\\.?|dec(?:embre)?\\.?)";
 const DATE_RANGE_PATTERN = `(?:de\\s+)?(${DATE_MONTH_PATTERN}\\s*\\d{4})\\s*(?:-|\\u2013|\\u2014|à|a|au|to|\\?)\\s*(${DATE_MONTH_PATTERN}\\s*\\d{4}|aujourd'hui|present|présent|pr.sent)`;
 
 function uniqueByNormalized(list) {
