@@ -12922,10 +12922,10 @@ function MatchResultsStep({
               <>
                 <span>{copy.matchFeedbackQuestion}</span>
                 <button type="button" className="match-feedback-btn" disabled={feedbackSaving} onClick={() => handleFeedback(true)}>
-                  ?? {copy.matchFeedbackYes}
+                  <UiIcon name="thumbUp" /> {copy.matchFeedbackYes}
                 </button>
                 <button type="button" className="match-feedback-btn" disabled={feedbackSaving} onClick={() => handleFeedback(false)}>
-                  ?? {copy.matchFeedbackNo}
+                  <UiIcon name="thumbDown" /> {copy.matchFeedbackNo}
                 </button>
               </>
             )}
