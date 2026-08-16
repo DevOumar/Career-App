@@ -3253,7 +3253,8 @@ const ADMIN_MODULE_LABELS = {
   aiSamples: { fr: "Modération IA", en: "AI moderation" },
   settings: { fr: "Paramètres plateforme", en: "Platform settings" },
   announcements: { fr: "Emails d'annonce", en: "Announcement emails" },
-  pricing: { fr: "Tarifs", en: "Pricing" }
+  pricing: { fr: "Tarifs", en: "Pricing" },
+  satisfaction: { fr: "Satisfaction", en: "Satisfaction" }
 };
 
 function AdminApp({
