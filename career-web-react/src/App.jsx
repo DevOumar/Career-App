@@ -13551,7 +13551,7 @@ function CvDocumentClassic({ cvReview, copy }) {
               <div>
                 <h4>{copy.cvPreviewSoftSkills}</h4>
                 <div className="cv-document-skill-chips">
-                  {cvReview.softSkills.map((skill) => (
+                  {cvReview.softSkills.filter(Boolean).map((skill) => (
                     <span key={skill} className="cv-document-skill-chip soft">
                       {skill}
                     </span>
