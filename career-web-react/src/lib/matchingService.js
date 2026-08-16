@@ -258,7 +258,7 @@ export function buildLocalMatchInsights({ candidate, offer }) {
     strengths,
     missingKeywords: unique(match.missingSkills),
     culturalFit:
-      "Analyse locale : aligne ton discours et tes exemples concrets sur les valeurs et le mode de fonctionnement affichés dans l'offre pour renforcer le fit culturel perçu.",
+      "Analyse locale : alignez votre discours et vos exemples concrets sur les valeurs et le mode de fonctionnement affichés dans l'offre pour renforcer le fit culturel perçu.",
     recommendations
   };
 }
