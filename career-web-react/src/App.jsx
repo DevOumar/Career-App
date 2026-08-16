@@ -12949,6 +12949,99 @@ function MatchResultsStep({
         </ol>
       </article>
 
+      <article className="card block ats-optimize-card no-print">
+        <h3>
+          <UiIcon name="spark" /> {cvCopy.atsOptimizeTitle}
+        </h3>
+        <p className="muted">{cvCopy.atsOptimizeText}</p>
+        {atsError ? <p className="field-error">{atsError}</p> : null}
+        {!hasOfferContext ? (
+          <p className="muted">{cvCopy.atsNoOffer}</p>
+        ) : (
+          <button type="button" className="btn-main ready" onClick={handleAtsOptimize} disabled={isAtsOptimizing}>
+            {isAtsOptimizing ? (
+              <>
+                <span className="btn-spinner" /> {cvCopy.atsOptimizing}
+              </>
+            ) : (
+              cvCopy.atsOptimizeBtn
+            )}
+          </button>
+        )}
+
+        {atsOptimization ? (
+          <div className="ats-result">
+            <h4>{cvCopy.atsResultTitle}</h4>
+            {atsOptimization.optimizedHeadline ? (
+              <div className="ats-result-block">
+                <span className="muted">{cvCopy.atsHeadline}</span>
+                <p>{atsOptimization.optimizedHeadline}</p>
+              </div>
+            ) : null}
+            {atsOptimization.optimizedSummary ? (
+              <div className="ats-result-block">
+                <span className="muted">{cvCopy.atsSummary}</span>
+                <p>{atsOptimization.optimizedSummary}</p>
+              </div>
+            ) : null}
+            {atsOptimization.experiences?.length ? (
+              <div className="ats-result-block">
+                <span className="muted">{cvCopy.atsExperiences}</span>
+                {atsOptimization.experiences.map((item, index) => (
+                  <div key={`${item.company}-${index}`} className="ats-result-experience">
+                    <strong>{item.role} · {item.company}</strong>
+                    <CvEntryDescription text={item.optimizedDescription} />
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            {atsOptimization.prioritizedSkills?.length ? (
+              <div className="ats-result-block">
+                <span className="muted">{cvCopy.atsSkillsOrder}</span>
+                <div className="cv-document-skill-chips">
+                  {atsOptimization.prioritizedSkills.map((skill) => (
+                    <span key={skill} className="cv-document-skill-chip">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {atsOptimization.missingKeywords?.length ? (
+              <div className="ats-result-block">
+                <span className="muted">{cvCopy.atsMissingKeywords}</span>
+                <div className="cv-document-skill-chips">
+                  {atsOptimization.missingKeywords.map((skill) => (
+                    <span key={skill} className="cv-document-skill-chip soft">
+                      {skill}
+                    </span>
+                  ))}
+                </div>
+                <p className="ats-missing-hint muted">{cvCopy.atsMissingKeywordsHint}</p>
+              </div>
+            ) : null}
+            {atsOptimization.atsNotes ? (
+              <div className="ats-result-block">
+                <span className="muted">{cvCopy.atsNotesTitle}</span>
+                <p>{atsOptimization.atsNotes}</p>
+              </div>
+            ) : null}
+            <button type="button" className="btn-main ready" onClick={handleAtsApply} disabled={atsSaving}>
+              {atsSaving ? (
+                <>
+                  <span className="btn-spinner" /> {cvCopy.atsApplying}
+                </>
+              ) : (
+                <>
+                  <UiIcon name="check" /> {cvCopy.atsApply}
+                </>
+              )}
+            </button>
+            {atsApplied ? <p className="ats-applied-hint">{cvCopy.atsApplied}</p> : null}
+          </div>
+        ) : null}
+      </article>
+
       <article className="card block match-networking-card no-print">
         <h3>
           <UiIcon name="briefcase" /> {copy.matchNetworkingTitle}
