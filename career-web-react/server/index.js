@@ -1245,10 +1245,10 @@ function normalizeAvatarDataUrl(value) {
   const dataUrl = coerceString(value);
   if (!dataUrl) return "";
   if (!dataUrl.startsWith("data:image/")) {
-    throw new Error("Format d'image non supportÃ©.");
+    throw new Error("Format d'image non supporté.");
   }
   if (dataUrl.length > 2_400_000) {
-    throw new Error("Image trop volumineuse (max 2 Mo recommandÃ©s).");
+    throw new Error("Image trop volumineuse (max 2 Mo recommandés).");
   }
   return dataUrl;
 }
