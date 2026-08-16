@@ -54,7 +54,8 @@ const ADMIN_MODULE_IDS = new Set([
   "aiSamples",
   "settings",
   "announcements",
-  "pricing"
+  "pricing",
+  "satisfaction"
 ]);
 
 function sanitizeAdminModules(input) {
