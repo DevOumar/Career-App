@@ -6755,12 +6755,13 @@ app.put("/api/school/profile", async (req, res) => {
     const profile = req.body?.profile || {};
     await db.query(
       `INSERT INTO user_org_profiles (
-        user_id, organization_name, organization_type, department, website, size_range, industry, contact_role, notes,
+        user_id, organization_name, acronym, organization_type, department, website, size_range, industry, contact_role, notes,
         logo_data_url, address, city, country, email_domain, contact_email, contact_phone, primary_contact_name, updated_at
       )
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
       ON CONFLICT (user_id) DO UPDATE SET
         organization_name=EXCLUDED.organization_name,
+        acronym=EXCLUDED.acronym,
         organization_type=EXCLUDED.organization_type,
         department=EXCLUDED.department,
         website=EXCLUDED.website,
