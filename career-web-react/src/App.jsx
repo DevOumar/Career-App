@@ -2995,6 +2995,14 @@ export default function App() {
                 <div>
                   <strong>{user.firstName} {user.lastName}</strong>
                   <span>{user.username || user.email.split("@")[0]}</span>
+                  {user.schoolLicense && !user.schoolLicense.revoked && (user.schoolLicense.acronym || user.schoolLicense.organizationName) ? (
+                    <span className="user-dropdown-school">
+                      {language === "en" ? "Account linked to " : "Compte associé à "}
+                      {user.schoolLicense.acronym && user.schoolLicense.organizationName
+                        ? `${user.schoolLicense.organizationName} - ${user.schoolLicense.acronym}`
+                        : user.schoolLicense.acronym || user.schoolLicense.organizationName}
+                    </span>
+                  ) : null}
                 </div>
               </div>
               <button
