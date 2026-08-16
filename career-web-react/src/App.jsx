@@ -2017,7 +2017,7 @@ export default function App() {
   const canAnalyse = Boolean(latestCv && offerText.trim().length > 50 && !isAnalysing);
   const tokensBalance =
     user?.subscription?.credits ?? getPlanById("candidate_discovery")?.credits ?? 0;
-  const tokensDisplay = tokensBalance >= 999 ? "8" : tokensBalance;
+  const tokensDisplay = tokensBalance >= 999 ? "∞" : tokensBalance;
 
   const profileCompleteness = useMemo(() => {
     if (!user) return 0;
