@@ -77,7 +77,10 @@ export function extractOfferSummary(text) {
   const softSkills = SOFT_SKILL_KEYWORDS.filter((skill) => normalized.includes(normalize(skill)));
   const yearsMatch = normalized.match(/(\d+)\s*(ans|an|years|year)/);
   const experienceMin = yearsMatch ? Number(yearsMatch[1]) : 1;
-  const education = EDUCATION_LEVELS.find((level) => normalized.includes(level)) || "bac+5";
+  // Pas de niveau par défaut fabriqué (ex: "bac+5") si rien n'est détecté dans
+  // le texte collé — une chaîne vide fait passer educationRank() à 0, donc
+  // aucune barrière artificielle n'est appliquée au score de matching.
+  const education = EDUCATION_LEVELS.find((level) => normalized.includes(level)) || "";
   const title = firstUsefulLine(text) || "Poste personnalisé";
   const company = inferCompany(text);
 
