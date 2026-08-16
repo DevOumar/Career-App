@@ -1,5 +1,15 @@
 @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap");
 
+/* Taille par défaut de toutes les icônes UiIcon : sans cette règle, un SVG
+   sans width/height explicite s'affiche à sa taille intrinsèque (énorme)
+   dès qu'on oublie de lui passer une classe de taille au cas par cas. */
+.ui-icon {
+  width: 1.05em;
+  height: 1.05em;
+  flex-shrink: 0;
+  vertical-align: -0.15em;
+}
+
 :root {
   --bg: #f5f7fb;
   --bg-accent: #edf1ff;
