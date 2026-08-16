@@ -159,5 +159,3 @@ export const PLANS = [
 export function getPlanById(planId) {
   return PLANS.find((plan) => plan.id === planId) || null;
 }
-
-
