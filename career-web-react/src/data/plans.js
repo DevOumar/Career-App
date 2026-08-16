@@ -20,9 +20,9 @@ export const PLANS = [
       fr: [
         "Analyse CV & Offre (IA)",
         "Score de matching",
-        "1 CV enregistrÃ©",
+        "1 CV enregistré",
         "Lettre de motivation IA",
-        "Simulateur de nÃ©gociation salariale",
+        "Simulateur de négociation salariale",
         "Email Scout (recherche d'email pro)"
       ],
       en: [
