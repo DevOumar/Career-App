@@ -4068,7 +4068,7 @@ app.post("/api/account/emails/verify", async (req, res) => {
       return res.status(404).json({ error: "Aucun code actif pour cette adresse." });
     }
     if (new Date(verification.expires_at).getTime() < Date.now()) {
-      return res.status(410).json({ error: "Le code a expirÃ©. Renvoie un nouveau code." });
+      return res.status(410).json({ error: "Le code a expiré. Renvoie un nouveau code." });
     }
     if (Number(verification.attempts || 0) >= 5) {
       return res.status(429).json({ error: "Trop de tentatives. Renvoie un nouveau code." });
