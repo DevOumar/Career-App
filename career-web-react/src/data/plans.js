@@ -127,9 +127,9 @@ export const PLANS = [
     seats: 10,
     grantsPremium: true,
     highlighted: true,
-    badge: { fr: "RecommandÃ©", en: "Recommended" },
+    badge: { fr: "Recommandé", en: "Recommended" },
     features: {
-      fr: ["10 siÃ¨ges recruteurs", "Export de rapports", "Support prioritaire", "Code de licence Ã  distribuer"],
+      fr: ["10 sièges recruteurs", "Export de rapports", "Support prioritaire", "Code de licence à distribuer"],
       en: ["10 recruiter seats", "Report exports", "Priority support", "License code to distribute"]
     }
   },
