@@ -12070,7 +12070,11 @@ function ImportPage({
   setCvReview,
   cvFileName,
   cvSourceText,
-  avatarDataUrl
+  avatarDataUrl,
+  tokensBalance,
+  onApplyOptimization,
+  onSaveCvReview,
+  onConsumeToken
 }) {
   const copy = APP_COPY[language]?.import || APP_COPY.fr.import;
   const activeIndex = importStep === "review" ? 1 : importStep === "job" ? 2 : importStep === "results" ? 3 : 0;
