@@ -3067,6 +3067,11 @@ input[aria-invalid="true"] {
   color: var(--text-2);
 }
 
+.match-feedback-btn svg {
+  width: 0.9rem;
+  height: 0.9rem;
+}
+
 .match-feedback-btn:hover {
   border-color: var(--primary);
   color: var(--primary);
