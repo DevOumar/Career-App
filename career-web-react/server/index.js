@@ -4316,7 +4316,7 @@ app.post("/api/premium/activate", async (req, res) => {
 
     const access = await computePremiumAccess(user);
     if (!access.eligibility.eligible) {
-      return res.status(400).json({ error: "Profil non Ã©ligible Ã  l'activation premium." });
+      return res.status(400).json({ error: "Profil non éligible à l'activation premium." });
     }
 
     const startedAt = nowIso();
