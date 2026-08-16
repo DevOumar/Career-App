@@ -1,4 +1,4 @@
-﻿export const PLAN_SEGMENTS = ["candidate", "agency", "school"];
+export const PLAN_SEGMENTS = ["candidate", "agency", "school"];
 
 export const PLANS = [
   {
