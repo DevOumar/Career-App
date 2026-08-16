@@ -110,7 +110,7 @@
           "def keep_long(texts):\n    return [t for t in texts if len(t.split()) > 5]"
       },
       {
-        question: "Comment gères-tu les retries sur un appel OpenAI en prod ?",
+        question: "Comment gérez-vous les retries sur un appel OpenAI en prod ?",
         hint: "Backoff exponentiel + logs + timeout + limite de retries.",
         model:
           "Je combine retry borné, backoff exponentiel, timeout strict et journalisation pour audit et debugging."
