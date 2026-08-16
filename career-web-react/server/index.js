@@ -3173,7 +3173,52 @@ async function getPublicUserById(userId) {
   const userRow = await getUserRowById(userId);
   if (!userRow) return null;
   const relations = await getAccountRows(userId);
-  return toPublicUser(userRow, relations);
+  const publicUser = toPublicUser(userRow, relations);
+
+  // Si le compte a été activé via un code de licence (école/cabinet), on
+  // résout le nom réel de l'organisation propriétaire du code — jamais
+  // stocké en dur côté étudiant, toujours recalculé pour rester exact même
+  // si l'école renomme son compte.
+  const subscription = parseJsonField(userRow.subscription_json, {});
+  if (subscription.licenseCode) {
+    const { rows } = await db.query(
+      `SELECT lc.plan_id, lc.revoked, u.first_name, u.last_name, u.email,
+              o.organization_name, o.acronym, o.organization_type, o.website, o.logo_data_url,
+              o.address, o.city, o.country, o.email_domain, o.contact_email, o.contact_phone,
+              o.primary_contact_name
+       FROM license_codes lc
+       LEFT JOIN users u ON u.id = lc.owner_user_id
+       LEFT JOIN user_org_profiles o ON o.user_id = lc.owner_user_id
+       WHERE lc.code = $1`,
+      [subscription.licenseCode]
+    );
+    const row = rows[0];
+    if (row) {
+      publicUser.schoolLicense = {
+        code: subscription.licenseCode,
+        organizationName: row.organization_name || `${row.first_name || ""} ${row.last_name || ""}`.trim(),
+        acronym: row.acronym || "",
+        organizationType: row.organization_type || "",
+        website: row.website || "",
+        logoDataUrl: row.logo_data_url || "",
+        address: row.address || "",
+        city: row.city || "",
+        country: row.country || "",
+        emailDomain: row.email_domain || "",
+        // Contact affiché : coordonnées de contact renseignées dans les
+        // paramètres de l'établissement si présentes, sinon l'email de
+        // connexion du compte école comme repli honnête (pas de valeur inventée).
+        contactEmail: row.contact_email || row.email || "",
+        contactPhone: row.contact_phone || "",
+        primaryContactName: row.primary_contact_name || "",
+        planId: row.plan_id,
+        revoked: Boolean(Number(row.revoked)),
+        renewalAt: subscription.renewalAt || null
+      };
+    }
+  }
+
+  return publicUser;
 }
 
 async function upsertUserAccount(userId, accountType, base, avatarDataUrl = "") {
