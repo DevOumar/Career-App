@@ -441,11 +441,40 @@ const LANDING_COPY = {
     ],
     careersTitle: "Explore popular careers",
     careerSubtitle: "Complete guide & analysis",
+    faqEyebrow: "Frequently asked questions",
+    faqTitle: "Questions?",
+    faqText: "Short, honest answers about what Career App actually does.",
+    faq: [
+      {
+        q: "Will my CV be ATS-compatible?",
+        a: "The Classic template uses a single column and standard section headers, designed to be read well by most ATS. The Sidebar template (photo, column layout) is more visual but some strict ATS parse it less reliably — we recommend the Classic template if you're applying through an ATS. The AI optimization module also flags job keywords still missing from your CV."
+      },
+      {
+        q: "Can I import an existing CV?",
+        a: "Yes. Upload your CV (PDF, DOCX, or text): the AI automatically extracts your profile (identity, experiences, education, skills) to pre-fill it. You stay in control to correct anything before saving."
+      },
+      {
+        q: "Do you generate personalized cover letters?",
+        a: "Yes, from the AI Letter tab: paste the target job posting and the AI drafts a letter based on your real profile, which you can edit before exporting."
+      },
+      {
+        q: "How does the job match score work?",
+        a: "We compare your skills, experience, and education against the actual requirements extracted from the job posting you paste, then compute a score and the list of missing skills — never a generic number."
+      },
+      {
+        q: "What formats can I export my CV in?",
+        a: "PDF is the format currently available, from the CV preview (Classic or Sidebar template)."
+      },
+      {
+        q: "How do I change or cancel my subscription?",
+        a: "Contact our support from the Contact page: subscription requests are currently handled manually."
+      }
+    ],
     footerText: "Career App helps candidates optimize CVs, target the right jobs, and prepare interviews.",
     footerProduct: "Product",
     footerCompany: "Company",
     footerLegal: "Legal",
-    linksProduct: ["Features", "CV matching", "Interviews", "Jobs", "Pricing"],
+    linksProduct: ["Features", "CV matching", "Interviews", "Jobs", "Pricing", "FAQ"],
     linksCompany: ["About", "Contact", "Partnerships"],
     linksLegal: ["Privacy", "Terms", "Cookies", "Security"]
   }
