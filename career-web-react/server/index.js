@@ -4103,7 +4103,7 @@ app.patch("/api/account/emails/primary", async (req, res) => {
     const emailId = coerceString(req.body?.emailId);
     const user = await getUserRowById(userId);
     if (!user || !emailId) {
-      return res.status(400).json({ error: "ParamÃ¨tres invalides." });
+      return res.status(400).json({ error: "Paramètres invalides." });
     }
 
     const { rows } = await db.query(
