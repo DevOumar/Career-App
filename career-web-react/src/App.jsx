@@ -1083,6 +1083,7 @@ const APP_COPY = {
       jobSummaryText: "Review the extracted details before launching the analysis.",
       technicalSkills: "Technical skills",
       softSkills: "Soft skills",
+      noSkillsDetected: "None detected in the pasted text",
       backToEdit: "Back to editing",
       reviewJob: "Review job",
       analyseJob: "Analyze job",
