@@ -11994,6 +11994,7 @@ function HomePage({ onStart, onSeeTarifs, user, premium, profileCompleteness, la
     cvLabel,
     scoreLabel,
     planLabel,
+    ...(schoolLabel ? [schoolLabel] : []),
     objectiveLabel
   ];
 
