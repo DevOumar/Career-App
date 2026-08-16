@@ -3074,6 +3074,14 @@ export default function App() {
             cvFileName={cvFileName}
             cvSourceText={cvSourceText}
             avatarDataUrl={user?.avatarDataUrl}
+            tokensBalance={tokensBalance}
+            onApplyOptimization={(next) => setCvReview((prev) => ({ ...(prev || {}), ...next }))}
+            onSaveCvReview={persistCvReview}
+            onConsumeToken={async () => {
+              const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
+              setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
+              setPremium(tokenUpdate.premium);
+            }}
           />
         ) : null}
 
