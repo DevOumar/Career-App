@@ -7456,6 +7456,43 @@ app.post("/api/coverletter/generate", async (req, res) => {
   }
 });
 
+app.post("/api/cv/optimize-ats", async (req, res) => {
+  try {
+    const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
+    const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
+    const language = req.body?.language === "en" ? "en" : "fr";
+
+    if (!Array.isArray(candidate.experiences) && !candidate.summary) {
+      return res.status(422).json({
+        error:
+          language === "en"
+            ? "Import a CV with at least a summary or an experience before optimizing it."
+            : "Importe un CV avec au moins un résumé ou une expérience avant de l'optimiser."
+      });
+    }
+
+    let result = null;
+    try {
+      result = await generateCvAtsOptimizationWithAi(candidate, offer, language);
+    } catch (aiError) {
+      console.warn(`Optimisation ATS indisponible: ${aiError.message}`);
+    }
+
+    if (!result) {
+      return res.status(503).json({
+        error:
+          language === "en"
+            ? "AI optimization is temporarily unavailable. Try again shortly."
+            : "L'optimisation IA est temporairement indisponible. Réessaie dans un instant."
+      });
+    }
+
+    return res.json({ optimization: result });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Optimisation ATS impossible." });
+  }
+});
+
 app.post("/api/negotiation/reply", async (req, res) => {
   try {
     const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
