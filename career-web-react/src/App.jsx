@@ -13780,7 +13780,7 @@ function CvDocumentSidebar({ cvReview, copy, avatarDataUrl }) {
                 </div>
                 {(project.technologies || []).length ? (
                   <div className="cv-document-skill-chips">
-                    {project.technologies.map((tech) => (
+                    {project.technologies.filter(Boolean).map((tech) => (
                       <span key={tech} className="cv-document-skill-chip soft">
                         {tech}
                       </span>
