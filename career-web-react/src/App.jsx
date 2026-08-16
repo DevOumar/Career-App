@@ -12688,6 +12688,70 @@ function MatchResultsStep({
     }
   }
 
+  function fireTrackerToast(icon, title) {
+    Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon,
+      title,
+      showConfirmButton: false,
+      timer: icon === "error" ? 4200 : 3200,
+      timerProgressBar: true,
+      customClass: {
+        popup: "career-toast",
+        title: "career-toast-title"
+      }
+    });
+  }
+
+  async function handleAddToTracker() {
+    // Garde-fou synchrone : trackerStatus (state React) ne se met à jour
+    // qu'au prochain rendu, donc un double-clic très rapide peut passer ce
+    // contrôle deux fois avant que le bouton soit visuellement désactivé.
+    // trackerLockRef, lui, change de valeur immédiatement, sans attendre
+    // de rendu — il bloque vraiment dès le premier clic.
+    if (!userId || trackerLockRef.current) return;
+    trackerLockRef.current = true;
+    setTrackerStatus("saving");
+    try {
+      const created = await createJobApplication({
+        userId,
+        status: "to_apply",
+        title: jobReview?.title || "",
+        company: jobReview?.company || "",
+        location: jobReview?.location || "",
+        offerText: jobReview?.description || "",
+        matchScore: typeof matchInsights?.score === "number" ? matchInsights.score : null,
+        cvId: cvId || ""
+      });
+      setTrackerApplicationId(created.id);
+      setTrackerStatus("done");
+      fireTrackerToast("success", applicationsCopy.addedToTracker);
+    } catch (error) {
+      setTrackerStatus("idle");
+      fireTrackerToast("error", getFriendlyErrorMessage(error, language));
+    } finally {
+      trackerLockRef.current = false;
+    }
+  }
+
+  async function handleRemoveFromTracker() {
+    if (!userId || !trackerApplicationId || trackerLockRef.current) return;
+    trackerLockRef.current = true;
+    setTrackerStatus("removing");
+    try {
+      await deleteJobApplication({ id: trackerApplicationId, userId });
+      setTrackerApplicationId(null);
+      setTrackerStatus("idle");
+      fireTrackerToast("success", applicationsCopy.removedFromTracker);
+    } catch (error) {
+      setTrackerStatus("done");
+      fireTrackerToast("error", getFriendlyErrorMessage(error, language));
+    } finally {
+      trackerLockRef.current = false;
+    }
+  }
+
   if (isAnalysing || !matchInsights) {
     return (
       <div className="match-results-shell">
