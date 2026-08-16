@@ -3507,6 +3507,7 @@ function AdminApp({
     if (tab === "settings" && allowedModules.includes("settings")) return <AdminSettingsPage user={user} language={language} />;
     if (tab === "announcements" && allowedModules.includes("announcements")) return <AdminAnnouncementsPage user={user} language={language} />;
     if (tab === "pricing" && allowedModules.includes("pricing")) return <AdminPricingPage user={user} language={language} currency={currency} />;
+    if (tab === "satisfaction" && allowedModules.includes("satisfaction")) return <AdminSatisfactionPage user={user} language={language} />;
     return <AdminPageLoader language={language} />;
   }
 
