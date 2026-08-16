@@ -13663,9 +13663,11 @@ function CvDocumentSidebar({ cvReview, copy, avatarDataUrl }) {
           <div className="cv-sidebar-block">
             <h4>{copy.cvPreviewCertifications}</h4>
             <ul className="cv-sidebar-list">
-              {cvReview.certifications.map((item, index) => (
-                <li key={`${item.name}-${index}`}>{[item.name, item.issuer].filter(Boolean).join(" · ")}</li>
-              ))}
+              {cvReview.certifications
+                .filter((item) => item?.name || item?.issuer)
+                .map((item, index) => (
+                  <li key={`${item.name}-${index}`}>{[item.name, item.issuer].filter(Boolean).join(" · ")}</li>
+                ))}
             </ul>
           </div>
         ) : null}
