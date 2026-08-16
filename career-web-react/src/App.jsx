@@ -12841,6 +12841,27 @@ function MatchResultsStep({
             <strong>{matchInsights.score}%</strong>
           </div>
           <span className={`match-verdict-pill tier-${scoreTier}`}>{verdictLabel}</span>
+          {trackerStatus === "done" ? (
+            <button
+              type="button"
+              className="btn-secondary match-tracker-btn match-tracker-btn-remove no-print"
+              disabled={trackerStatus === "removing"}
+              onClick={handleRemoveFromTracker}
+            >
+              <UiIcon name="trash" />
+              {trackerStatus === "removing" ? applicationsCopy.formSaving : applicationsCopy.removeFromTrackerBtn}
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn-secondary match-tracker-btn no-print"
+              disabled={trackerStatus === "saving"}
+              onClick={handleAddToTracker}
+            >
+              <UiIcon name="briefcase" />
+              {trackerStatus === "saving" ? applicationsCopy.formSaving : applicationsCopy.addToTrackerBtn}
+            </button>
+          )}
         </article>
 
         <article className="card match-results-card">
