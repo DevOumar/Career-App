@@ -63,19 +63,19 @@
     },
     steps: [
       {
-        question: "Explique comment tu construirais un RAG pour des documents internes.",
+        question: "Expliquez comment vous construiriez un RAG pour des documents internes.",
         hint: "Ingestion -> chunking -> embeddings -> retrieval -> génération -> évaluation.",
         model:
           "Je structure le pipeline en étapes mesurables et j'ajoute une boucle d'évaluation continue avec un golden dataset."
       },
       {
-        question: "Fine-tuning vs prompt engineering : comment choisis-tu ?",
+        question: "Fine-tuning vs prompt engineering : comment choisissez-vous ?",
         hint: "Prompt+RAG d'abord ; fine-tuning si besoin de style ou contraintes fortes.",
         model:
           "Je commence par prompt engineering + RAG, plus rapide et moins cher. Je garde le fine-tuning pour les cas où la valeur justifie le coût."
       },
       {
-        question: "Comment évalues-tu un système GenAI en production ?",
+        question: "Comment évaluez-vous un système GenAI en production ?",
         hint: "Combiner métriques automatiques + revue humaine + monitoring.",
         model:
           "Je suis la qualité par métriques, erreurs critiques, coût/token, latence et satisfaction utilisateur, avec alertes en cas de régression."
