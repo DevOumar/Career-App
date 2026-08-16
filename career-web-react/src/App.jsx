@@ -123,6 +123,34 @@ const NAV_ITEMS = [
   { id: "tarifs", label: { fr: "Tarifs", en: "Pricing" }, always: true, icon: "pricetag" }
 ];
 
+const VALID_APP_PAGE_IDS = new Set([
+  "home",
+  "import",
+  "profil",
+  "analyse",
+  "offres",
+  "candidatures",
+  "entretiens",
+  "lettre",
+  "negociation",
+  "email-finder",
+  "historique",
+  "tarifs"
+]);
+
+// Lit la page courante depuis le hash de l'URL (#/app/<clé>/<page>) au tout
+// premier rendu. Sans ça, un rechargement de page (F5) réinitialise
+// toujours activePage à "home" par défaut, et l'effet qui synchronise le
+// hash avec activePage écrase alors l'URL réelle avec "home" avant même que
+// l'utilisateur ait pu s'en apercevoir — il se retrouve éjecté du module où
+// il était.
+function readInitialActivePage() {
+  if (typeof window === "undefined") return "home";
+  const match = window.location.hash.match(/^#\/app\/[^/]+\/([a-z-]+)/i);
+  const pageId = match?.[1];
+  return pageId && VALID_APP_PAGE_IDS.has(pageId) ? pageId : "home";
+}
+
 function createOpaqueRouteKey(length = 48) {
   const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   const bytes = new Uint8Array(length);
