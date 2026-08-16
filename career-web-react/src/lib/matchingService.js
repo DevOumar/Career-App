@@ -181,7 +181,7 @@ function pickStrengthsAndGaps(bestMatch) {
   }
 
   if (bestMatch.missingSkills.includes("openai api") || bestMatch.missingSkills.includes("vertex ai")) {
-    gaps.push("Les outils GenAI enterprise ne ressortent pas clairement dans ton profil.");
+    gaps.push("Les outils GenAI enterprise ne ressortent pas clairement dans votre profil.");
   }
 
   if (!strengths.length) {
