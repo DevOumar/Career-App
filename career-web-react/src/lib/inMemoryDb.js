@@ -289,6 +289,42 @@ export async function addCvRecord(userId, cvRecord) {
   return data.cv;
 }
 
+export async function listJobApplications(userId) {
+  const data = await request(`/applications?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function createJobApplication(payload) {
+  const data = await request("/applications", { method: "POST", body: payload });
+  return data.item;
+}
+
+export async function updateJobApplication(id, payload) {
+  const data = await request(`/applications/${encodeURIComponent(id)}`, { method: "PUT", body: payload });
+  return data.item;
+}
+
+export async function deleteJobApplication({ id, userId }) {
+  return request(`/applications/${encodeURIComponent(id)}?userId=${encodeURIComponent(userId)}`, { method: "DELETE" });
+}
+
+export async function getSatisfactionStatus(userId) {
+  const data = await request(`/satisfaction/status?userId=${encodeURIComponent(userId)}`);
+  return data.eligible;
+}
+
+export async function dismissSatisfactionSurvey(userId) {
+  return request("/satisfaction/dismiss", { method: "POST", body: { userId } });
+}
+
+export async function submitSatisfactionSurvey({ userId, score, comment }) {
+  return request("/satisfaction", { method: "POST", body: { userId, score, comment } });
+}
+
+export async function getAdminSatisfaction(adminUserId) {
+  return request(`/admin/satisfaction?adminUserId=${encodeURIComponent(adminUserId)}`);
+}
+
 export async function extractCvFile({ fileName, mimeType, base64 }) {
   return request("/cv/extract", {
     method: "POST",
