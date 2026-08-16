@@ -201,7 +201,7 @@ function buildRecommendations(bestMatch, premiumAccess) {
   if (bestMatch.missingSkills.includes("llm") || bestMatch.missingSkills.includes("rag")) {
     recos.push({
       level: "critique",
-      title: "Rendre visible ton expérience GenAI",
+      title: "Rendre visible votre expérience GenAI",
       detail:
         "Ajoute au moins un projet concret LLM/RAG avec stack, volume de données et impact mesurable."
     });
