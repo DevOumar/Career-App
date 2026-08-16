@@ -12447,13 +12447,21 @@ function ImportPage({
                   <div>
                     <h4>{copy.technicalSkills}</h4>
                     <div className="job-chip-row">
-                      {(jobReview.skills || []).map((skill) => <span key={skill}>{skill}</span>)}
+                      {jobReview.skills?.length ? (
+                        jobReview.skills.map((skill) => <span key={skill}>{skill}</span>)
+                      ) : (
+                        <span className="muted">{copy.noSkillsDetected}</span>
+                      )}
                     </div>
                   </div>
                   <div>
                     <h4>{copy.softSkills}</h4>
                     <div className="job-chip-row">
-                      {(jobReview.softSkills?.length ? jobReview.softSkills : ["communication", "collaboration"]).map((skill) => <span key={skill}>{skill}</span>)}
+                      {jobReview.softSkills?.length ? (
+                        jobReview.softSkills.map((skill) => <span key={skill}>{skill}</span>)
+                      ) : (
+                        <span className="muted">{copy.noSkillsDetected}</span>
+                      )}
                     </div>
                   </div>
                 </div>
