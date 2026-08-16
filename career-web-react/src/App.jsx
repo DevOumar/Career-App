@@ -10325,6 +10325,8 @@ function LandingPage({
             ))}
           </div>
         </section>
+
+        <FaqSection copy={copy} />
       </main>
 
       <footer className="landing-footer">
