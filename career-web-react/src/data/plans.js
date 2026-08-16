@@ -52,7 +52,7 @@ export const PLANS = [
     highlighted: false,
     badge: null,
     features: {
-      fr: ["30 jetons d'analyse", "Historique CV illimitÃ©", "Export PDF", "Lettre de motivation IA", "Simulateur de nÃ©gociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
+      fr: ["30 jetons d'analyse", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
       en: ["30 analysis tokens", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
     }
   },
