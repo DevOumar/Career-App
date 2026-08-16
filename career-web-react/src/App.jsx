@@ -5327,6 +5327,7 @@ function SchoolSettingsPage({ user, language }) {
         schoolBlock: "Établissement",
         save: "Enregistrer les paramètres",
         orgName: "Nom officiel de l'établissement",
+        acronym: "Sigle",
         orgType: "Type",
         website: "Site web",
         emailDomain: "Domaine email",
