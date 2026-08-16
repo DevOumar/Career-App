@@ -14946,7 +14946,7 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
           title: "Email Scout",
           subtitle: "Devine une adresse email professionnelle à partir d'un nom et d'une entreprise — gratuit, basé sur des motifs.",
           disclaimer:
-            "On génère les motifs d'email les plus courants et on vérifie que le domaine peut recevoir des emails. On ne confirme une vraie livrabilité que lorsque le serveur mail répond pendant la recherche (non garanti) — jamais un score inventé.",
+            "Trouve la bonne adresse email professionnelle en quelques secondes, gratuitement. On teste les formats les plus courants et on vérifie en direct que le domaine peut recevoir des emails — avec un niveau de confiance honnête à chaque fois, jamais un score inventé.",
           company: "Nom de l'entreprise",
           companyPlaceholder: "ex : Google",
           domain: "Ou domaine directement (optionnel)",
