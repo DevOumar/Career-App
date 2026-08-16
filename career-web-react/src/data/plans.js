@@ -38,9 +38,9 @@ export const PLANS = [
   {
     id: "candidate_booster",
     segment: "candidate",
-    name: { fr: "Ã‰lan", en: "Momentum" },
+    name: { fr: "Élan", en: "Momentum" },
     tagline: {
-      fr: "IdÃ©al pour dÃ©crocher vos premiers entretiens.",
+      fr: "Idéal pour décrocher vos premiers entretiens.",
       en: "Ideal to land your first interviews."
     },
     monthlyPrice: null,
