@@ -2851,7 +2851,7 @@ async function extractCvWithAi(sourceText) {
         body: JSON.stringify({
           model: config.model,
           temperature: 0,
-          max_completion_tokens: 6000,
+          max_completion_tokens: computeMaxCompletionTokens(messages, responseFormat),
           response_format: responseFormat,
           messages
         })
