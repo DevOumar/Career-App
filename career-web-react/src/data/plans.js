@@ -118,7 +118,7 @@ export const PLANS = [
     segment: "agency",
     name: { fr: "Cabinet Croissance", en: "Firm Growth" },
     tagline: {
-      fr: "Pour les cabinets et boÃ®tes de conseil en croissance.",
+      fr: "Pour les cabinets et boîtes de conseil en croissance.",
       en: "For growing recruitment and consulting firms."
     },
     monthlyPrice: 149,
