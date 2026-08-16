@@ -3465,10 +3465,10 @@ async function scorePremiumEligibility(userRow) {
   );
 
   const reasons = [];
-  if (exp >= 2) reasons.push("expÃ©rience professionnelle solide");
-  if (skillCount >= 8) reasons.push("socle de compÃ©tences dense");
+  if (exp >= 2) reasons.push("expérience professionnelle solide");
+  if (skillCount >= 8) reasons.push("socle de compétences dense");
   if (avgMatch >= 60) reasons.push("bon potentiel de matching");
-  if (cvCount > 0) reasons.push("CV dÃ©jÃ  structurÃ© dans la plateforme");
+  if (cvCount > 0) reasons.push("CV déjà structuré dans la plateforme");
   if (user.account?.onboardingCompleted) reasons.push("onboarding compte complet");
 
   return {
