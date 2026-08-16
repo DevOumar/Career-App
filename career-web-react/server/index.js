@@ -3943,7 +3943,7 @@ app.patch("/api/account", async (req, res) => {
     if (accountUserPatch.username) {
       const owner = await getUserRowByUsername(accountUserPatch.username);
       if (owner && owner.id !== userId) {
-        return res.status(409).json({ error: "Ce nom d'utilisateur est dÃ©jÃ  utilisÃ©." });
+        return res.status(409).json({ error: "Ce nom d'utilisateur est déjà utilisé." });
       }
     }
 
