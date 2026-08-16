@@ -3230,7 +3230,8 @@ const ADMIN_MODULE_DEFS = [
   { id: "settings", icon: "globe" },
   { id: "announcements", icon: "mail" },
   { id: "activity", icon: "history" },
-  { id: "pricing", icon: "pricetag" }
+  { id: "pricing", icon: "pricetag" },
+  { id: "satisfaction", icon: "chat" }
 ];
 
 function getAllowedAdminModules(user) {
