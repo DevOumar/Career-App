@@ -4021,7 +4021,7 @@ app.post("/api/account/emails/request", async (req, res) => {
 
     const existing = await getUserRowByAnyEmail(email);
     if (existing && existing.id !== userId) {
-      return res.status(409).json({ error: "Cette adresse e-mail est dÃ©jÃ  utilisÃ©e par un autre compte." });
+      return res.status(409).json({ error: "Cette adresse e-mail est déjà utilisée par un autre compte." });
     }
 
     const ownEmails = await getEmailRowsForUser(userId);
