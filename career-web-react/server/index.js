@@ -2724,10 +2724,105 @@ function postProcessCvExtraction(sourceText, parsed) {
   return next;
 }
 
+// Répare un JSON tronqué (réponse IA coupée par la limite de tokens en
+// plein milieu d'une chaîne ou d'un objet) en refermant proprement les
+// structures encore ouvertes, pour récupérer un maximum de champs déjà
+// générés plutôt que de tout perdre et retomber sur le parseur local.
+function repairTruncatedJson(text) {
+  const closers = { "{": "}", "[": "]" };
+  function openStackAt(str) {
+    const stack = [];
+    let inString = false;
+    let escape = false;
+    for (let i = 0; i < str.length; i++) {
+      const ch = str[i];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (ch === "\\") {
+        escape = true;
+        continue;
+      }
+      if (ch === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (ch === "{" || ch === "[") stack.push(ch);
+      else if (ch === "}" || ch === "]") stack.pop();
+    }
+    return { stack, inString };
+  }
+
+  const { stack, inString } = openStackAt(text);
+  if (!stack.length && !inString) return text;
+
+  // Repère le dernier point "sûr" (juste après une accolade/crochet fermé
+  // ou une virgule séparant deux éléments complets) pour couper avant tout
+  // fragment incomplet (ex: une chaîne ou une clé coupée en plein milieu).
+  let lastSafeIndex = 0;
+  let scanInString = false;
+  let scanEscape = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (scanEscape) {
+      scanEscape = false;
+      continue;
+    }
+    if (ch === "\\") {
+      scanEscape = true;
+      continue;
+    }
+    if (ch === '"') {
+      scanInString = !scanInString;
+      continue;
+    }
+    if (scanInString) continue;
+    if (ch === "}" || ch === "]") lastSafeIndex = i + 1;
+    else if (ch === ",") lastSafeIndex = i;
+  }
+
+  let repaired = text.slice(0, lastSafeIndex).replace(/,\s*$/, "");
+  const remaining = openStackAt(repaired).stack;
+  for (let i = remaining.length - 1; i >= 0; i--) {
+    repaired += closers[remaining[i]];
+  }
+  return repaired;
+}
+
+// Estimation grossière du nombre de tokens (≈ 1 token / 3.5 caractères en
+// français) — pas un vrai tokenizer, mais suffisant pour rester prudent
+// sous le plafond de tokens/minute (TPM) du compte IA en place, qui est très
+// restreint (voir computeMaxCompletionTokens ci-dessous) et peut à lui seul
+// faire échouer toute une extraction si on réserve trop de tokens de sortie.
+function estimateTokenCount(text) {
+  return Math.ceil(String(text || "").length / 3.5);
+}
+
+// Le plafond de tokens/minute du compte IA (actuellement 8000 chez Groq,
+// partagé entre le prompt ET la réponse demandée) est trop bas pour réserver
+// un max_completion_tokens fixe : sur un CV riche (plusieurs expériences),
+// une valeur fixe comme 6000-8000 dépasse systématiquement le plafond et
+// fait échouer toute l'extraction, qui retombe alors sur le parseur local
+// très limité. On calcule donc un budget de sortie réaliste en fonction de
+// ce qui a déjà été consommé par le prompt (et le schéma JSON s'il est
+// envoyé), avec une marge de sécurité.
+function computeMaxCompletionTokens(messages, responseFormat, ceiling = 8000) {
+  const schemaText = responseFormat?.type === "json_schema" ? JSON.stringify(responseFormat.json_schema?.schema || {}) : "";
+  const promptTokens = messages.reduce((sum, message) => sum + estimateTokenCount(message.content), 0) + estimateTokenCount(schemaText);
+  return Math.max(1200, Math.min(4500, ceiling - promptTokens - 500));
+}
+
 async function extractCvWithAi(sourceText) {
   const config = aiExtractionConfig();
   if (!config?.apiKey) return null;
 
+  // Le texte source est borné à une taille raisonnable : au-delà, on garde
+  // le début (identité, résumé, expériences récentes — l'essentiel d'un CV)
+  // plutôt que d'envoyer un texte trop long qui grignoterait tout le budget
+  // de tokens disponible pour la réponse.
+  const CV_SOURCE_TEXT_CAP = 6000;
   const messages = [
     {
       role: "system",
