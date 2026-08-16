@@ -12648,6 +12648,32 @@ function MatchResultsStep({
     };
   }, [userId, matchRunId]);
 
+  // Vérifie si cette offre (même poste + même entreprise) est déjà dans le
+  // suivi de candidatures, pour ne pas proposer d'en créer un doublon quand
+  // l'utilisateur revient sur cette analyse plus tard.
+  useEffect(() => {
+    let cancelled = false;
+    setTrackerStatus("idle");
+    setTrackerApplicationId(null);
+    if (!userId || !jobReview?.title) return undefined;
+
+    const compact = (value) => String(value || "").toLowerCase().trim();
+    listJobApplications(userId).then((list) => {
+      if (cancelled) return;
+      const existing = (list || []).find(
+        (app) => compact(app.title) === compact(jobReview.title) && compact(app.company) === compact(jobReview.company)
+      );
+      if (existing) {
+        setTrackerApplicationId(existing.id);
+        setTrackerStatus("done");
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, jobReview?.title, jobReview?.company]);
+
   async function handleFeedback(useful) {
     if (feedbackSaving || !userId || !matchRunId) return;
     const previous = feedback;
