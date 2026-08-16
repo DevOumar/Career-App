@@ -12491,6 +12491,11 @@ function ImportPage({
           copy={copy}
           language={language}
           avatarDataUrl={avatarDataUrl}
+          cvId={latestCv?.id || ""}
+          tokensBalance={tokensBalance}
+          onApplyOptimization={onApplyOptimization}
+          onSaveCvReview={onSaveCvReview}
+          onConsumeToken={onConsumeToken}
         />
       ) : null}
     </section>
