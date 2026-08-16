@@ -5430,6 +5430,7 @@ function SchoolSettingsPage({ user, language }) {
             ) : null}
           </div>
           <input value={form.organizationName || ""} onChange={(event) => update("organizationName", event.target.value)} placeholder={copy.orgName} />
+          <input value={form.acronym || ""} onChange={(event) => update("acronym", event.target.value)} placeholder={copy.acronym} />
           <input value={form.organizationType || ""} onChange={(event) => update("organizationType", event.target.value)} placeholder={copy.orgType} />
           <input value={form.website || ""} onChange={(event) => update("website", event.target.value)} placeholder={copy.website} />
           <input value={form.emailDomain || ""} onChange={(event) => update("emailDomain", event.target.value)} placeholder={copy.emailDomain} />
