@@ -11982,6 +11982,11 @@ function HomePage({ onStart, onSeeTarifs, user, premium, profileCompleteness, la
       : copy.unlimitedTokens;
   const planLabel = `${copy.planLabel}: ${planName} · ${tokensLabel}`;
   const cvLabel = cvCount > 0 ? `${cvCount} ${copy.importedCv}` : copy.noCv;
+  const schoolLicense = user?.schoolLicense;
+  const schoolLabel =
+    schoolLicense && !schoolLicense.revoked && schoolLicense.organizationName
+      ? `${copy.schoolMember} ${schoolLicense.organizationName}`
+      : null;
   const tickerItems = [
     `${copy.welcome} ${userLabel}`,
     `${copy.accountType}: ${roleLabel}`,
