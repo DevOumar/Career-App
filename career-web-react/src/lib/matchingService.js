@@ -94,7 +94,7 @@ export function extractOfferSummary(text) {
     sector: "Général",
     experienceMin,
     education,
-    skills: skills.length ? unique(skills) : ["python", "ml", "communication"],
+    skills: unique(skills),
     softSkills: unique(softSkills).slice(0, 8),
     description: inferJobDescription(text),
     missions: []
