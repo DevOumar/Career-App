@@ -77,7 +77,10 @@ export function extractOfferSummary(text) {
   const softSkills = SOFT_SKILL_KEYWORDS.filter((skill) => normalized.includes(normalize(skill)));
   const yearsMatch = normalized.match(/(\d+)\s*(ans|an|years|year)/);
   const experienceMin = yearsMatch ? Number(yearsMatch[1]) : 1;
-  const education = EDUCATION_LEVELS.find((level) => normalized.includes(level)) || "bac+5";
+  // Pas de niveau par défaut fabriqué (ex: "bac+5") si rien n'est détecté dans
+  // le texte collé — une chaîne vide fait passer educationRank() à 0, donc
+  // aucune barrière artificielle n'est appliquée au score de matching.
+  const education = EDUCATION_LEVELS.find((level) => normalized.includes(level)) || "";
   const title = firstUsefulLine(text) || "Poste personnalisé";
   const company = inferCompany(text);
 
@@ -91,7 +94,7 @@ export function extractOfferSummary(text) {
     sector: "Général",
     experienceMin,
     education,
-    skills: skills.length ? unique(skills) : ["python", "ml", "communication"],
+    skills: unique(skills),
     softSkills: unique(softSkills).slice(0, 8),
     description: inferJobDescription(text),
     missions: []
@@ -178,7 +181,7 @@ function pickStrengthsAndGaps(bestMatch) {
   }
 
   if (bestMatch.missingSkills.includes("openai api") || bestMatch.missingSkills.includes("vertex ai")) {
-    gaps.push("Les outils GenAI enterprise ne ressortent pas clairement dans ton profil.");
+    gaps.push("Les outils GenAI enterprise ne ressortent pas clairement dans votre profil.");
   }
 
   if (!strengths.length) {
@@ -198,7 +201,7 @@ function buildRecommendations(bestMatch, premiumAccess) {
   if (bestMatch.missingSkills.includes("llm") || bestMatch.missingSkills.includes("rag")) {
     recos.push({
       level: "critique",
-      title: "Rendre visible ton expérience GenAI",
+      title: "Rendre visible votre expérience GenAI",
       detail:
         "Ajoute au moins un projet concret LLM/RAG avec stack, volume de données et impact mesurable."
     });
@@ -255,7 +258,7 @@ export function buildLocalMatchInsights({ candidate, offer }) {
     strengths,
     missingKeywords: unique(match.missingSkills),
     culturalFit:
-      "Analyse locale : aligne ton discours et tes exemples concrets sur les valeurs et le mode de fonctionnement affichés dans l'offre pour renforcer le fit culturel perçu.",
+      "Analyse locale : alignez votre discours et vos exemples concrets sur les valeurs et le mode de fonctionnement affichés dans l'offre pour renforcer le fit culturel perçu.",
     recommendations
   };
 }

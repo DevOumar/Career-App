@@ -141,18 +141,6 @@ function extractName(text, email) {
 
   const fallback = email ? email.split("@")[0].replace(/[._-]+/g, " ") : "";
   const source = String(firstUseful || fallback).replace(/\s{2,}/g, " ").trim();
-  const compactSource = normalize(source).replace(/[^a-z]/g, "");
-
-  if (source && !source.includes(" ") && compactSource.length >= 8 && emailLocal.length >= 6) {
-    const candidateNames = [
-      ["oumar", "cisse"],
-      ["omar", "cisse"]
-    ];
-    const fromEmail = candidateNames.find(([first, last]) => emailLocal.includes(first) && emailLocal.includes(last));
-    if (fromEmail && compactSource.includes(fromEmail[0]) && compactSource.includes(fromEmail[1])) {
-      return { firstName: titleCaseName(fromEmail[0]), lastName: fromEmail[1].toUpperCase() };
-    }
-  }
 
   const parts = source.split(/\s+/).filter(Boolean);
   return {
@@ -233,19 +221,13 @@ function extractExperiences(text) {
     const line = source[index];
     const normalized = normalize(line);
     const looksLikeRole = /\b(stage|alternance|manager|analyst|engineer|developer|consultant|data|chef|responsable|assistant|product|marketing|bim|digital|compliance)\b/i.test(normalized);
-    const knownCompany = /\b(vinci|eiffage|ecobank|construction|energie systems|international)\b/i.test(normalized);
-    if (looksLikeRole || knownCompany) {
+    if (looksLikeRole) {
       const prev = source[index - 1] || "";
       const next = source[index + 1] || "";
       const nextTwo = source[index + 2] || "";
-      const combined = `${prev} ${line} ${next}`;
       items.push({
-        company: /\b(vinci|eiffage|ecobank)\b/i.test(normalize(combined))
-          ? (combined.match(/\b(VINCI(?:\s+CONSTRUCTION)?|EIFFAGE(?:\s+ENERGIE\s+SYSTEMS)?|ECOBANK(?:\s+INTERNATIONAL)?)/i)?.[0] || prev)
-          : prev && prev.length <= 70 && !/\d{4}/.test(prev)
-            ? prev
-            : "",
-        role: knownCompany && next ? next : line,
+        company: prev && prev.length <= 70 && !/\d{4}/.test(prev) ? prev : "",
+        role: line,
         dates: /\d{4}|janv|fev|fevr|mars|avr|mai|juin|juil|aout|sept|oct|nov|dec/i.test(normalize(next)) ? next : /\d{4}|janv|fev|fevr|mars|avr|mai|juin|juil|aout|sept|oct|nov|dec/i.test(normalize(nextTwo)) ? nextTwo : "",
         description: source.slice(index + 2, index + 6).join("\n")
       });
@@ -262,15 +244,15 @@ function extractEducationItems(text) {
   for (let index = 0; index < source.length; index += 1) {
     const line = source[index];
     const normalized = normalize(line);
-    if (/\b(master|mastere|licence|bachelor|bac|ingenieur|universit|ecole|school|degree|miage|hetic)\b/i.test(normalized)) {
+    if (/\b(master|mastere|licence|bachelor|bac|ingenieur|universit|ecole|school|degree)\b/i.test(normalized)) {
       const prev = source[index - 1] || "";
       const next = source[index + 1] || "";
       const nextTwo = source[index + 2] || "";
       const combined = `${prev} ${line} ${next}`;
-      const school = combined.match(/\b(HETIC|Universit[ée][\w\s-]*|Paris[-\s]Saclay|Sorbonne|Ecole[\w\s-]*)/i)?.[0] || "";
-      const degree = combined.match(/\b(Mast[èe]re[^|,\n]*|Master[^|,\n]*|M1\s*-\s*M2[^|,\n]*|MIAGE[^|,\n]*|Licence[^|,\n]*|Bachelor[^|,\n]*)/i)?.[0] || line;
+      const school = combined.match(/\b(Universit[ée][\w\s-]*|Ecole[\w\s-]*)/i)?.[0] || "";
+      const degree = combined.match(/\b(Mast[èe]re[^|,\n]*|Master[^|,\n]*|M1\s*-\s*M2[^|,\n]*|Licence[^|,\n]*|Bachelor[^|,\n]*)/i)?.[0] || line;
       items.push({
-        school: school || (/\b(universit|ecole|hetic|school|institut|campus)\b/i.test(normalized) ? line : prev),
+        school: school || (/\b(universit|ecole|school|institut|campus)\b/i.test(normalized) ? line : prev),
         degree,
         dates: /\d{4}|sept|janv|oct|mai|juin/i.test(normalize(next)) ? next : /\d{4}|sept|janv|oct|mai|juin/i.test(normalize(nextTwo)) ? nextTwo : "",
         description: ""

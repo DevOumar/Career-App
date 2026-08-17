@@ -105,6 +105,12 @@ async function request(path, options = {}) {
   return data;
 }
 
+// Utilisé pour construire des liens de téléchargement directs (export CSV)
+// qu'un simple <a href> peut suivre, sans passer par fetch/blob.
+export async function getApiBase() {
+  return resolveApiBase();
+}
+
 export async function registerUser(payload) {
   return request("/auth/register", { method: "POST", body: payload });
 }
@@ -243,10 +249,10 @@ export async function activatePlan({ userId, planId, billingCycle }) {
   });
 }
 
-export async function createStripeCheckoutSession({ userId, planId, billingCycle }) {
+export async function createStripeCheckoutSession({ userId, planId, billingCycle, quantity = 1 }) {
   return request("/stripe/create-checkout-session", {
     method: "POST",
-    body: { userId, planId, billingCycle }
+    body: { userId, planId, billingCycle, quantity }
   });
 }
 
@@ -268,12 +274,55 @@ export async function consumeTokens({ userId, amount = 1 }) {
   });
 }
 
+export async function findEmail({ userId, companyName, domain, firstName, lastName }) {
+  return request("/email-finder/search", {
+    method: "POST",
+    body: { userId, companyName, domain, firstName, lastName }
+  });
+}
+
 export async function addCvRecord(userId, cvRecord) {
   const data = await request("/cv", {
     method: "POST",
     body: { userId, cvRecord }
   });
   return data.cv;
+}
+
+export async function listJobApplications(userId) {
+  const data = await request(`/applications?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function createJobApplication(payload) {
+  const data = await request("/applications", { method: "POST", body: payload });
+  return data.item;
+}
+
+export async function updateJobApplication(id, payload) {
+  const data = await request(`/applications/${encodeURIComponent(id)}`, { method: "PUT", body: payload });
+  return data.item;
+}
+
+export async function deleteJobApplication({ id, userId }) {
+  return request(`/applications/${encodeURIComponent(id)}?userId=${encodeURIComponent(userId)}`, { method: "DELETE" });
+}
+
+export async function getSatisfactionStatus(userId) {
+  const data = await request(`/satisfaction/status?userId=${encodeURIComponent(userId)}`);
+  return data.eligible;
+}
+
+export async function dismissSatisfactionSurvey(userId) {
+  return request("/satisfaction/dismiss", { method: "POST", body: { userId } });
+}
+
+export async function submitSatisfactionSurvey({ userId, score, comment }) {
+  return request("/satisfaction", { method: "POST", body: { userId, score, comment } });
+}
+
+export async function getAdminSatisfaction(adminUserId) {
+  return request(`/admin/satisfaction?adminUserId=${encodeURIComponent(adminUserId)}`);
 }
 
 export async function extractCvFile({ fileName, mimeType, base64 }) {
@@ -336,6 +385,14 @@ export async function getMatchFeedback({ userId, matchRunId }) {
   return data.feedback;
 }
 
+export async function optimizeCvForAts({ candidate, offer, language }) {
+  const data = await request("/cv/optimize-ats", {
+    method: "POST",
+    body: { candidate, offer, language }
+  });
+  return data.optimization;
+}
+
 export async function generateCoverLetter({ candidate, offer, tone, language }) {
   return request("/coverletter/generate", {
     method: "POST",
@@ -343,13 +400,350 @@ export async function generateCoverLetter({ candidate, offer, tone, language }) 
   });
 }
 
-export async function negotiationReply({ candidate, offer, history, targetSalary, finish, currencyLabel }) {
+export async function negotiationReply({ candidate, offer, history, targetSalary, finish, currencyLabel, salaryReference }) {
   return request("/negotiation/reply", {
     method: "POST",
-    body: { candidate, offer, history, targetSalary, finish, currencyLabel }
+    body: { candidate, offer, history, targetSalary, finish, currencyLabel, salaryReference }
+  });
+}
+
+export async function listNegotiationConversations(userId) {
+  if (!userId) return [];
+  const data = await request(`/negotiation/conversations?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function saveNegotiationConversation({ userId, title, payload }) {
+  const data = await request("/negotiation/conversations", {
+    method: "POST",
+    body: { userId, title, payload }
+  });
+  return data.conversation;
+}
+
+export async function updateNegotiationConversation({ userId, conversationId, title, payload }) {
+  return request(`/negotiation/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "PUT",
+    body: { userId, title, payload }
+  });
+}
+
+export async function deleteNegotiationConversation({ userId, conversationId }) {
+  return request(`/negotiation/conversations/${encodeURIComponent(conversationId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function listCoverLetters(userId) {
+  if (!userId) return [];
+  const data = await request(`/coverletter/conversations?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function saveCoverLetter({ userId, title, payload }) {
+  const data = await request("/coverletter/conversations", {
+    method: "POST",
+    body: { userId, title, payload }
+  });
+  return data.conversation;
+}
+
+export async function updateCoverLetter({ userId, conversationId, title, payload }) {
+  return request(`/coverletter/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "PUT",
+    body: { userId, title, payload }
+  });
+}
+
+export async function deleteCoverLetter({ userId, conversationId }) {
+  return request(`/coverletter/conversations/${encodeURIComponent(conversationId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
   });
 }
 
 export async function getPremiumSnapshot(userId) {
   return request(`/premium?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function refundAdminTransaction({ adminUserId, transactionId }) {
+  return request(`/admin/transactions/${encodeURIComponent(transactionId)}/refund`, {
+    method: "POST",
+    body: { adminUserId }
+  });
+}
+
+export async function getPlanOverrides() {
+  try {
+    const data = await request("/plans/overrides");
+    return data.overrides || {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+export async function getAdminPlans(adminUserId) {
+  const data = await request(`/admin/plans?adminUserId=${encodeURIComponent(adminUserId)}`);
+  return data.items;
+}
+
+export async function updateAdminPlan({ adminUserId, planId, monthlyPrice, annualPrice }) {
+  return request(`/admin/plans/${encodeURIComponent(planId)}`, {
+    method: "PUT",
+    body: { adminUserId, monthlyPrice, annualPrice }
+  });
+}
+
+export async function resetAdminPlan({ adminUserId, planId }) {
+  return request(`/admin/plans/${encodeURIComponent(planId)}/reset`, {
+    method: "POST",
+    body: { adminUserId }
+  });
+}
+
+export async function getAdminOverview(adminUserId) {
+  return request(`/admin/overview?adminUserId=${encodeURIComponent(adminUserId)}`);
+}
+
+export async function getAdminNotifications(adminUserId) {
+  const data = await request(`/admin/notifications?adminUserId=${encodeURIComponent(adminUserId)}`);
+  return data.items;
+}
+
+export async function listAdminUsers(adminUserId, { search = "", roleType = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search, roleType });
+  const data = await request(`/admin/users?${params.toString()}`);
+  return data.items;
+}
+
+export async function createAdminUser(payload) {
+  return request("/admin/users", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export async function getAdminOrgAccounts(adminUserId, roleType) {
+  const params = new URLSearchParams({ adminUserId, roleType });
+  const data = await request(`/admin/org-accounts?${params.toString()}`);
+  return data.items;
+}
+
+export async function getAdminFinance(adminUserId, { source = "", search = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, source, search });
+  return request(`/admin/finance?${params.toString()}`);
+}
+
+export async function updateAdminUser(payload) {
+  return request("/admin/users/update", {
+    method: "POST",
+    body: payload
+  });
+}
+
+export async function updateAdminUserStatus({ adminUserId, userId, status }) {
+  return request("/admin/users/status", {
+    method: "POST",
+    body: { adminUserId, userId, status }
+  });
+}
+
+export async function deleteAdminUser({ adminUserId, userId, confirmation }) {
+  return request("/admin/users/delete", {
+    method: "POST",
+    body: { adminUserId, userId, confirmation }
+  });
+}
+
+export async function getAdminActivityLog(adminUserId, { search = "", eventType = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search, eventType });
+  return request(`/admin/activity-log?${params.toString()}`);
+}
+
+export async function getAdminLicenseCodes(adminUserId, { search = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search });
+  const data = await request(`/admin/license-codes?${params.toString()}`);
+  return data.items;
+}
+
+export async function revokeAdminLicenseCode(adminUserId, code) {
+  return request("/admin/license-codes/revoke", {
+    method: "POST",
+    body: { adminUserId, code }
+  });
+}
+
+export async function restoreAdminLicenseCode(adminUserId, code) {
+  return request("/admin/license-codes/restore", {
+    method: "POST",
+    body: { adminUserId, code }
+  });
+}
+
+export async function getAdminAiSamples(adminUserId, { search = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search });
+  return request(`/admin/ai-samples?${params.toString()}`);
+}
+
+export async function getAdminAiMonitoring(adminUserId) {
+  const params = new URLSearchParams({ adminUserId });
+  return request(`/admin/ai-monitoring?${params.toString()}`);
+}
+
+export async function getAdminCvs(adminUserId, { search = "", status = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search, status });
+  return request(`/admin/cvs?${params.toString()}`);
+}
+
+export async function deleteAdminCv({ adminUserId, cvId }) {
+  return request(`/admin/cvs/${encodeURIComponent(cvId)}`, {
+    method: "DELETE",
+    body: { adminUserId }
+  });
+}
+
+export async function reanalyzeAdminCv({ adminUserId, cvId }) {
+  return request(`/admin/cvs/${encodeURIComponent(cvId)}/reanalyze`, {
+    method: "POST",
+    body: { adminUserId }
+  });
+}
+
+export async function getAdminMatches(adminUserId, { search = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search });
+  return request(`/admin/matches?${params.toString()}`);
+}
+
+export async function getAdminQuality(adminUserId, { search = "" } = {}) {
+  const params = new URLSearchParams({ adminUserId, search });
+  return request(`/admin/quality?${params.toString()}`);
+}
+
+export async function getAdminSettings(adminUserId) {
+  const params = new URLSearchParams({ adminUserId });
+  return request(`/admin/settings?${params.toString()}`);
+}
+
+export async function updateAdminSetting(adminUserId, key, value) {
+  return request("/admin/settings", {
+    method: "POST",
+    body: { adminUserId, key, value }
+  });
+}
+
+export async function getAdminAnnouncementAudienceCount(adminUserId, audience) {
+  const params = new URLSearchParams({ adminUserId, audience });
+  const data = await request(`/admin/announcements/audience-count?${params.toString()}`);
+  return data.count;
+}
+
+export async function getAdminAnnouncements(adminUserId) {
+  const params = new URLSearchParams({ adminUserId });
+  const data = await request(`/admin/announcements?${params.toString()}`);
+  return data.items;
+}
+
+export async function sendAdminAnnouncement({ adminUserId, subject, message, audience, attachment }) {
+  return request("/admin/announcements/send", {
+    method: "POST",
+    body: { adminUserId, subject, message, audience, attachment }
+  });
+}
+
+export async function getSchoolOverview(userId) {
+  const params = new URLSearchParams({ userId });
+  return request(`/school/overview?${params.toString()}`);
+}
+
+export async function getSchoolStudents(userId, { search = "" } = {}) {
+  const params = new URLSearchParams({ userId, search });
+  const data = await request(`/school/students?${params.toString()}`);
+  return data.items;
+}
+
+export async function removeSchoolStudent(userId, studentId) {
+  return request("/school/students/remove", {
+    method: "POST",
+    body: { userId, studentId }
+  });
+}
+
+export async function getSchoolLicense(userId) {
+  const params = new URLSearchParams({ userId });
+  const data = await request(`/school/license?${params.toString()}`);
+  return data.items;
+}
+
+export async function getSchoolInsights(userId) {
+  const params = new URLSearchParams({ userId });
+  return request(`/school/insights?${params.toString()}`);
+}
+
+export async function getSchoolInvitations(userId) {
+  const params = new URLSearchParams({ userId });
+  const data = await request(`/school/invitations?${params.toString()}`);
+  return data.items;
+}
+
+export async function sendSchoolInvitation(userId, email) {
+  return request("/school/invitations/send", {
+    method: "POST",
+    body: { userId, email }
+  });
+}
+
+export async function getSchoolProfile(userId) {
+  return request(`/school/profile?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function updateSchoolProfile(userId, profile) {
+  return request("/school/profile", {
+    method: "PUT",
+    body: { userId, profile }
+  });
+}
+
+export async function getSchoolNotifications(userId, language = "fr") {
+  return request(`/school/notifications?userId=${encodeURIComponent(userId)}&language=${encodeURIComponent(language)}`);
+}
+
+export async function markSchoolNotificationsRead(userId) {
+  return request("/school/notifications/read", {
+    method: "POST",
+    body: { userId }
+  });
+}
+
+export async function getSchoolPromotions(userId) {
+  return request(`/school/promotions?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function createSchoolPromotion(userId, payload) {
+  return request("/school/promotions", {
+    method: "POST",
+    body: { userId, ...payload }
+  });
+}
+
+export async function deleteSchoolPromotion(userId, promotionId) {
+  return request(`/school/promotions/${encodeURIComponent(promotionId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
+}
+
+export async function updateSchoolPromotionStudent(userId, promotionId, studentId, action = "add") {
+  return request(`/school/promotions/${encodeURIComponent(promotionId)}/students`, {
+    method: "POST",
+    body: { userId, studentId, action }
+  });
+}
+
+export async function getSchoolReports(userId) {
+  return request(`/school/reports?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function generateSchoolReport(userId, period = "monthly") {
+  return request("/school/reports/generate", {
+    method: "POST",
+    body: { userId, period }
+  });
 }
