@@ -12,6 +12,38 @@ Chaque réponse générée par l'assistant inclut la mention suivante :
 > Cet assistant propose des conseils génériques de préparation et ne
 > remplace pas un accompagnement RH ou un coach carrière personnalisé.
 
+## Démarrage rapide
+
+```bash
+# 1. Environnement + dépendances
+python -m venv venv
+venv\Scripts\activate          # Windows
+pip install -r requirements.txt
+
+# 2. Configuration (clé Groq)
+copy .env.example .env         # puis renseigner GROQ_API_KEY dans .env
+
+# 3. Indexation du corpus (nécessaire une seule fois, sauf modification du corpus)
+python -m src.indexing.build_index
+
+# 4. Lancement — au choix
+python -m src.web.server       # interface web -> http://127.0.0.1:8000
+python -m src.cli.main         # ou version terminal
+```
+
+| Étape | Commande |
+|---|---|
+| Créer l'environnement | `python -m venv venv` puis `venv\Scripts\activate` |
+| Installer les dépendances | `pip install -r requirements.txt` |
+| Configurer la clé API | `copy .env.example .env` puis éditer `.env` |
+| Indexer le corpus | `python -m src.indexing.build_index` |
+| Lancer en web | `python -m src.web.server` → http://127.0.0.1:8000 |
+| Lancer en terminal | `python -m src.cli.main` |
+
+Au premier lancement (web ou CLI), le chargement du modèle d'embedding en
+mémoire prend ~15-20 secondes : c'est normal, patiente avant la première
+requête.
+
 ## Structure du projet
 
 ```
