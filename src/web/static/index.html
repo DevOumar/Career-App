@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Simulation d'entretien</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <h1>Simulation d'entretien</h1>
+    <button id="reset-btn" class="ghost-btn hidden">Nouvel entretien</button>
+  </header>
+
+  <main>
+    <section id="setup" class="panel">
+      <h2>Configure ton entretien</h2>
+      <label class="field">
+        Type d'entretien
+        <select id="type-entretien">
+          <option value="">Indifférent</option>
+          <option value="RH">RH</option>
+          <option value="technique">Technique</option>
+          <option value="direction">Direction</option>
+        </select>
+      </label>
+      <label class="field">
+        Domaine du poste visé
+        <input id="domaine" type="text" placeholder="ex : tech, commerce, finance, industrie (optionnel)" />
+      </label>
+      <label class="field">
+        Offre d'emploi visée (optionnel)
+        <textarea id="offre" rows="6" placeholder="Colle ici le texte de l'offre pour que le recruteur se mette dans la peau de l'entreprise et pose des questions ancrées sur ce poste précis."></textarea>
+      </label>
+      <button id="start-btn" class="primary-btn">Commencer l'entretien</button>
+      <p id="setup-error" class="error hidden"></p>
+    </section>
+
+    <section id="chat" class="panel hidden">
+      <div id="messages" class="messages"></div>
+      <div id="typing" class="typing hidden">Le recruteur réfléchit…</div>
+      <form id="chat-form" class="chat-form">
+        <textarea id="chat-input" placeholder="Ta réponse au recruteur…" rows="2"></textarea>
+        <button type="submit" class="primary-btn">Envoyer</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
