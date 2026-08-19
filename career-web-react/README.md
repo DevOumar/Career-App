@@ -16,6 +16,8 @@ career-web-react/
 
 Le backend importe directement quelques modules du frontend (`frontend/src/data/plans.js`, `frontend/src/lib/matchingService.js`...) pour partager la même logique de matching côté serveur et côté client sans la dupliquer — c'est pourquoi les deux restent dans un seul package plutôt que deux projets npm indépendants.
 
+Voir [ARCHITECTURE.md](../ARCHITECTURE.md) pour la convention `features/<module>/` (où trouver/ajouter le code d'un module métier comme les entretiens, le CV, les candidatures...) et l'état actuel de la migration.
+
 ## Fonctionnalités
 
 **Compte**
