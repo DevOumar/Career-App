@@ -12,26 +12,29 @@ Le projet est une architecture **frontend/backend séparée** : une interface Re
     |-- frontend/              # Interface React (Vite)
     |   |-- index.html
     |   `-- src/
-    |       |-- App.jsx        # Coquille de l'app + pages pas encore extraites en module
+    |       |-- App.jsx        # Coquille de l'app (session, nav, routage entre modules)
     |       |-- main.jsx       # Point d'entrée React
     |       |-- styles.css
-    |       |-- components/    # Composants UI partagés (icônes...)
-    |       |-- features/      # Un dossier par module métier (ex. interviews/)
+    |       |-- components/    # Composants UI partagés (icônes, cartes KPI...)
+    |       |-- features/      # Un dossier par module métier (CV, entretiens, admin, école...)
+    |       |   `-- admin|school/pages/  # Une page par fichier pour les 2 plus gros modules
     |       |-- data/          # Données statiques partagées (offres, plans, compétences)
     |       `-- lib/           # Client API + logique de matching partagée
     |-- backend/                # API Express
-    |   |-- index.js           # Serveur, routes, base de données, IA
+    |   |-- index.js           # Point d'entrée : config, base de données, helpers, middlewares
+    |   |-- routes/            # Un fichier (ou sous-dossier) par domaine de routes
+    |   |   `-- admin|school/  # Sous-découpage par sous-domaine pour les 2 plus gros
     |   |-- stripeService.js
     |   |-- salaryDataService.js
     |   `-- database/schema.sql
-    |-- vite.config.js         # root: frontend/, sortie de build: ../dist
+    |-- vite.config.js         # root: frontend/, envDir: .. (lit le .env à la racine), sortie: ../dist
     |-- package.json           # Un seul package.json pour tout le projet
     `-- dist/                  # Build de production (généré, non versionné)
 ```
 
 Le frontend et le backend partagent un seul `package.json`/`node_modules` (le backend importe directement quelques modules du frontend comme `frontend/src/data/plans.js` ou `frontend/src/lib/matchingService.js`, pour réutiliser la même logique de matching côté serveur et côté client sans la dupliquer).
 
-Voir [career-web-react/ARCHITECTURE.md](career-web-react/ARCHITECTURE.md) pour le détail : convention `features/<module>/`, comment trouver/ajouter le code d'un module métier (ex. entretiens), et l'état de la migration.
+Voir [career-web-react/ARCHITECTURE.md](career-web-react/ARCHITECTURE.md) pour le détail : convention `features/<module>/` et `backend/routes/<domaine>.js`, comment trouver/ajouter le code d'un module métier, les pièges déjà rencontrés lors des découpages précédents, et l'état de la migration.
 
 ## Prérequis
 
