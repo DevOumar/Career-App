@@ -8,15 +8,28 @@ Stack : React (Vite) + API Express, base de données Postgres (Supabase, avec re
 
 ```text
 career-web-react/
-|-- frontend/       # Interface React (Vite) — index.html + src/
-|-- backend/        # API Express — index.js, stripeService.js, salaryDataService.js, database/schema.sql
-|-- vite.config.js  # root: frontend/, build vers ../dist
-`-- package.json    # Un seul package.json pour les deux
+|-- frontend/         # Interface React (Vite) — index.html + src/
+|   `-- src/
+|       |-- App.jsx        # Coquille de l'app (session, nav, routage entre modules)
+|       |-- components/    # Composants UI partagés
+|       |-- features/      # Un dossier par module métier (CV, entretiens, admin, école...)
+|       |   `-- admin|school/pages/  # Une page par fichier pour les 2 plus gros modules
+|       |-- data/          # Données statiques partagées (offres, plans, compétences)
+|       `-- lib/           # Client API + logique de matching partagée
+|-- backend/          # API Express
+|   |-- index.js      # Point d'entrée : config, base de données, helpers, middlewares
+|   |-- routes/       # Un fichier (ou sous-dossier) par domaine de routes
+|   |   `-- admin|school/  # Sous-découpage par sous-domaine pour les 2 plus gros
+|   |-- stripeService.js
+|   |-- salaryDataService.js
+|   `-- database/schema.sql
+|-- vite.config.js    # root: frontend/, envDir: .. (lit le .env à la racine), build vers ../dist
+`-- package.json      # Un seul package.json pour les deux
 ```
 
 Le backend importe directement quelques modules du frontend (`frontend/src/data/plans.js`, `frontend/src/lib/matchingService.js`...) pour partager la même logique de matching côté serveur et côté client sans la dupliquer — c'est pourquoi les deux restent dans un seul package plutôt que deux projets npm indépendants.
 
-Voir [ARCHITECTURE.md](../ARCHITECTURE.md) pour la convention `features/<module>/` (où trouver/ajouter le code d'un module métier comme les entretiens, le CV, les candidatures...) et l'état actuel de la migration.
+Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour la convention `features/<module>/` et `backend/routes/<domaine>.js` (où trouver/ajouter le code d'un module métier comme les entretiens, le CV, les candidatures...), les pièges déjà rencontrés lors des découpages précédents, et l'état actuel de la migration.
 
 ## Fonctionnalités
 
