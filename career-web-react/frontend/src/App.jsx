@@ -6,8 +6,16 @@ import InterviewPage from "./features/interviews/InterviewPage.jsx";
 import SalaryNegotiationPage from "./features/negotiation/SalaryNegotiationPage.jsx";
 import ApplicationsPage from "./features/applications/ApplicationsPage.jsx";
 import { APPLICATIONS_COPY } from "./features/applications/applicationsCopy.js";
-import { CURRENCY_OPTIONS, getCurrencyOption, formatAmountInCurrency, fillTemplate } from "./lib/format.js";
+import {
+  CURRENCY_OPTIONS,
+  getCurrencyOption,
+  formatAmountInCurrency,
+  fillTemplate,
+  formatDate,
+  formatShortDate
+} from "./lib/format.js";
 import { getFriendlyErrorMessage, getCvImportErrorMessage } from "./lib/errors.js";
+import { ACCOUNT_LABELS, getAccountLabel } from "./lib/accounts.js";
 import {
   activatePlan,
   activatePremiumSubscription,
@@ -547,31 +555,6 @@ const ACCOUNT_TYPE_OPTIONS = [
   { value: "coach", label: "Coach carrière", description: "Accompagnement CV, préparation entretien, mentoring." },
   { value: "other", label: "Autre", description: "Autre profil professionnel lié à l'emploi." }
 ];
-
-const ACCOUNT_LABELS = {
-  fr: {
-    student: "Candidat/Étudiant",
-    candidate: "Candidat",
-    recruiter_firm: "Cabinet de recrutement",
-    recruiter_internal: "Recruteur interne",
-    company: "Entreprise",
-    school: "École / Université",
-    coach: "Coach carrière",
-    other: "Autre",
-    admin: "Administrateur"
-  },
-  en: {
-    student: "Candidate/Student",
-    candidate: "Candidate",
-    recruiter_firm: "Recruitment agency",
-    recruiter_internal: "Internal recruiter",
-    company: "Company",
-    school: "School / University",
-    coach: "Career coach",
-    other: "Other",
-    admin: "Administrator"
-  }
-};
 
 const APP_COPY = {
   fr: {
@@ -1264,17 +1247,6 @@ function ratingLabel(score, language = "fr") {
   return "À renforcer";
 }
 
-function formatDate(value) {
-  if (!value) return "-";
-  return new Date(value).toLocaleDateString("fr-FR");
-}
-
-function formatShortDate(value, language) {
-  if (!value) return "-";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  return date.toLocaleDateString(language === "en" ? "en-GB" : "fr-FR", { day: "2-digit", month: "short" });
-}
 
 function withInitials(user) {
   const first = user?.firstName?.[0] || "U";
@@ -1353,9 +1325,6 @@ function getUsernameValidation(username, language = "fr") {
   return "";
 }
 
-function getAccountLabel(accountType, language = "fr") {
-  return ACCOUNT_LABELS[language]?.[accountType] || ACCOUNT_LABELS.fr[accountType] || ACCOUNT_LABELS.fr.other;
-}
 
 function accountToForm(user) {
   const account = user?.account || {};
