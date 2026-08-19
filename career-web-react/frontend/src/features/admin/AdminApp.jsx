@@ -23,7 +23,7 @@ import { LanguageSwitch } from "../../components/LanguageSwitch.jsx";
 // ici car ces composants ne sont utilisés qu'au rendu (jamais à
 // l'évaluation du module), bien après la résolution du cycle ESM.
 import AccountDrawer from "../account/AccountDrawer.jsx";
-import { ConnectedFooter } from "../../App.jsx";
+import { ConnectedFooter, ADMIN_ACCOUNT_TYPES } from "../../App.jsx";
 import { PLANS, PLAN_SEGMENTS, getPlanById } from "../../data/plans.js";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
 import { formatDate, formatShortDate, formatAmountInCurrency, formatPlanPrice } from "../../lib/format.js";

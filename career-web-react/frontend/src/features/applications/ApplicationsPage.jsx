@@ -5,7 +5,7 @@ import React from "react";
 import { useState, useEffect } from "react";
 import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
-import { fillTemplate } from "../../lib/format.js";
+import { fillTemplate, formatShortDate } from "../../lib/format.js";
 import {
   listJobApplications,
   createJobApplication,

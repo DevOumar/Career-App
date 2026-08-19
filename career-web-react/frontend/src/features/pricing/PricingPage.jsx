@@ -6,6 +6,7 @@ import { UiIcon } from "../../components/UiIcon.jsx";
 import { CURRENCY_OPTIONS, getCurrencyOption, formatAmountInCurrency, formatPlanPrice } from "../../lib/format.js";
 import { InfoPage } from "../landing/LandingPage.jsx";
 import { PRICING_COPY } from "./pricingCopy.js";
+import { PLANS, PLAN_SEGMENTS, getPlanById } from "../../data/plans.js";
 
 function PublicPricingPage({ language, setLanguage, onBack, onLoginClick, onSignupClick, onNavigateLegal, landingCopy, currency = "EUR" }) {
   const isEn = language === "en";

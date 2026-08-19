@@ -141,6 +141,20 @@ features/interviews/
    `curl` chaque module transformé par Vite pour confirmer qu'il n'y a pas
    d'erreur de transformation.
 
+6. **Un script maison de vérification statique a des angles morts.** Un
+   script basé sur des regex (recherche de balises JSX `<Tag` et d'appels
+   `nom(`) ne détecte pas une référence à une constante utilisée en
+   `NOM.map(...)` ou `NOM.property` — exactement le cas de `CAREER_CARDS`
+   (tableau resté dans `App.jsx` alors que son seul utilisateur avait
+   déménagé dans `features/landing/`) ou de `PLANS`/`ADMIN_ACCOUNT_TYPES`
+   utilisés sans import après une extraction. `npm run build` ne le voit
+   pas non plus (JSX classique compile sans vérifier les références). La
+   vérification fiable : un vrai linter avec la règle `no-undef` (ESLint,
+   règle `react/jsx-no-undef` pour le JSX) sur `frontend/src/**/*.jsx` —
+   ça a permis de retrouver 44 références non importées en une seule
+   passe après l'extraction des modules. Recommandé pour toute future
+   extraction, y compris celle du backend ci-dessous.
+
 ## Backend
 
 `backend/index.js` est aujourd'hui un fichier unique regroupant toutes les

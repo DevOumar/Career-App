@@ -223,7 +223,7 @@ function getCurrency() {
   }
 }
 
-const THEME_PRESETS = [
+export const THEME_PRESETS = [
   {
     id: "blue",
     label: { fr: "Bleu (défaut)", en: "Blue (default)" },
@@ -545,18 +545,7 @@ const AUTH_COPY = {
   }
 };
 
-const CAREER_CARDS = [
-  { title: "Data Analyst", score: 91, skills: "Python · SQL · Power BI", tone: "green" },
-  { title: "Software Engineer", score: 87, skills: "React · Node · API", tone: "blue" },
-  { title: "Product Manager", score: 78, skills: "Roadmap · Discovery · KPI", tone: "violet" },
-  { title: "Marketing Manager", score: 74, skills: "SEO · CRM · Analytics", tone: "amber" },
-  { title: "UX/UI Designer", score: 82, skills: "Figma · Research · Prototype", tone: "violet" },
-  { title: "Project Manager", score: 80, skills: "Agile · Planning · Risques", tone: "blue" },
-  { title: "HR Manager", score: 76, skills: "Sourcing · Paie · Relations", tone: "green" },
-  { title: "Business Analyst", score: 84, skills: "Process · Data · Reporting", tone: "amber" }
-];
-
-const ACCOUNT_TYPE_OPTIONS = [
+export const ACCOUNT_TYPE_OPTIONS = [
   { value: "student", label: "Étudiant", description: "Recherche de stage, alternance ou premier emploi." },
   { value: "candidate", label: "Candidat", description: "Recherche active d'opportunités professionnelles." },
   { value: "recruiter_firm", label: "Cabinet de recrutement", description: "Sourcing et placement pour des clients." },
@@ -670,14 +659,14 @@ function unique(list) {
   return [...new Set(list.filter(Boolean))];
 }
 
-function levelTag(level) {
+export function levelTag(level) {
   if (level === "critique") return "crit";
   if (level === "important") return "warn";
   if (level === "premium") return "premium";
   return "good";
 }
 
-function recommendationLevelLabel(level, language = "fr") {
+export function recommendationLevelLabel(level, language = "fr") {
   const labels = {
     fr: { critique: "Critique", important: "Important", bonus: "Bonus", premium: "Premium" },
     en: { critique: "Critical", important: "Important", bonus: "Bonus", premium: "Premium" }
@@ -685,7 +674,7 @@ function recommendationLevelLabel(level, language = "fr") {
   return labels[language]?.[level] || labels.fr[level] || level;
 }
 
-function ratingLabel(score, language = "fr") {
+export function ratingLabel(score, language = "fr") {
   if (language === "en") {
     if (score >= 80) return "Excellent fit";
     if (score >= 65) return "Good fit";
@@ -2013,7 +2002,7 @@ export default function App() {
   );
 }
 
-const ADMIN_ACCOUNT_TYPES = [
+export const ADMIN_ACCOUNT_TYPES = [
   { id: "student", segment: "candidate", label: { fr: "Étudiant / Candidat", en: "Student / Candidate" } },
   { id: "school", segment: "school", label: { fr: "École", en: "School" } },
   { id: "recruiter_firm", segment: "agency", label: { fr: "Cabinet de recrutement", en: "Recruitment agency" } },

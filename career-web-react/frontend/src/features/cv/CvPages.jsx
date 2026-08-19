@@ -8,11 +8,13 @@ import React from "react";
 // mécanique, pas une réécriture) : ImportPage, MatchResultsStep,
 // CvPreviewCard, CvDocumentClassic/Sidebar, TokenEditor, ReviewCard,
 // AnalysisPage, OffersPage, CvHistoryPage.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { Placeholder } from "../../components/Placeholder.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
+import { fillTemplate, formatDate } from "../../lib/format.js";
+import { getPlanById } from "../../data/plans.js";
 import {
   submitMatchFeedback,
   getMatchFeedback,
@@ -23,6 +25,7 @@ import {
 } from "../../lib/inMemoryDb.js";
 import { APPLICATIONS_COPY } from "../applications/applicationsCopy.js";
 import { CV_COPY } from "./cvCopy.js";
+import { ratingLabel, levelTag, recommendationLevelLabel } from "../../App.jsx";
 
 function ImportPage({
   latestCv,
