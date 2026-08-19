@@ -7,24 +7,35 @@ puisse trouver et modifier un module sans devoir lire l'intégralité du projet.
 
 ```text
 career-web-react/
-|-- frontend/                  Interface React (Vite)
+|-- frontend/                     Interface React (Vite)
 |   `-- src/
-|       |-- App.jsx            Coquille de l'app : layout, navigation, état
-|       |                      global (session, langue...), pages pas encore
-|       |                      extraites en module (voir "État de la migration")
-|       |-- main.jsx           Point d'entrée React
-|       |-- styles.css         Styles globaux
-|       |-- components/        Composants UI partagés par plusieurs pages
-|       |   `-- UiIcon.jsx     Icônes SVG (nav, boutons, cartes...)
-|       |-- features/          Un dossier par module métier (voir ci-dessous)
-|       |   `-- interviews/    Simulateur d'entretien
-|       |-- lib/                Client API + logique métier partagée
-|       |   |-- inMemoryDb.js  Tous les appels HTTP vers le backend
+|       |-- App.jsx               Coquille de l'app : layout, navigation, état
+|       |                         global (session, langue...) + pages pas
+|       |                         encore extraites (voir "État de la migration")
+|       |-- main.jsx              Point d'entrée React
+|       |-- styles.css            Styles globaux
+|       |-- components/           Composants UI partagés par plusieurs modules
+|       |   |-- UiIcon.jsx        Icônes SVG
+|       |   |-- AvatarCircle.jsx
+|       |   |-- LanguageSwitch.jsx
+|       |   |-- AdminPageLoader.jsx
+|       |   `-- Placeholder.jsx   État vide générique
+|       |-- features/             Un dossier par module métier
+|       |   |-- interviews/       Simulateur d'entretien
+|       |   |-- negotiation/      Simulateur de négociation salariale
+|       |   |-- applications/     Suivi de candidatures (kanban)
+|       |   |-- admin/            Admin plateforme + dashboard École
+|       |   `-- cv/               Import CV, matching, ATS, aperçu/export, historique
+|       |-- lib/                  Client API + logique/utilitaires partagés
+|       |   |-- inMemoryDb.js     Tous les appels HTTP vers le backend
 |       |   |-- matchingService.js
-|       |   `-- cvService.js
-|       `-- data/               Données statiques de référence (offres, plans, compétences)
-|-- backend/                    API Express
-|   |-- index.js               Serveur, routes, base de données, IA
+|       |   |-- cvService.js
+|       |   |-- format.js         Devises, dates, templates de texte
+|       |   |-- errors.js         Messages d'erreur conviviaux
+|       |   `-- accounts.js       Libellés des types de compte
+|       `-- data/                 Données statiques de référence (offres, plans, compétences)
+|-- backend/                       API Express
+|   |-- index.js                  Serveur, routes, base de données, IA
 |   |-- stripeService.js
 |   |-- salaryDataService.js
 |   `-- database/schema.sql
@@ -33,17 +44,16 @@ career-web-react/
 
 ## La convention `features/<module>/`
 
-Chaque module métier (Entretiens, CV, Candidatures, Négociation, Lettre IA,
-Admin...) a vocation à vivre dans son propre dossier sous `frontend/src/features/`,
-avec **tout ce qui lui appartient en propre** :
+Chaque module métier a vocation à vivre dans son propre dossier sous
+`frontend/src/features/`, avec **tout ce qui lui appartient en propre** :
 
 - le(s) composant(s) de page (`XxxPage.jsx`)
 - ses textes FR/EN (`xxxCopy.js`)
 - ses données/logique spécifiques (scripts, templates, calculs propres au module)
 
 Un module importe depuis :
-- `../../components/` pour l'UI partagée (icônes, etc.)
-- `../../lib/` pour le client API et la logique métier partagée entre plusieurs modules (ex. `matchingService.js`, utilisé à la fois par le matching CV/offre et par l'optimisation ATS)
+- `../../components/` pour l'UI partagée (icônes, avatar, sélecteur de langue...)
+- `../../lib/` pour le client API et les utilitaires partagés entre plusieurs modules (formatage, erreurs, matching...)
 - `../../data/` pour les données de référence partagées (plans tarifaires, compétences...)
 
 Un module est monté depuis `App.jsx` avec des props explicites (ex.
@@ -67,17 +77,29 @@ toucher à `App.jsx` ni à un autre module.
 
 ## État de la migration
 
-`App.jsx` contient encore la majorité des pages (CV, Candidatures, Lettre IA,
-Négociation, Admin, École, Tarifs...) : c'est un héritage historique, pas une
-architecture cible. Le module **Entretiens** a été extrait en premier comme
-exemple à suivre. Les autres modules seront extraits progressivement, un par
-un, en suivant exactement le même schéma que ci-dessus, sans réécrire leur
-logique — uniquement déplacer le code existant dans un dossier dédié.
+Modules déjà extraits de `App.jsx` :
+
+| Module | Dossier | Contenu |
+|---|---|---|
+| Entretiens | `features/interviews/` | Page, copie FR/EN, scripts de questions |
+| Négociation | `features/negotiation/` | Page, illustration, copie FR/EN |
+| Candidatures | `features/applications/` | Kanban, formulaire, copie FR/EN |
+| Admin (+ École) | `features/admin/` | Shell admin, toutes les pages admin, dashboard école |
+| CV | `features/cv/` | Import, matching, ATS, aperçu/export, historique, copie FR/EN |
+
+`App.jsx` contient encore : Profil, Tarifs, Lettre IA, page d'accueil/landing,
+Compte (drawer), pages légales, Email Scout, sondage de satisfaction — un
+héritage historique, pas une architecture cible. Ils seront extraits au même
+rythme, un par un, en suivant exactement le schéma ci-dessus.
 
 Pour extraire un module existant d'`App.jsx` :
 
 1. Repérer son composant de page et les composants qui ne sont utilisés que
-   par lui (illustrations, sous-composants locaux).
+   par lui (illustrations, sous-composants locaux) — attention aux
+   composants "génériques dans leur nom mais partagés dans les faits"
+   (ex. `Placeholder`, `AdminPageLoader`) : vérifier tous les appelants avant
+   de déplacer, sinon une autre page qui l'utilisait se retrouve avec une
+   référence cassée au runtime (le build seul ne le détecte pas toujours).
 2. Repérer son bloc de textes dans `APP_COPY` (clés FR et EN).
 3. Créer `features/<module>/` avec `XxxPage.jsx` + `xxxCopy.js` (+ toute
    donnée spécifique déjà dans `lib/` ou `data/` si elle n'est utilisée que
@@ -85,9 +107,9 @@ Pour extraire un module existant d'`App.jsx` :
 4. Remplacer la définition dans `App.jsx` par un `import XxxPage from
    "./features/<module>/XxxPage.jsx";`, sans changer les props passées au
    composant.
-5. Vérifier `npm run build` — le bundle final généré doit être strictement
-   identique (même contenu, éventuellement même hash) puisqu'il s'agit d'un
-   déplacement de code, pas d'une réécriture.
+5. Vérifier `npm run build`, puis lancer `npm run dev` et vérifier dans le
+   navigateur (le build seul ne détecte pas une référence à un composant
+   supprimé/déplacé sans import — c'est une ReferenceError au runtime).
 
 ## Backend
 
