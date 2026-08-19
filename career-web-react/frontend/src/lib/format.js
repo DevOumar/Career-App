@@ -11,6 +11,13 @@ export function getCurrencyOption(currency) {
   return CURRENCY_OPTIONS.find((item) => item.id === currency) || CURRENCY_OPTIONS[0];
 }
 
+// Remplace les placeholders {clé} d'un texte par la valeur correspondante,
+// sans rien remplacer si la valeur est vide (le placeholder reste visible
+// plutôt que d'afficher une chaîne cassée).
+export function fillTemplate(template, values) {
+  return String(template || "").replace(/\{(\w+)\}/g, (match, key) => (values[key] != null && values[key] !== "" ? values[key] : match));
+}
+
 export function formatAmountInCurrency(amountEur, currency, { decimals } = {}) {
   const option = getCurrencyOption(currency);
   const converted = Number(amountEur) * option.rate;
