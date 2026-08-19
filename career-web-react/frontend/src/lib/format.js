@@ -11,6 +11,18 @@ export function getCurrencyOption(currency) {
   return CURRENCY_OPTIONS.find((item) => item.id === currency) || CURRENCY_OPTIONS[0];
 }
 
+export function formatDate(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleDateString("fr-FR");
+}
+
+export function formatShortDate(value, language) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString(language === "en" ? "en-GB" : "fr-FR", { day: "2-digit", month: "short" });
+}
+
 // Remplace les placeholders {clé} d'un texte par la valeur correspondante,
 // sans rien remplacer si la valeur est vide (le placeholder reste visible
 // plutôt que d'afficher une chaîne cassée).
