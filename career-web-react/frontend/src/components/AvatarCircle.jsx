@@ -1,3 +1,4 @@
+import React from "react";
 // Avatar rond (photo si disponible, sinon initiales) — utilisé partout où
 // un utilisateur est affiché (topbar, menus, listes admin/école...).
 function withInitials(user) {

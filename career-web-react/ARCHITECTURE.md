@@ -9,30 +9,28 @@ puisse trouver et modifier un module sans devoir lire l'intégralité du projet.
 career-web-react/
 |-- frontend/                     Interface React (Vite)
 |   `-- src/
-|       |-- App.jsx               Coquille de l'app : layout, navigation, état
-|       |                         global (session, langue...) + pages pas
-|       |                         encore extraites (voir "État de la migration")
+|       |-- App.jsx               Coquille de l'app : layout, navigation,
+|       |                         état global (session, langue...),
+|       |                         écran de connexion (AuthScreen)
 |       |-- main.jsx              Point d'entrée React
 |       |-- styles.css            Styles globaux
 |       |-- components/           Composants UI partagés par plusieurs modules
-|       |   |-- UiIcon.jsx        Icônes SVG
+|       |   |-- UiIcon.jsx
 |       |   |-- AvatarCircle.jsx
 |       |   |-- LanguageSwitch.jsx
+|       |   |-- Placeholder.jsx
 |       |   |-- AdminPageLoader.jsx
-|       |   `-- Placeholder.jsx   État vide générique
-|       |-- features/             Un dossier par module métier
-|       |   |-- interviews/       Simulateur d'entretien
-|       |   |-- negotiation/      Simulateur de négociation salariale
-|       |   |-- applications/     Suivi de candidatures (kanban)
-|       |   |-- admin/            Admin plateforme + dashboard École
-|       |   `-- cv/               Import CV, matching, ATS, aperçu/export, historique
+|       |   |-- AdminKpiCard.jsx
+|       |   `-- AdminExportCsvButton.jsx
+|       |-- features/             Un dossier par module métier (voir tableau)
 |       |-- lib/                  Client API + logique/utilitaires partagés
 |       |   |-- inMemoryDb.js     Tous les appels HTTP vers le backend
 |       |   |-- matchingService.js
 |       |   |-- cvService.js
 |       |   |-- format.js         Devises, dates, templates de texte
 |       |   |-- errors.js         Messages d'erreur conviviaux
-|       |   `-- accounts.js       Libellés des types de compte
+|       |   |-- accounts.js       Libellés + formulaires de compte
+|       |   `-- images.js         Lecture/redimensionnement d'avatar
 |       `-- data/                 Données statiques de référence (offres, plans, compétences)
 |-- backend/                       API Express
 |   |-- index.js                  Serveur, routes, base de données, IA
@@ -44,22 +42,55 @@ career-web-react/
 
 ## La convention `features/<module>/`
 
-Chaque module métier a vocation à vivre dans son propre dossier sous
-`frontend/src/features/`, avec **tout ce qui lui appartient en propre** :
+Chaque module métier vit dans son propre dossier sous `frontend/src/features/`,
+avec **tout ce qui lui appartient en propre** : composant(s) de page
+(`XxxPage.jsx`), textes FR/EN (`xxxCopy.js`), données/logique spécifiques.
 
-- le(s) composant(s) de page (`XxxPage.jsx`)
-- ses textes FR/EN (`xxxCopy.js`)
-- ses données/logique spécifiques (scripts, templates, calculs propres au module)
+Un module importe depuis `../../components/` (UI partagée), `../../lib/`
+(client API + utilitaires partagés) et `../../data/` (données de référence).
 
-Un module importe depuis :
-- `../../components/` pour l'UI partagée (icônes, avatar, sélecteur de langue...)
-- `../../lib/` pour le client API et les utilitaires partagés entre plusieurs modules (formatage, erreurs, matching...)
-- `../../data/` pour les données de référence partagées (plans tarifaires, compétences...)
+Un module est monté depuis `App.jsx` avec des props explicites — `App.jsx`
+reste le seul endroit qui connaît l'état global de la session ; les modules
+restent des composants "bêtes" pilotés par leurs props.
 
-Un module est monté depuis `App.jsx` avec des props explicites (ex.
-`<InterviewPage language={...} subscription={...} onGoToTarifs={...} />`) —
-`App.jsx` reste le seul endroit qui connaît l'état global de la session ; les
-modules restent des composants "bêtes" pilotés par leurs props.
+## Modules extraits
+
+| Module | Dossier |
+|---|---|
+| Entretiens | `features/interviews/` |
+| Négociation | `features/negotiation/` |
+| Candidatures | `features/applications/` |
+| Admin | `features/admin/` |
+| École | `features/school/` |
+| CV | `features/cv/` |
+| Satisfaction (CSAT) | `features/satisfaction/` |
+| Compte | `features/account/` |
+| Landing / public | `features/landing/` |
+| Pages légales | `features/legal/` |
+| Tarifs | `features/pricing/` |
+| Page d'accueil (connecté) | `features/home/` |
+| Profil | `features/profile/` |
+| Lettre IA | `features/coverLetter/` |
+| Email Scout | `features/emailScout/` |
+
+`App.jsx` (≈2900 lignes) ne contient plus que : la coquille de l'app
+(navigation, état de session, thème/langue/devise), l'écran de connexion
+(`AuthScreen`), et une poignée de composants réellement transverses gardés là
+faute d'un meilleur point d'ancrage (`GoogleSignInButton`/`GoogleLogo`,
+`ConnectedFooter`, `RoleQuizModal`).
+
+### Imports "arrière" (feature -> App.jsx)
+
+Quelques composants restent dans `App.jsx` mais sont utilisés par des
+modules extraits (ex. `GoogleSignInButton` par `features/account/`,
+`ConnectedFooter` par `features/landing/` et `features/legal/`). Dans ce cas,
+`App.jsx` les exporte (`export function ...`) et le module fait un import
+"arrière" (`import { X } from "../../App.jsx"`). C'est sûr ici car ces
+composants ne sont utilisés qu'au rendu (jamais à l'évaluation du module),
+bien après la résolution du cycle ESM — mais ça n'a été fait qu'en
+one-directionnel (feature -> App.jsx) : **deux modules de même niveau ne
+doivent pas s'importer mutuellement** (import circulaire A↔B), voir
+l'exemple `AdminKpiCard`/`AdminExportCsvButton` ci-dessous.
 
 ### Exemple concret : le module Entretiens
 
@@ -70,46 +101,45 @@ features/interviews/
 `-- interviewScripts.js     Questions, indices, réponses modèles par piste
 ```
 
-Pour ajouter une nouvelle piste d'entretien (ex. "Entretien Produit") : tout se
-passe dans `interviewScripts.js` (ajouter une entrée) et éventuellement
-`interviewCopy.js` si un nouveau texte est nécessaire — aucun besoin de
-toucher à `App.jsx` ni à un autre module.
+## Pièges rencontrés pendant l'extraction (à connaître avant d'en faire une nouvelle)
 
-## État de la migration
-
-Modules déjà extraits de `App.jsx` :
-
-| Module | Dossier | Contenu |
-|---|---|---|
-| Entretiens | `features/interviews/` | Page, copie FR/EN, scripts de questions |
-| Négociation | `features/negotiation/` | Page, illustration, copie FR/EN |
-| Candidatures | `features/applications/` | Kanban, formulaire, copie FR/EN |
-| Admin (+ École) | `features/admin/` | Shell admin, toutes les pages admin, dashboard école |
-| CV | `features/cv/` | Import, matching, ATS, aperçu/export, historique, copie FR/EN |
-
-`App.jsx` contient encore : Profil, Tarifs, Lettre IA, page d'accueil/landing,
-Compte (drawer), pages légales, Email Scout, sondage de satisfaction — un
-héritage historique, pas une architecture cible. Ils seront extraits au même
-rythme, un par un, en suivant exactement le schéma ci-dessus.
-
-Pour extraire un module existant d'`App.jsx` :
-
-1. Repérer son composant de page et les composants qui ne sont utilisés que
-   par lui (illustrations, sous-composants locaux) — attention aux
-   composants "génériques dans leur nom mais partagés dans les faits"
-   (ex. `Placeholder`, `AdminPageLoader`) : vérifier tous les appelants avant
-   de déplacer, sinon une autre page qui l'utilisait se retrouve avec une
-   référence cassée au runtime (le build seul ne le détecte pas toujours).
-2. Repérer son bloc de textes dans `APP_COPY` (clés FR et EN).
-3. Créer `features/<module>/` avec `XxxPage.jsx` + `xxxCopy.js` (+ toute
-   donnée spécifique déjà dans `lib/` ou `data/` si elle n'est utilisée que
-   par ce module).
-4. Remplacer la définition dans `App.jsx` par un `import XxxPage from
-   "./features/<module>/XxxPage.jsx";`, sans changer les props passées au
-   composant.
-5. Vérifier `npm run build`, puis lancer `npm run dev` et vérifier dans le
-   navigateur (le build seul ne détecte pas une référence à un composant
-   supprimé/déplacé sans import — c'est une ReferenceError au runtime).
+1. **Un composant au nom trompeur peut être partagé.** `Placeholder`,
+   `AdminPageLoader`, `AdminKpiCard`, `AdminExportCsvButton` semblaient
+   propres à une page mais étaient en fait utilisés par plusieurs pages (y
+   compris dans des modules différents, ex. Admin et École). Le build seul
+   ne détecte pas une référence à un composant supprimé/déplacé sans import
+   — c'est une `ReferenceError` silencieuse au runtime. **Toujours grep
+   `<NomDuComposant` dans tout `frontend/src/` avant de déplacer un
+   composant**, pas seulement dans le fichier qu'on extrait.
+2. **Ne jamais créer d'import circulaire entre deux modules `features/`.**
+   Quand Admin et École ont été séparés, `AdminExportCsvButton` était utilisé
+   par les deux : le réflexe naturel (l'exporter depuis École et l'importer
+   dans Admin, sachant qu'Admin exporte déjà des choses vers École) aurait
+   créé un cycle A→B→A. La solution : si un composant est utilisé par deux
+   modules de même niveau, il n'est pas "à eux", il est partagé — il va dans
+   `components/`.
+3. **Vérifier les copies de textes avec les bonnes bornes.** En extrayant un
+   bloc `APP_COPY[language]?.xxx`, une erreur de ligne de fin a une fois
+   entraîné la capture d'un bloc de textes voisin (`roleQuiz`) en trop dans
+   `pricingCopy.js`. Après extraction, toujours vérifier qu'un fichier
+   `xxxCopy.js` ne contient qu'une seule clé de premier niveau par langue.
+4. **Ce projet n'a pas de plugin JSX automatique** (`@vitejs/plugin-react`
+   n'est pas installé) : le JSX est compilé par esbuild en mode *classique*
+   (`<div/>` devient `React.createElement("div")`), ce qui veut dire que
+   **tout fichier utilisant du JSX doit importer `React` explicitement**
+   (`import React from "react";`), même si aucun `React.xxx` n'apparaît
+   littéralement dans le code source. Oublier cet import compile très bien
+   (`npm run build` ne voit rien d'anormal) mais casse au premier rendu avec
+   `React is not defined` — un script d'analyse du code source ne peut pas
+   le détecter puisque la dépendance à `React` n'existe qu'après la
+   transformation JSX, invisible dans le texte source. C'est arrivé sur les
+   22 fichiers créés lors de cette extraction, corrigé après coup.
+5. **Un simple `npm run build` ne suffit pas.** Une référence à un composant
+   non importé compile très bien (JS ne fait pas de vérification statique
+   des JSX) et casse seulement au rendu. La vérification fiable : lancer
+   `npm run dev`, ouvrir chaque page concernée dans le navigateur, et/ou
+   `curl` chaque module transformé par Vite pour confirmer qu'il n'y a pas
+   d'erreur de transformation.
 
 ## Backend
 

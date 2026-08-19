@@ -1,3 +1,4 @@
+import React from "react";
 // Petit loader générique utilisé par les pages Admin et École pendant le
 // chargement de leurs données.
 import { UiIcon } from "./UiIcon.jsx";

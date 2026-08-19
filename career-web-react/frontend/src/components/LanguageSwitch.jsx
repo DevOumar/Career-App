@@ -1,3 +1,4 @@
+import React from "react";
 // Sélecteur de langue FR/EN — utilisé dans la topbar candidat, admin et école.
 export const LANGUAGE_OPTIONS = [
   { id: "fr", label: "FR", flagClass: "france" },
