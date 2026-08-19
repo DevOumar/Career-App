@@ -7,6 +7,10 @@ import { defineConfig } from "vite";
 // scripts ou déploiements existants qui s'attendaient à ce chemin.
 export default defineConfig({
   root: "frontend",
+  // Le .env vit à la racine de career-web-react/ (à côté de backend/), pas
+  // dans frontend/ — sans ça Vite ne trouve plus VITE_GOOGLE_CLIENT_ID et
+  // le bouton "Continuer avec Google" retombe en mode désactivé.
+  envDir: "..",
   build: {
     outDir: "../dist",
     emptyOutDir: true
