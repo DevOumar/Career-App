@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "concurrently -n api,web -c yellow,cyan \"npm:dev:api\" \"npm:dev:client\"",
-    "dev:api": "node server/index.js",
+    "dev:api": "node backend/index.js",
     "dev:client": "vite --host 127.0.0.1 --port 5174 --force",
     "build": "vite build",
     "preview": "vite preview --host 127.0.0.1 --port 4174 --strictPort"
