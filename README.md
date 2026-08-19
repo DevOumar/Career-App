@@ -1,49 +1,48 @@
-﻿# Career App
+# Career App
 
-Career App est une application de gestion de carrière et de recrutement. Le projet contient une interface React, une API Node/Express locale et une base embarquée PGlite pour développer sans installer PostgreSQL.
+Career App est une application de gestion de carrière et de recrutement : import et analyse de CV, matching CV/offre, optimisation ATS par IA, lettres de motivation, préparation d'entretiens, suivi de candidatures, et un espace admin/école dédié.
 
-## Fonctionnalités
-
-- Authentification locale : inscription, connexion, déconnexion et sessions.
-- Profils multi-rôles : étudiant, candidat, cabinet de recrutement, entreprise, freelance et autres profils.
-- Gestion du profil utilisateur avec photo, informations personnelles et statut premium.
-- Import et analyse de CV.
-- Matching entre CV, compétences et offres.
-- Recommandations de carrière.
-- Simulation d'entretien avec scripts de questions.
-- Tableaux de bord et prototypes Python/HTML conservés à la racine du projet.
+Le projet est une architecture **frontend/backend séparée** : une interface React (Vite) et une API Node/Express, toutes deux dans `career-web-react/`, avec une base PostgreSQL (Supabase en production, PGlite embarqué en repli local).
 
 ## Structure
 
 ```text
 .
-|-- app.py                         # Prototype Python principal
-|-- dashboard.py                   # Prototype/tableau de bord Python
-|-- requirements.txt               # Dépendances Python des prototypes
-|-- app.html, app2.html, front.html# Prototypes HTML
-|-- dataprocess.ipynb              # Notebook de traitement de données
-|-- data/                          # Données d'exemple versionnées
-`-- career-web-react/              # Application React + API locale
-    |-- src/                       # Code frontend React
-    |-- server/index.js            # API Express + persistance PGlite
-    |-- package.json               # Scripts npm
-    `-- package-lock.json          # Verrouillage des dépendances
+`-- career-web-react/          # Toute l'application
+    |-- frontend/              # Interface React (Vite)
+    |   |-- index.html
+    |   `-- src/
+    |       |-- App.jsx        # Composant racine + toutes les pages
+    |       |-- main.jsx       # Point d'entrée React
+    |       |-- styles.css
+    |       |-- data/          # Données statiques partagées (offres, plans, compétences)
+    |       `-- lib/           # Client API + logique de matching partagée
+    |-- backend/                # API Express
+    |   |-- index.js           # Serveur, routes, base de données, IA
+    |   |-- stripeService.js
+    |   |-- salaryDataService.js
+    |   `-- database/schema.sql
+    |-- vite.config.js         # root: frontend/, sortie de build: ../dist
+    |-- package.json           # Un seul package.json pour tout le projet
+    `-- dist/                  # Build de production (généré, non versionné)
 ```
+
+Le frontend et le backend partagent un seul `package.json`/`node_modules` (le backend importe directement quelques modules du frontend comme `frontend/src/data/plans.js` ou `frontend/src/lib/matchingService.js`, pour réutiliser la même logique de matching côté serveur et côté client sans la dupliquer).
 
 ## Prérequis
 
 - Node.js 18 ou plus récent.
 - npm.
-- Python 3.10+ si vous utilisez les prototypes Python.
+- Une base PostgreSQL (Supabase recommandé) — sinon l'API bascule automatiquement sur PGlite en local, sans installation nécessaire.
 
-PostgreSQL n'est pas requis : l'application React utilise PGlite en local.
-
-## Installation de l'application React
+## Installation
 
 ```bash
 cd career-web-react
 npm install
 ```
+
+Copiez `.env.example` vers `.env` et renseignez vos clés (base de données, IA, Stripe, email...).
 
 ## Lancer en développement
 
@@ -55,85 +54,30 @@ npm run dev
 Services lancés :
 
 - Frontend : `http://127.0.0.1:5174`
-- API locale : `http://127.0.0.1:8787`
-- Données locales PGlite : `career-web-react/server/postgres-data/` ou `career-web-react/server/postgres-runtime/`
-
-Les dossiers de données locales sont ignorés par Git parce qu'ils peuvent contenir des données utilisateur et des fichiers volumineux générés au runtime.
-
-## Build de production
-
-```bash
-cd career-web-react
-npm run build
-```
-
-Le build est généré dans `career-web-react/dist/`. Ce dossier n'est pas versionné.
-
-Pour tester le build localement :
-
-```bash
-cd career-web-react
-npm run preview
-```
-
-Preview : `http://127.0.0.1:4174`
+- API : `http://127.0.0.1:8787`
 
 ## Scripts npm
 
-Depuis `career-web-react` :
+Depuis `career-web-react/` :
 
-- `npm run dev` : lance l'API locale et le frontend en parallèle.
-- `npm run dev:api` : lance seulement l'API Express.
-- `npm run dev:client` : lance seulement Vite.
-- `npm run build` : génère le build frontend.
-- `npm run preview` : sert le build localement.
-
-## Prototypes Python
-
-Les fichiers Python à la racine peuvent être lancés séparément selon le besoin :
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-Lancer l'application Streamlit principale :
-
-```bash
-streamlit run app.py
-```
-
-Lancer le tableau de bord :
-
-```bash
-streamlit run dashboard.py
-```
+- `npm run dev` : lance l'API et le frontend en parallèle.
+- `npm run dev:api` : lance seulement l'API Express (`backend/index.js`).
+- `npm run dev:client` : lance seulement Vite (`frontend/`).
+- `npm run build` : génère le build frontend dans `dist/`.
+- `npm run preview` : sert le build localement (`http://127.0.0.1:4174`).
 
 ## Données et fichiers sensibles
 
-Ne pas versionner :
+Ne sont jamais versionnés :
 
-- `node_modules/`
-- `dist/`
+- `node_modules/`, `dist/`, `.vite/`
 - fichiers `.env`
-- logs
-- caches
-- bases locales PGlite/PostgreSQL : `postgres-data*`, `pgdata`, `postgres-runtime`
+- logs, caches
+- bases locales PGlite/PostgreSQL de repli : `backend/postgres-data*`, `backend/pgdata*`, `backend/postgres-runtime`
 - fichiers de secrets : certificats, clés privées, keystores, dumps de base de données
 
-Les données dans `data/` sont considérées comme données d'exemple du projet. Vérifiez-les avant publication si elles proviennent de sources privées.
+## Workflow Git
 
-## Workflow Git recommandé
-
-```bash
-git status
-git add .
-git status
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/DevOumar/Career-App.git
-git push -u origin main
-```
+Branches : `feature_oumar` → `develop` → `main` (fusion dans cet ordre). `orchestrateur` est maintenue synchronisée avec `main`.
 
 Avant chaque commit, contrôlez toujours `git status` pour confirmer qu'aucun fichier sensible ou généré n'est ajouté.
