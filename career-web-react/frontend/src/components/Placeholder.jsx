@@ -1,3 +1,4 @@
+import React from "react";
 // État vide générique ("Importe un CV pour débloquer cette page", etc.).
 export function Placeholder({ title, text }) {
   return (

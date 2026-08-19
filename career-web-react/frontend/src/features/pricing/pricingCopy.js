@@ -1,0 +1,56 @@
+export const PRICING_COPY = {
+  fr: {
+    pricing: {
+      title: "Investissez dans votre Avenir",
+      text: "Des offres flexibles pour candidats, cabinets de recrutement et écoles. Payez uniquement ce que vous utilisez.",
+      currentBalance: "Votre solde actuel",
+      credits: "jetons",
+      segmentCandidate: "Candidat / Étudiant",
+      segmentAgency: "Cabinet de recrutement / Conseil",
+      segmentSchool: "École / Établissement",
+      billingMonthly: "Mensuel",
+      billingAnnual: "Annuel",
+      billingSave: "jusqu'à 2 mois offerts",
+      free: "Gratuit",
+      perMonth: "/ mois",
+      perYear: "/ an",
+      creditsIncluded: "jetons inclus",
+      seatsIncluded: "sièges inclus",
+      studentSeatsLabel: "Nombre d'étudiants",
+      studentSeatsTotal: "Total à payer :",
+      activate: "Activer",
+      currentPlan: "Plan actuel",
+      licenseCodeTitle: "Vous avez reçu un code de licence ?",
+      licenseCodePlaceholder: "Ex : LIC-XXXX-XXXX",
+      licenseCodeSubmit: "Activer",
+      licenseCodeHint: "Votre établissement ou votre cabinet vous a transmis un code ? Activez-le ici pour débloquer votre offre."
+    }
+  },
+  en: {
+    pricing: {
+      title: "Invest in your Future",
+      text: "Flexible offers for candidates, recruitment firms and schools. Pay only for what you use.",
+      currentBalance: "Your current balance",
+      credits: "tokens",
+      segmentCandidate: "Candidate / Student",
+      segmentAgency: "Recruitment firm / Consulting",
+      segmentSchool: "School / Institution",
+      billingMonthly: "Monthly",
+      billingAnnual: "Annual",
+      billingSave: "up to 2 months free",
+      free: "Free",
+      perMonth: "/ month",
+      perYear: "/ year",
+      creditsIncluded: "tokens included",
+      seatsIncluded: "seats included",
+      studentSeatsLabel: "Number of students",
+      studentSeatsTotal: "Total to pay:",
+      activate: "Activate",
+      currentPlan: "Current plan",
+      licenseCodeTitle: "Received a license code?",
+      licenseCodePlaceholder: "E.g. LIC-XXXX-XXXX",
+      licenseCodeSubmit: "Activate",
+      licenseCodeHint: "Your school or firm gave you a code? Activate it here to unlock your offer."
+    }
+  }
+};

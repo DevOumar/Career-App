@@ -1,3 +1,4 @@
+import React from "react";
 // Module Entretiens : simulateur d'entretien IA (questions RH/technique/live
 // coding par piste, feedback en direct, bilan de fin de session).
 //

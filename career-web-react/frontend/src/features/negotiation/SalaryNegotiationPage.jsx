@@ -1,3 +1,4 @@
+import React from "react";
 // Module Négociation salariale : chat avec un recruteur IA, référence de
 // marché réelle quand disponible, bilan de fin de session, historique des
 // conversations sauvegardées.

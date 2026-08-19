@@ -1,3 +1,4 @@
+import React from "react";
 // Module CV : assistant d'import (upload -> révision -> poste visé ->
 // analyse), résultat de matching avec optimisation ATS, aperçu/export du
 // CV (2 modèles), comparaison des offres, historique des CV.

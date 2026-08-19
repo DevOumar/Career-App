@@ -1,3 +1,4 @@
+import React from "react";
 // Module Candidatures : suivi en kanban (À postuler / Postulé / Entretien /
 // Offre / Refusé), ajout manuel via ApplicationFormModal, glisser-déposer
 // pour changer de statut avec toast de félicitations adapté.

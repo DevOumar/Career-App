@@ -1,0 +1,68 @@
+export const HOME_COPY = {
+  fr: {
+    home: {
+      userFallback: "Utilisateur",
+      eyebrow: "Assistant carrière nouvelle génération",
+      titleA: "Décrochez le poste qui vous correspond,",
+      titleB: "avec un parcours",
+      titleAccent: "guidé par la data",
+      intro: "Importez votre CV, collez une offre, et laissez l'IA calculer votre score de match, vos mots-clés manquants et votre fit culturel avant de vous entraîner à l'entretien.",
+      start: "Commencer",
+      tickerLabel: "Informations personnalisées",
+      welcome: "Bienvenue",
+      accountType: "Type de compte",
+      profileDone: "Profil complété",
+      profilePct: "Profil complété à",
+      noMatch: "Aucun matching lancé pour le moment",
+      latestMatch: "Dernier matching",
+      objective: "Objectif",
+      addTarget: "Ajoutez votre rôle cible dans Profil",
+      planLabel: "Plan",
+      tokens: "jetons",
+      unlimitedTokens: "illimité",
+      schoolMember: "🎓 Compte activé via",
+      seeTarifs: "Voir les tarifs",
+      importedCv: "CV importé(s)",
+      noCv: "Aucun CV importé",
+      workflow: [
+        { number: "01", title: "Importer", text: "Votre CV et l'offre visée" },
+        { number: "02", title: "Analyser", text: "Score IA, mots-clés manquants, fit culturel" },
+        { number: "03", title: "Passer à l'action", text: "Recommandations, réseautage, CV optimisé en PDF" },
+        { number: "04", title: "S'entraîner", text: "Simulateur d'entretiens avec feedback" }
+      ]
+    },
+  },
+  en: {
+    home: {
+      userFallback: "User",
+      eyebrow: "Next-generation career assistant",
+      titleA: "Land the role that fits you,",
+      titleB: "with a path",
+      titleAccent: "guided by data",
+      intro: "Import your CV, paste a job post, and let the AI score your match, surface missing keywords and cultural fit — then train for the interview.",
+      start: "Get started",
+      tickerLabel: "Personalized information",
+      welcome: "Welcome",
+      accountType: "Account type",
+      profileDone: "Profile completed",
+      profilePct: "Profile completed at",
+      noMatch: "No match analysis started yet",
+      latestMatch: "Latest match",
+      objective: "Goal",
+      addTarget: "Add your target role in Profile",
+      planLabel: "Plan",
+      tokens: "tokens",
+      unlimitedTokens: "unlimited",
+      schoolMember: "🎓 Account activated via",
+      seeTarifs: "See pricing",
+      importedCv: "CV(s) imported",
+      noCv: "No CV imported",
+      workflow: [
+        { number: "01", title: "Import", text: "Your CV and the target job" },
+        { number: "02", title: "Analyze", text: "AI score, missing keywords, cultural fit" },
+        { number: "03", title: "Take action", text: "Recommendations, networking, optimized CV PDF" },
+        { number: "04", title: "Practice", text: "Interview simulator with feedback" }
+      ]
+    },
+  }
+};

@@ -1,3 +1,4 @@
+import React from "react";
 // Icône SVG partagée dans toute l'application (nav, boutons, cartes...).
 // Chaque page/feature l'importe depuis ici plutôt que de redéfinir ses propres icônes.
 export function UiIcon({ name, className = "" }) {
