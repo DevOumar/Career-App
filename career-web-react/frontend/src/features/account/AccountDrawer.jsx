@@ -6,13 +6,13 @@ import { UiIcon } from "../../components/UiIcon.jsx";
 import { AvatarCircle, getAvatarSource } from "../../components/AvatarCircle.jsx";
 import { LanguageSwitch } from "../../components/LanguageSwitch.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
-import { formatDate } from "../../lib/format.js";
+import { formatDate, CURRENCY_OPTIONS } from "../../lib/format.js";
 import { getUsernameValidation } from "../../lib/accounts.js";
 import { resizeImageFileToDataUrl } from "../../lib/images.js";
 // GoogleSignInButton/GoogleLogo restent dans App.jsx (utilisés aussi par
 // l'écran de connexion) — import "arrière" volontaire et sûr : ils ne sont
 // utilisés qu'au rendu, jamais à l'évaluation du module.
-import { GoogleSignInButton, GoogleLogo } from "../../App.jsx";
+import { GoogleSignInButton, GoogleLogo, THEME_PRESETS } from "../../App.jsx";
 
 export function AccountDrawer({
   user,

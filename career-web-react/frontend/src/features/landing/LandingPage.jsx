@@ -10,6 +10,17 @@ import { ConnectedFooter } from "../../App.jsx";
 
 const PRODUCT_SECTION_IDS = ["section-features", "section-matching", "section-entretiens", "section-offres"];
 
+const CAREER_CARDS = [
+  { title: "Data Analyst", score: 91, skills: "Python · SQL · Power BI", tone: "green" },
+  { title: "Software Engineer", score: 87, skills: "React · Node · API", tone: "blue" },
+  { title: "Product Manager", score: 78, skills: "Roadmap · Discovery · KPI", tone: "violet" },
+  { title: "Marketing Manager", score: 74, skills: "SEO · CRM · Analytics", tone: "amber" },
+  { title: "UX/UI Designer", score: 82, skills: "Figma · Research · Prototype", tone: "violet" },
+  { title: "Project Manager", score: 80, skills: "Agile · Planning · Risques", tone: "blue" },
+  { title: "HR Manager", score: 76, skills: "Sourcing · Paie · Relations", tone: "green" },
+  { title: "Business Analyst", score: 84, skills: "Process · Data · Reporting", tone: "amber" }
+];
+
 function LandingPage({
   copy,
   language,

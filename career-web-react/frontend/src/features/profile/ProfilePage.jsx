@@ -6,6 +6,7 @@ import { AvatarCircle } from "../../components/AvatarCircle.jsx";
 import { getAccountLabel, accountToForm, buildAccountPatch } from "../../lib/accounts.js";
 import { formatDate } from "../../lib/format.js";
 import { PROFILE_COPY } from "./profileCopy.js";
+import { ACCOUNT_TYPE_OPTIONS } from "../../App.jsx";
 
 function profileToForm(profile = {}) {
   return {

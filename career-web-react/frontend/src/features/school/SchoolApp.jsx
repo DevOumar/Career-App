@@ -2,6 +2,7 @@ import React from "react";
 // Module École : shell + toutes les pages du dashboard école (étudiants,
 // invitations, promotions, licence, statistiques, rapports, paramètres).
 import { useState, useEffect, useRef } from "react";
+import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { AdminPageLoader } from "../../components/AdminPageLoader.jsx";
 import { AdminKpiCard } from "../../components/AdminKpiCard.jsx";
