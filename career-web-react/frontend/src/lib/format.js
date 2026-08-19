@@ -11,6 +11,24 @@ export function getCurrencyOption(currency) {
   return CURRENCY_OPTIONS.find((item) => item.id === currency) || CURRENCY_OPTIONS[0];
 }
 
+// Formate le prix d'un plan tarifaire (gratuit, prix annuel-only, ou
+// mensuel/annuel selon le cycle choisi) — utilisé par la page Tarifs et par
+// la vue Admin en lecture seule des tarifs.
+export function formatPlanPrice(plan, billingCycle, language, copy, currency = "EUR") {
+  if (plan.monthlyPrice === 0 && plan.annualPrice === 0) {
+    return { amount: copy.free, unit: "" };
+  }
+
+  if (plan.monthlyPrice == null) {
+    const unit = plan.annualPriceUnit?.[language] || plan.annualPriceUnit?.fr || copy.perYear;
+    return { amount: formatAmountInCurrency(plan.annualPrice, currency), unit };
+  }
+
+  const amount = billingCycle === "annual" ? plan.annualPrice : plan.monthlyPrice;
+  const unit = billingCycle === "annual" ? copy.perYear : copy.perMonth;
+  return { amount: formatAmountInCurrency(amount, currency), unit };
+}
+
 export function formatDate(value) {
   if (!value) return "-";
   return new Date(value).toLocaleDateString("fr-FR");
