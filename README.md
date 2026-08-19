@@ -12,9 +12,11 @@ Le projet est une architecture **frontend/backend séparée** : une interface Re
     |-- frontend/              # Interface React (Vite)
     |   |-- index.html
     |   `-- src/
-    |       |-- App.jsx        # Composant racine + toutes les pages
+    |       |-- App.jsx        # Coquille de l'app + pages pas encore extraites en module
     |       |-- main.jsx       # Point d'entrée React
     |       |-- styles.css
+    |       |-- components/    # Composants UI partagés (icônes...)
+    |       |-- features/      # Un dossier par module métier (ex. interviews/)
     |       |-- data/          # Données statiques partagées (offres, plans, compétences)
     |       `-- lib/           # Client API + logique de matching partagée
     |-- backend/                # API Express
@@ -28,6 +30,8 @@ Le projet est une architecture **frontend/backend séparée** : une interface Re
 ```
 
 Le frontend et le backend partagent un seul `package.json`/`node_modules` (le backend importe directement quelques modules du frontend comme `frontend/src/data/plans.js` ou `frontend/src/lib/matchingService.js`, pour réutiliser la même logique de matching côté serveur et côté client sans la dupliquer).
+
+Voir [career-web-react/ARCHITECTURE.md](career-web-react/ARCHITECTURE.md) pour le détail : convention `features/<module>/`, comment trouver/ajouter le code d'un module métier (ex. entretiens), et l'état de la migration.
 
 ## Prérequis
 
