@@ -4,6 +4,18 @@ Plateforme d'accompagnement à la recherche d'emploi : import et analyse de CV, 
 
 Stack : React (Vite) + API Express, base de données Postgres (Supabase, avec repli local sur PostgreSQL embarqué PGlite si non configuré).
 
+## Architecture
+
+```text
+career-web-react/
+|-- frontend/       # Interface React (Vite) — index.html + src/
+|-- backend/        # API Express — index.js, stripeService.js, salaryDataService.js, database/schema.sql
+|-- vite.config.js  # root: frontend/, build vers ../dist
+`-- package.json    # Un seul package.json pour les deux
+```
+
+Le backend importe directement quelques modules du frontend (`frontend/src/data/plans.js`, `frontend/src/lib/matchingService.js`...) pour partager la même logique de matching côté serveur et côté client sans la dupliquer — c'est pourquoi les deux restent dans un seul package plutôt que deux projets npm indépendants.
+
 ## Fonctionnalités
 
 **Compte**
