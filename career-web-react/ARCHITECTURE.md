@@ -170,9 +170,9 @@ extraites dans `backend/routes/<domaine>.js`, sur le même principe que
 | `routes/profile.js` | Profil, compte, emails secondaires, comptes liés |
 | `routes/premium.js` | Éligibilité et activation premium |
 | `routes/billing.js` | Checkout Stripe, activation/redeem de plans |
-| `routes/admin.js` | Toutes les routes `/api/admin/*` (dashboard, comptes, finance, licences, IA...) |
+| `routes/admin.js` + `routes/admin/*.js` | Toutes les routes `/api/admin/*`, réparties en 12 sous-fichiers (overview, exports, plans, users, activity, licenses, settings, announcements, ai, cvsAndMatching, finance, satisfaction) |
 | `routes/satisfaction.js` | Sondage de satisfaction (CSAT) |
-| `routes/school.js` | Dashboard école (étudiants, promotions, licence, rapports) |
+| `routes/school.js` + `routes/school/*.js` | Dashboard école, réparties en 9 sous-fichiers (overview, students, license, insights, invitations, profile, notifications, promotions, reports) |
 | `routes/tokens.js` | Consommation de jetons |
 | `routes/emailFinder.js` | Email Scout |
 | `routes/cv.js` | Extraction/optimisation ATS de CV |
@@ -236,3 +236,39 @@ routes, démarrage réel du serveur (`npm run dev`), puis un test fonctionnel de
 bout en bout par domaine (inscription + connexion réelles en base, puis appels
 authentifiés sur premium/CV/candidatures/école/négociation/lettre IA/matching),
 pas seulement des `curl` de compilation.
+
+**Sous-découpe de `admin.js` et `school.js`.** Ces deux fichiers restaient les
+plus gros (1889 et 893 lignes, ~33 et ~18 routes) : ils sont à leur tour
+répartis en sous-modules dans `routes/admin/*.js` et `routes/school/*.js`
+(un fichier par sous-domaine — comptes, finance, licences, promotions...).
+`routes/admin.js`/`routes/school.js` ne contiennent plus que des imports et
+la liste des appels `registerXxxRoutes(app)` — chaque sous-fichier garde le
+même principe (`const { ... } = app.locals.ctx;` en première ligne). Même
+méthode de découpe (acorn) et même vérification (`node --check` + tests
+fonctionnels réels sur chaque sous-domaine) que pour la découpe initiale.
+
+## Pages admin/école côté frontend
+
+`AdminApp.jsx` (4113 lignes) et `SchoolApp.jsx` (1664 lignes) contenaient
+chacun leur "shell" (nav, état, chargement des données) **et** tout le
+contenu de chaque page admin/école dans le même fichier. Chaque page a été
+extraite vers `features/admin/pages/<Nom>.jsx` (14 pages : Dashboard,
+Pricing, Accounts, Cvs, Matches, Quality, AiMonitoring, Finance, ActivityLog,
+Satisfaction, LicenseCodes, AiSamples, Settings, Announcements) et
+`features/school/pages/<Nom>.jsx` (8 pages : Dashboard, Students,
+Invitations, Promotions, License, Insights, Reports, Settings).
+
+`AdminApp.jsx`/`SchoolApp.jsx` gardent le shell (nav, état) + les composants
+et constantes réellement partagés entre plusieurs pages (`AdminTrendChart`,
+`AdminPagination`, `ADMIN_PAGE_SIZE`...), exportés et réimportés « à
+l'envers » par les pages — même pattern documenté plus haut pour
+`ConnectedFooter`/`App.jsx`, désormais utilisé à deux niveaux (features ↔
+App.jsx, et pages ↔ AdminApp.jsx/SchoolApp.jsx).
+
+Résultat : `AdminApp.jsx` 4113 → 1000 lignes, `SchoolApp.jsx` 1664 → 574
+lignes. Vérifié avec le même triptyque que le reste de cette extraction :
+`npm run build`, un passage ESLint `no-undef` complet sur `frontend/src/**`
+(0 erreur réelle — il a d'ailleurs rattrapé une vraie référence oubliée,
+`ADMIN_ANNOUNCEMENT_AUDIENCES`, avant que ça devienne un bug en prod), et un
+démarrage réel du dev server avec test de compilation de chaque nouveau
+module.
