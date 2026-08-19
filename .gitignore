@@ -25,11 +25,11 @@ logs/
 *.secrets
 
 # Runtime databases and generated local data
-career-web-react/server/postgres-data/
-career-web-react/server/postgres-data*/
-career-web-react/server/postgres-runtime/
-career-web-react/server/pgdata/
-career-web-react/server/pgdata*/
+career-web-react/backend/postgres-data/
+career-web-react/backend/postgres-data*/
+career-web-react/backend/postgres-runtime/
+career-web-react/backend/pgdata/
+career-web-react/backend/pgdata*/
 **/postgres-data/
 **/postgres-data*/
 **/postgres-runtime/
