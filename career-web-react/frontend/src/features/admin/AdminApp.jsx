@@ -1901,7 +1901,7 @@ function SchoolLicensePage({ user, language, currency }) {
   );
 }
 
-function SchoolEmptyState({ icon, title, hint }) {
+export function SchoolEmptyState({ icon, title, hint }) {
   return (
     <div className="school-empty-state">
       <span className="school-empty-icon">
