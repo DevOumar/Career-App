@@ -1,0 +1,303 @@
+// Routes premium — extrait automatiquement de backend/index.js (voir
+// ARCHITECTURE.md). Toutes les dépendances (db, helpers, constantes) sont
+// lues depuis app.locals.ctx, rempli une fois dans index.js après
+// l'initialisation complète (DB ouverte, helpers définis).
+export function registerPremiumRoutes(app) {
+  const {
+    cors,
+    crypto,
+    express,
+    fs,
+    fsPromises,
+    dns,
+    net,
+    mammoth,
+    nodemailer,
+    path,
+    PDFParse,
+    fileURLToPath,
+    PGlite,
+    pg,
+    OAuth2Client,
+    Stripe,
+    OFFERS,
+    EDUCATION_LEVELS,
+    SKILL_KEYWORDS,
+    buildLocalMatchInsights,
+    PLANS,
+    getPlanById,
+    applyStripeWebhookEvent,
+    buildCheckoutSessionParams,
+    resolveStripeMode,
+    resolveStripePriceEnvVar,
+    getRealSalaryReference,
+    BASE_PORT,
+    PORT_RETRY_COUNT,
+    LOCAL_ORIGIN_PATTERN,
+    ACCOUNT_TYPES,
+    CANDIDATE_TYPES,
+    RECRUITER_TYPES,
+    ADMIN_MODULE_IDS,
+    sanitizeAdminModules,
+    __filename,
+    __dirname,
+    PROJECT_ROOT,
+    PROJECT_DATA_DIR,
+    LEGACY_DATA_DIR,
+    LOCAL_APP_ROOT,
+    RUNTIME_DATA_DIR,
+    CUSTOM_DATA_DIR,
+    SMTP_HOST,
+    SMTP_PORT,
+    SMTP_SECURE,
+    AI_PROVIDER,
+    AI_MODEL,
+    XAI_API_KEY,
+    GROQ_API_KEY,
+    OPENAI_API_KEY,
+    AI_TIMEOUT_MS,
+    SMTP_USER,
+    SMTP_PASS,
+    MAIL_FROM_NAME,
+    MAIL_FROM,
+    MAIL_FROM_ADDRESS,
+    AUTH_EMAIL_TO,
+    DATABASE_URL,
+    GOOGLE_CLIENT_ID,
+    googleOAuthClient,
+    STRIPE_SECRET_KEY,
+    STRIPE_WEBHOOK_SECRET,
+    APP_URL,
+    stripe,
+    loadLocalEnv,
+    uniquePaths,
+    isDataDirectoryCorrupted,
+    createDirectorySafe,
+    prepareDataDirectory,
+    buildRecoveryDirectory,
+    createDbFromDirectory,
+    openEmbeddedPostgres,
+    openSupabasePostgres,
+    openDatabase,
+    isCareerApiRunning,
+    startServer,
+    db,
+    dataDirectory,
+    DEFAULT_PROFILE,
+    nowIso,
+    normalizeText,
+    normalizeEmail,
+    normalizeUsername,
+    validateUsernameInput,
+    buildUsername,
+    normalizeSkillList,
+    stripNullBytes,
+    coerceString,
+    coerceInteger,
+    sanitizeAccountType,
+    hashPassword,
+    createPasswordRecord,
+    verifyPassword,
+    createSixDigitCode,
+    addMinutes,
+    escapeHtml,
+    buildVerificationEmail,
+    getMailTransporter,
+    buildAnnouncementEmail,
+    resolveAnnouncementAudience,
+    sendVerificationEmail,
+    createEmailVerificationCode,
+    getRequestIp,
+    getRequestUserAgent,
+    getDeviceName,
+    getBrowserName,
+    createSessionForRequest,
+    ensureUserCanAuthenticate,
+    logSecurityEvent,
+    parseJsonField,
+    getCvExtractionStatus,
+    summarizeCvParsed,
+    ensureCvStorageSchema,
+    getAdminCvRows,
+    getMatchPayloadSummary,
+    sanitizeProfilePatch,
+    sanitizeCandidateDetails,
+    sanitizeRecruiterDetails,
+    sanitizeOrgDetails,
+    sanitizeOnboardingPayload,
+    applyOnboardingToProfile,
+    fetchRemoteAvatarAsDataUrl,
+    normalizeAvatarDataUrl,
+    cleanExtractedText,
+    bufferFromBase64,
+    extractTextFromUpload,
+    CV_EXTRACTION_SCHEMA,
+    aiExtractionConfig,
+    normalizeAiList,
+    normalizeAiCollection,
+    sanitizeAiCvExtraction,
+    JOB_EXTRACTION_SCHEMA,
+    JOB_SOFT_SKILLS,
+    extractLocalJobSummary,
+    sanitizeAiJobExtraction,
+    extractJobWithAi,
+    MATCH_ANALYSIS_SCHEMA,
+    RECOMMENDATION_LEVELS,
+    sanitizeAiMatchAnalysis,
+    analyzeMatchWithAi,
+    COVER_LETTER_SCHEMA,
+    TONE_LABELS,
+    buildLocalCoverLetter,
+    sanitizeAiCoverLetter,
+    generateCoverLetterWithAi,
+    CV_ATS_OPTIMIZATION_SCHEMA,
+    sanitizeAiCvOptimization,
+    generateCvAtsOptimizationWithAi,
+    NEGOTIATION_REPLY_SCHEMA,
+    NEGOTIATION_SUMMARY_SCHEMA,
+    localNegotiationReply,
+    localNegotiationSummary,
+    negotiationReplyWithAi,
+    parseCvLocally,
+    CV_SKILL_LABELS,
+    DATE_MONTH_PATTERN,
+    DATE_RANGE_PATTERN,
+    uniqueByNormalized,
+    compactKey,
+    detectSkillsFromText,
+    extractRobustLinkedin,
+    repairLinkedinWithName,
+    formatFrenchPhone,
+    cleanLocation,
+    extractProfessionalSummary,
+    extractHeadline,
+    cleanExperienceDate,
+    escapeRegex,
+    findDateNearCompany,
+    textWindowAroundCompany,
+    dateAfterLabel,
+    cleanRole,
+    hasRoleLikeText,
+    detectExperiencesFromText,
+    detectEducationFromText,
+    normalizeExperienceForReview,
+    mergeExperiencesForReview,
+    mergeEducationForReview,
+    cleanCertificationName,
+    detectCertificationsFromText,
+    mergeCertificationsForReview,
+    mergeCollections,
+    textLeaksSummary,
+    postProcessCvExtraction,
+    repairTruncatedJson,
+    estimateTokenCount,
+    computeMaxCompletionTokens,
+    extractCvWithAi,
+    requireFields,
+    getUserRowById,
+    getEffectivePlanById,
+    requireAdmin,
+    PLATFORM_SETTING_DEFAULTS,
+    platformSettingsCache,
+    loadPlatformSettings,
+    getPlatformSetting,
+    getPlatformSettingBool,
+    setPlatformSetting,
+    getUserRowByEmail,
+    getUserRowByAnyEmail,
+    getEmailRowsForUser,
+    getUserRowByUsername,
+    getUserRowByIdentifier,
+    buildUniqueUsername,
+    ensureUsernames,
+    getAccountRows,
+    toPublicUser,
+    getPublicUserById,
+    upsertUserAccount,
+    upsertCandidateProfile,
+    upsertRecruiterProfile,
+    upsertOrgProfile,
+    clearUnusedRoleProfiles,
+    upsertRoleDetails,
+    ensureAccountRowsForLegacyUsers,
+    seedOffersIfNeeded,
+    getCvCount,
+    getMatchScores,
+    scorePremiumEligibility,
+    computePremiumAccess,
+    generateLicenseCodeForPlan,
+    generateLicenseCode,
+    applyPlanToUser,
+    SATISFACTION_COOLDOWN_MS,
+    csvCell,
+    toCsv,
+    sendCsv,
+    requireSchoolOwner,
+    getSchoolLicenseCodeRows,
+    getSchoolStudentRows,
+    getSchoolOrgProfile,
+    buildSchoolMetrics,
+    buildSchoolAlerts,
+    slugifyForEmail,
+    companyNameToDomain,
+    generateEmailCandidates,
+    probeSmtp,
+    JOB_APPLICATION_STATUSES,
+    toPublicJobApplication
+  } = app.locals.ctx;
+
+app.get("/api/premium", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+    return res.json(await computePremiumAccess(user));
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/premium/activate", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!userId) {
+      return res.status(400).json({ error: "userId requis." });
+    }
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const access = await computePremiumAccess(user);
+    if (!access.eligibility.eligible) {
+      return res.status(400).json({ error: "Profil non éligible à l'activation premium." });
+    }
+
+    const startedAt = nowIso();
+    const renewalAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+    await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [
+      JSON.stringify({
+        plan: "premium",
+        status: "active",
+        startedAt,
+        renewalAt
+      }),
+      nowIso(),
+      userId
+    ]);
+
+    const updatedUser = await getUserRowById(userId);
+    const premium = await computePremiumAccess(updatedUser);
+    return res.json({ user: await getPublicUserById(userId), premium });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+}

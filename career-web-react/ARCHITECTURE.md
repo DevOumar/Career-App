@@ -157,7 +157,82 @@ features/interviews/
 
 ## Backend
 
-`backend/index.js` est aujourd'hui un fichier unique regroupant toutes les
-routes (auth, CV, matching, candidatures, admin, Stripe...). Une découpe en
-`backend/routes/<domaine>.js` suivrait la même logique que côté frontend,
-mais n'a pas encore été faite.
+`backend/index.js` reste le point d'entrée (config/env, ouverture de la base
+PostgreSQL/PGlite, création de l'app Express, middlewares, tous les helpers —
+mots de passe, emails, extraction CV par IA, etc.) mais les 107 routes ont été
+extraites dans `backend/routes/<domaine>.js`, sur le même principe que
+`frontend/src/features/` :
+
+| Fichier | Domaine |
+| --- | --- |
+| `routes/health.js` | `/api/health` |
+| `routes/auth.js` | Authentification (register, login, Google, code, session) |
+| `routes/profile.js` | Profil, compte, emails secondaires, comptes liés |
+| `routes/premium.js` | Éligibilité et activation premium |
+| `routes/billing.js` | Checkout Stripe, activation/redeem de plans |
+| `routes/admin.js` | Toutes les routes `/api/admin/*` (dashboard, comptes, finance, licences, IA...) |
+| `routes/satisfaction.js` | Sondage de satisfaction (CSAT) |
+| `routes/school.js` | Dashboard école (étudiants, promotions, licence, rapports) |
+| `routes/tokens.js` | Consommation de jetons |
+| `routes/emailFinder.js` | Email Scout |
+| `routes/cv.js` | Extraction/optimisation ATS de CV |
+| `routes/matching.js` | Analyse de matching, offres, feedback |
+| `routes/coverLetter.js` | Lettres de motivation IA |
+| `routes/negotiation.js` | Simulateur de négociation salariale |
+| `routes/applications.js` | Suivi de candidatures |
+
+L'exception : le webhook Stripe (`POST /api/stripe/webhook`) reste défini
+directement dans `index.js`, car il doit être enregistré **avant**
+`app.use(express.json())` (Stripe signe le corps brut, non parsé, de la
+requête) — le sortir dans un fichier séparé rendrait cet ordre d'enregistrement
+moins évident et plus fragile à une future modification.
+
+**Comment les routes accèdent à la base et aux helpers.** Contrairement au
+frontend (imports ES classiques), `backend/index.js` a énormément d'état
+partagé construit au démarrage (connexion `db` ouverte via un `await`
+top-level, client Stripe, transporteur mail, des dizaines de fonctions
+utilitaires) que 107 routes utilisent en combinaisons différentes. Plutôt que
+de faire une injection de dépendances fine route par route (risque élevé
+d'oublier une dépendance sur un fichier de cette taille), chaque module de
+routes reçoit tout via **`app.locals.ctx`** :
+
+```js
+// index.js, une fois tout initialisé (db ouverte, helpers définis) :
+app.locals.ctx = { db, stripe, hashPassword, getPlanById, /* ... */ };
+registerAuthRoutes(app);
+registerAdminRoutes(app);
+// ...
+
+// backend/routes/auth.js :
+export function registerAuthRoutes(app) {
+  const { db, hashPassword, /* ... */ } = app.locals.ctx;
+  app.post("/api/auth/login", async (req, res) => { /* body inchangé */ });
+}
+```
+
+Chaque fichier de routes déstructure la **totalité** du sac de dépendances
+(même les noms qu'il n'utilise pas) plutôt qu'un sous-ensemble calculé au cas
+par cas : une destructuration trop large ne coûte rien à l'exécution, alors
+qu'en oublier une aurait provoqué exactement le même type de bug que le
+`no-undef` rencontré côté frontend (piège n°6), mais côté serveur cette fois
+— un crash au premier appel de la route plutôt qu'au premier rendu.
+
+**Comment cette découpe a été faite.** À 8176 lignes avec des routes qui
+peuvent contenir des chaînes/regex avec des accolades (JSON schemas, formats
+de téléphone...), un découpage par recherche de texte (`grep`/`sed`) aurait
+été peu fiable. La découpe a été faite avec un vrai parseur JS (`acorn`,
+déjà présent comme dépendance transitive de Vite) qui identifie précisément
+chaque instruction de niveau supérieur du fichier (début/fin exacts), classe
+celles de la forme `app.get/post/put/patch/delete(...)` comme routes, les
+regroupe par préfixe d'URL, et réécrit `index.js` en conséquence. Un premier
+essai avec un compteur d'accolades fait main (sans vraie tokenisation des
+chaînes/regex) s'est révélé faux sur un fichier de cette taille — leçon
+similaire au piège n°6 : préférer un vrai outil (parseur/linter) à un script
+regex maison dès que la taille du fichier dépasse ce qu'on peut vérifier à
+l'œil.
+
+Vérifié après la découpe : `node --check` sur `index.js` et les 15 fichiers de
+routes, démarrage réel du serveur (`npm run dev`), puis un test fonctionnel de
+bout en bout par domaine (inscription + connexion réelles en base, puis appels
+authentifiés sur premium/CV/candidatures/école/négociation/lettre IA/matching),
+pas seulement des `curl` de compilation.
