@@ -1,20 +1,8 @@
-import React from "react";
-// Module Entretiens : simulateur d'entretien IA (questions RH/technique/live
-// coding par piste, feedback en direct, bilan de fin de session).
-//
-// Tout ce qui concerne ce module vit dans ce dossier :
-//   - InterviewPage.jsx      composant de page + ses illustrations locales
-//   - interviewCopy.js       textes FR/EN
-//   - interviewScripts.js    questions/réponses modèles par piste
-//
-// Il est monté depuis App.jsx sous l'onglet "Entretiens" avec les props
-// { language, subscription, onGoToTarifs } — le contrat de props n'a pas
-// changé lors de cette extraction, seul l'emplacement du code a bougé.
-import { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { getPlanById } from "../../data/plans.js";
-import { INTERVIEW_SCRIPTS } from "./interviewScripts.js";
 import { INTERVIEW_COPY } from "./interviewCopy.js";
+import { VoiceInterviewCall } from "./VoiceInterviewCall.jsx";
 
 function LockBadge({ cx, cy }) {
   return (
@@ -32,7 +20,6 @@ function InterviewAssistantIllustration() {
   return (
     <svg viewBox="0 0 340 300" className="interview-locked-svg" aria-hidden="true" focusable="false">
       <rect x="14" y="18" width="290" height="230" rx="22" fill="var(--surface)" stroke="var(--line)" />
-
       <rect x="38" y="42" width="84" height="84" rx="18" fill="var(--bg-accent)" />
       <circle cx="80" cy="78" r="15" fill="none" stroke="var(--primary)" strokeWidth="3" />
       <path
@@ -42,13 +29,11 @@ function InterviewAssistantIllustration() {
         strokeWidth="3"
         strokeLinecap="round"
       />
-
       <rect x="216" y="42" width="84" height="84" rx="18" fill="#eef0ff" />
       <rect x="240" y="66" width="36" height="30" rx="10" fill="#4f46e5" />
       <circle cx="251" cy="80" r="3" fill="#fff" />
       <circle cx="265" cy="80" r="3" fill="#fff" />
       <rect x="255" y="58" width="6" height="8" rx="3" fill="#4f46e5" />
-
       <path
         d="M122 70h34a8 8 0 018 8v6a8 8 0 01-8 8h-20l-8 8v-8h-6a8 8 0 01-8-8v-6a8 8 0 018-8z"
         fill="var(--primary)"
@@ -59,70 +44,131 @@ function InterviewAssistantIllustration() {
         fill="#4f46e5"
         opacity="0.9"
       />
-
       <rect x="38" y="150" width="262" height="60" rx="16" fill="var(--bg-accent)" />
       <rect x="58" y="164" width="200" height="9" rx="4.5" fill="#fff" opacity="0.75" />
       <rect x="58" y="184" width="150" height="9" rx="4.5" fill="#fff" opacity="0.75" />
-
       <g opacity="0.5">
         <rect x="38" y="220" width="160" height="34" rx="14" fill="var(--surface-2)" stroke="var(--line)" strokeDasharray="4 5" />
         <rect x="56" y="232" width="120" height="8" rx="4" fill="var(--line-strong)" />
       </g>
-
       <LockBadge cx={284} cy={222} />
     </svg>
   );
 }
 
-function InterviewPage({ language, subscription, onGoToTarifs }) {
+function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
   const copy = INTERVIEW_COPY[language] || INTERVIEW_COPY.fr;
   const isFreePlan = !getPlanById(subscription?.planId)?.grantsPremium;
 
-  const [track, setTrack] = useState("rh");
-  const [messages, setMessages] = useState([]);
-  const [step, setStep] = useState(0);
-  const [input, setInput] = useState("");
-  const [hintOpen, setHintOpen] = useState(false);
-  const [doneTracks, setDoneTracks] = useState({});
+  const [mode, setMode] = useState("setup"); // 'setup' | 'chat' | 'voice' | 'bilan'
+  const [typeEntretien, setTypeEntretien] = useState("RH");
+  const [domaine, setDomaine] = useState("générique");
+  const [offre, setOffre] = useState("");
 
-  const config = INTERVIEW_SCRIPTS[track];
-  const currentQuestion = config.steps[step];
-  const progress = Math.round((step / config.steps.length) * 100);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [bilanContent, setBilanContent] = useState("");
+  const chatStreamRef = useRef(null);
 
   useEffect(() => {
-    resetTrack(track);
-  }, [track]);
+    if (chatStreamRef.current) {
+      chatStreamRef.current.scrollTop = chatStreamRef.current.scrollHeight;
+    }
+  }, [messages, loading]);
 
-  function resetTrack(trackKey) {
-    const first = INTERVIEW_SCRIPTS[trackKey].steps[0];
-    setMessages([{ type: "ai", text: first.question }]);
-    setStep(0);
-    setInput("");
-    setHintOpen(false);
+  async function startSimulation(selectedMode = "chat") {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/interview/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type_entretien: typeEntretien,
+          domaine,
+          offre
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setMessages([{ role: "assistant", content: data.message }]);
+        setMode(selectedMode);
+      }
+    } catch (err) {
+      console.error("Erreur start simulation:", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  function submitReply() {
+  async function sendMessage(forceFinish = false) {
     const text = input.trim();
-    if (!text || step >= config.steps.length) return;
+    if (!text && !forceFinish) return;
 
-    const reply = config.steps[step];
-    const nextMessages = [
-      ...messages,
-      { type: "user", text },
-      { type: "feedback", text: `${copy.modelAnswer}: ${reply.model}` }
-    ];
-
-    const nextStep = step + 1;
-    if (nextStep < config.steps.length) {
-      nextMessages.push({ type: "ai", text: config.steps[nextStep].question });
-    } else {
-      setDoneTracks((prev) => ({ ...prev, [track]: true }));
-    }
-
-    setMessages(nextMessages);
-    setStep(nextStep);
+    const userMessage = { role: "user", content: text || "[Demande de bilan d'entretien]" };
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
     setInput("");
-    setHintOpen(false);
+    setLoading(true);
+
+    try {
+      const response = await fetch("/api/interview/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: text,
+          history: newMessages,
+          type_entretien: typeEntretien,
+          domaine,
+          offre,
+          finishSession: forceFinish
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const aiMessage = { role: "assistant", content: data.message };
+        setMessages((prev) => [...prev, aiMessage]);
+
+        if (data.isBilan || forceFinish) {
+          setBilanContent(data.message);
+          setMode("bilan");
+        }
+      }
+    } catch (err) {
+      console.error("Erreur envoi message:", err);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleEndVoiceCall() {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/interview/message", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: "Clore l'entretien et fournir le bilan final",
+          history: messages,
+          type_entretien: typeEntretien,
+          domaine,
+          offre,
+          finishSession: true
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setBilanContent(data.message);
+        setMode("bilan");
+      }
+    } catch (err) {
+      console.error("Erreur fin d'appel:", err);
+    } finally {
+      setLoading(false);
+    }
   }
 
   if (isFreePlan) {
@@ -155,89 +201,166 @@ function InterviewPage({ language, subscription, onGoToTarifs }) {
     );
   }
 
-  return (
-    <section className="interview-page">
-      <div className="tabs">
-        {Object.entries(INTERVIEW_SCRIPTS).map(([key, value]) => (
-          <button
-            key={key}
-            className={`tab-btn ${track === key ? "active" : ""} ${doneTracks[key] ? "done" : ""}`}
-            onClick={() => setTrack(key)}
-          >
-            <small>{value.label}</small>
-            <strong>{value.meta.name}</strong>
-          </button>
-        ))}
-      </div>
-
-      <div className="chat card">
-        <div className="chat-top">
-          <div className="avatar">{config.meta.avatar}</div>
-          <div>
-            <h3>{config.meta.name}</h3>
-            <p>{config.meta.subtitle}</p>
+  if (mode === "setup") {
+    return (
+      <section className="interview-page">
+        <div className="card setup-card">
+          <div className="setup-header">
+            <h3>🎯 Assistant RAG & Simulateur d'Entretien IA</h3>
+            <p>
+              Entraînez-vous face à un Recruteur Senior IA alimenté par notre base de connaissances RAG (méthode STAR, conseils RH, questions techniques).
+            </p>
           </div>
-          <div className="progress">{progress}%</div>
-        </div>
 
-        <div className="chat-stream">
-          {messages.map((msg, idx) => (
-            <div key={`${msg.type}-${idx}`} className={`msg ${msg.type}`}>
-              <p>{msg.text}</p>
+          <div className="setup-form">
+            <div className="form-group">
+              <label>Type d'entretien :</label>
+              <div className="btn-group">
+                {["RH", "technique", "direction"].map((t) => (
+                  <button
+                    key={t}
+                    type="button"
+                    className={`btn-select ${typeEntretien === t ? "active" : ""}`}
+                    onClick={() => setTypeEntretien(t)}
+                  >
+                    {t === "RH" ? "💼 Entretien RH / Soft Skills" : t === "technique" ? "💻 Entretien Technique / Metier" : "👔 Entretien Direction / Vision"}
+                  </button>
+                ))}
+              </div>
             </div>
-          ))}
-        </div>
 
-        {step < config.steps.length ? (
-          <>
-            <button className="hint" onClick={() => setHintOpen((prev) => !prev)}>
-              {copy.hint}
-            </button>
-            {hintOpen ? <p className="hint-body">{currentQuestion?.hint}</p> : null}
+            <div className="form-group">
+              <label>Domaine professionnel :</label>
+              <select value={domaine} onChange={(e) => setDomaine(e.target.value)} className="select-input">
+                <option value="générique">Générique / Tous secteurs</option>
+                <option value="tech">Tech / IT / Data / Software</option>
+                <option value="commerce">Commerce / Vente / Business Development</option>
+                <option value="finance">Finance / Gestion / Comptabilité</option>
+                <option value="industrie">Industrie / Ingénierie / Logistique</option>
+              </select>
+            </div>
 
-            <div className="chat-input-row">
+            <div className="form-group">
+              <label>Offre d'emploi visée (optionnel) :</label>
               <textarea
-                value={input}
-                onChange={(event) => setInput(event.target.value)}
-                placeholder={copy.placeholder}
-                rows={2}
+                value={offre}
+                onChange={(e) => setOffre(e.target.value)}
+                placeholder="Collez ici l'intitulé ou la description de l'offre pour que le recruteur ancre ses questions dans ce poste réel..."
+                rows={4}
+                className="textarea-input"
               />
-              <button className="btn-main" onClick={submitReply}>
-                {copy.send}
+            </div>
+
+            <div className="setup-actions">
+              <button
+                type="button"
+                className="btn-main"
+                onClick={() => startSimulation("chat")}
+                disabled={loading}
+              >
+                💬 Démarrer l'Entretien Écrit
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => startSimulation("voice")}
+                disabled={loading}
+              >
+                📞 Démarrer l'Appel Vocale (Whisper + Voice)
               </button>
             </div>
-          </>
-        ) : (
-          <div className="coaching-bilan">
-            <h4>{copy.report}</h4>
-            <div className="three-cols">
-              <div>
-                <h5>{copy.good}</h5>
-                <ul>
-                  {config.feedback.positive.map((point, idx) => (
-                    <li key={`${point}-${idx}`}>{point}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h5>{copy.improve}</h5>
-                <ul>
-                  {config.feedback.improve.map((point, idx) => (
-                    <li key={`${point}-${idx}`}>{point}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <h5>{copy.keyAdvice}</h5>
-                <p>{config.feedback.key}</p>
-              </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (mode === "voice") {
+    return (
+      <section className="interview-page">
+        <VoiceInterviewCall
+          typeEntretien={typeEntretien}
+          domaine={domaine}
+          onEndCall={handleEndVoiceCall}
+        />
+      </section>
+    );
+  }
+
+  if (mode === "bilan") {
+    return (
+      <section className="interview-page">
+        <div className="card bilan-card">
+          <div className="bilan-header">
+            <h3>📊 Bilan Global & Evaluation d'Entretien</h3>
+            <p>Voici l'analyse détaillée générée par le Recruteur IA et le moteur RAG.</p>
+          </div>
+
+          <div className="bilan-body">
+            <div className="markdown-content">
+              {bilanContent.split("\n").map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
             </div>
           </div>
-        )}
+
+          <div className="bilan-actions">
+            <button type="button" className="btn-main" onClick={() => setMode("setup")}>
+              🔄 Relancer un nouvel entretien
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="interview-page">
+      <div className="chat card">
+        <div className="chat-top">
+          <div className="avatar">👔</div>
+          <div>
+            <h3>Recruteur Senior IA</h3>
+            <p>Entretien {typeEntretien} — Domaine {domaine}</p>
+          </div>
+          <button type="button" className="btn-secondary btn-sm" onClick={() => sendMessage(true)}>
+            🏁 Clore & Obtenir Bilan
+          </button>
+        </div>
+
+        <div className="chat-stream" ref={chatStreamRef}>
+          {messages.map((msg, idx) => (
+            <div key={idx} className={`msg ${msg.role === "user" ? "user" : "ai"}`}>
+              <p>{msg.content}</p>
+            </div>
+          ))}
+          {loading ? (
+            <div className="msg ai loading">
+              <p>Le recruteur prépare sa réponse...</p>
+            </div>
+          ) : null}
+        </div>
+
+        <div className="chat-input-row">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage(false);
+              }
+            }}
+            placeholder="Répondez à la question du recruteur..."
+            rows={2}
+          />
+          <button type="button" className="btn-main" onClick={() => sendMessage(false)} disabled={loading}>
+            Envoyer
+          </button>
+        </div>
       </div>
     </section>
   );
 }
-
 
 export default InterviewPage;

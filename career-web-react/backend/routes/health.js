@@ -246,6 +246,32 @@ export function registerHealthRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
+app.get("/", (_req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html lang="fr">
+    <head>
+      <meta charset="UTF-8">
+      <title>Career App - Serveur API Express</title>
+      <style>
+        body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 60px auto; padding: 20px; line-height: 1.6; color: #1f2937; }
+        .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; text-align: center; }
+        .btn { display: inline-block; background: #2563eb; color: #fff; text-decoration: none; padding: 10px 20px; border-radius: 8px; font-weight: 600; margin-top: 16px; }
+        .btn:hover { background: #1d4ed8; }
+        code { background: #e5e7eb; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h2>⚡ Serveur API Express actif (Port 8787)</h2>
+        <p>Ce port est le serveur API REST du projet. L'interface graphique Web React est accessible sur le port <code>5174</code>.</p>
+        <a href="http://127.0.0.1:5174" class="btn">Accéder à l'Interface Web (http://127.0.0.1:5174)</a>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
 app.get("/api/health", async (_req, res) => {
   const ping = await db.query("SELECT 1 AS ok");
   res.json({

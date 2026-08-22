@@ -1,4 +1,4 @@
-﻿import cors from "cors";
+import cors from "cors";
 import crypto from "crypto";
 import express from "express";
 import fs from "node:fs";
@@ -40,6 +40,7 @@ import { registerMatchingRoutes } from "./routes/matching.js";
 import { registerCoverLetterRoutes } from "./routes/coverLetter.js";
 import { registerNegotiationRoutes } from "./routes/negotiation.js";
 import { registerApplicationsRoutes } from "./routes/applications.js";
+import { registerInterviewRoutes } from "./routes/interview.js";
 
 const BASE_PORT = Number(process.env.PORT || 8787);
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
@@ -950,15 +951,19 @@ async function sendVerificationEmail({ to, code, firstName, purpose = "login" })
     }
   });
 
-  await transporter.sendMail({
-    from: MAIL_FROM || `"${MAIL_FROM_NAME}" <${MAIL_FROM_ADDRESS || SMTP_USER}>`,
-    to: recipient,
-    subject: message.subject,
-    text: message.text,
-    html: message.html
-  });
-
-  return { sent: true, recipient };
+  try {
+    await transporter.sendMail({
+      from: MAIL_FROM || `"${MAIL_FROM_NAME}" <${MAIL_FROM_ADDRESS || SMTP_USER}>`,
+      to: recipient,
+      subject: message.subject,
+      text: message.text,
+      html: message.html
+    });
+    return { sent: true, recipient };
+  } catch (error) {
+    console.warn(`[Career App] Echec d'envoi d'email SMTP (${error.message}). Code disponible dans la console ci-dessus.`);
+    return { sent: false, reason: "smtp_send_error", error: error.message };
+  }
 }
 
 async function createEmailVerificationCode(user, purpose = "login", targetEmail = "") {
@@ -4365,6 +4370,7 @@ registerMatchingRoutes(app);
 registerCoverLetterRoutes(app);
 registerNegotiationRoutes(app);
 registerApplicationsRoutes(app);
+registerInterviewRoutes(app);
 
 const serverStart = await startServer(app);
 

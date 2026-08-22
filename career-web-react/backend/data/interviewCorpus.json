@@ -1,0 +1,163 @@
+[
+  {
+    "id": "rh_001",
+    "texte": "Présentez votre motivation en reliant votre parcours passé aux exigences du poste visé : mentionnez deux ou trois expériences clés qui illustrent une progression cohérente, puis expliquez pourquoi cette entreprise et ce poste précis correspondent à l'étape suivante logique de votre trajectoire.",
+    "type_entretien": "RH",
+    "sous_theme": "motivation_parcours",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_002",
+    "texte": "Évitez les réponses génériques du type « j'aime relever des défis » : donnez un exemple concret tiré de votre parcours (stage, projet, mission) qui prouve cette motivation, et reliez-le explicitement à une mission décrite dans l'offre d'emploi.",
+    "type_entretien": "RH",
+    "sous_theme": "motivation_parcours",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_003",
+    "texte": "Structurez votre présentation en trois temps : d'où vous venez (formation, premières expériences), ce que vous avez appris et accompli (résultats concrets, compétences développées), et où vous voulez aller (pourquoi ce poste, cette entreprise).",
+    "type_entretien": "RH",
+    "sous_theme": "motivation_parcours",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_004",
+    "texte": "Quand on vous demande « pourquoi ce poste ? », montrez que vous avez étudié l'entreprise : citez un projet, une valeur ou une actualité récente de l'organisation et expliquez en quoi elle fait écho à vos propres objectifs professionnels.",
+    "type_entretien": "RH",
+    "sous_theme": "motivation_parcours",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_005",
+    "texte": "Choisissez une qualité directement utile au poste visé et illustrez-la par un exemple factuel : le contexte, l'action que vous avez menée, et le résultat obtenu, plutôt qu'une simple liste d'adjectifs sans preuve.",
+    "type_entretien": "RH",
+    "sous_theme": "qualites_defauts",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_006",
+    "texte": "Pour un défaut, privilégiez une faiblesse réelle mais non rédhibitoire pour le poste, et montrez surtout les actions concrètes mises en place pour la corriger ou la compenser au quotidien.",
+    "type_entretien": "RH",
+    "sous_theme": "qualites_defauts",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_007",
+    "texte": "Évitez les faux défauts déguisés en qualités comme « je suis trop perfectionniste » : les recruteurs y sont habitués et cela peut nuire à votre crédibilité ; préférez une vraie zone de progrès assumée avec recul.",
+    "type_entretien": "RH",
+    "sous_theme": "qualites_defauts",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_008",
+    "texte": "Adaptez le choix de vos qualités au type de poste : autonomie et rigueur pour un poste technique, sens du relationnel et écoute pour un poste commercial ou RH, leadership et vision pour un poste de direction.",
+    "type_entretien": "RH",
+    "sous_theme": "qualites_defauts",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_009",
+    "texte": "Indiquez clairement votre date de disponibilité (immédiate, ou sous préavis de tant de semaines/mois) et, si un préavis s'applique, précisez si une négociation de réduction est envisageable avec votre employeur actuel.",
+    "type_entretien": "RH",
+    "sous_theme": "disponibilite_mobilite",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_010",
+    "texte": "Concernant la mobilité géographique, soyez précis sur votre périmètre réel (ville, région, national, international) plutôt que de rester vague, et mentionnez les contraintes concrètes le cas échéant (famille, logement).",
+    "type_entretien": "RH",
+    "sous_theme": "disponibilite_mobilite",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_011",
+    "texte": "Si le poste implique des déplacements fréquents, donnez un pourcentage ou une fréquence que vous êtes prêt à accepter, et appuyez-vous sur une expérience passée de déplacements professionnels si vous en avez une.",
+    "type_entretien": "RH",
+    "sous_theme": "disponibilite_mobilite",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_012",
+    "texte": "Pour un télétravail partiel ou total, exprimez clairement vos attentes tout en montrant de la flexibilité sur l'organisation proposée par l'entreprise, notamment pendant la période d'intégration.",
+    "type_entretien": "RH",
+    "sous_theme": "disponibilite_mobilite",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_013",
+    "texte": "La méthode STAR structure une réponse comportementale en quatre temps : Situation (le contexte), Tâche (l'objectif ou la responsabilité), Action (ce que vous avez concrètement fait), Résultat (l'impact mesurable obtenu).",
+    "type_entretien": "RH",
+    "sous_theme": "methode_star",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_014",
+    "texte": "Préparez à l'avance quatre à cinq exemples selon la méthode STAR couvrant des situations variées : gestion de conflit, échec assumé, travail d'équipe, initiative personnelle, gestion du stress ou d'une deadline serrée.",
+    "type_entretien": "RH",
+    "sous_theme": "methode_star",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_015",
+    "texte": "Dans la partie « Résultat » de la méthode STAR, quantifiez autant que possible (délai gagné, budget économisé, satisfaction client, taux de réussite) pour rendre votre réponse mémorable et crédible.",
+    "type_entretien": "RH",
+    "sous_theme": "methode_star",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_016",
+    "texte": "Ne négligez pas la partie « Tâche » de la méthode STAR : elle doit clarifier votre rôle exact et vos responsabilités dans la situation décrite, pour que le recruteur comprenne votre contribution personnelle et pas seulement celle de l'équipe.",
+    "type_entretien": "RH",
+    "sous_theme": "methode_star",
+    "domaine": "générique",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_017",
+    "texte": "Pour un poste tech (développeur, data, IT), appuyez votre prétention salariale sur une fourchette de marché basée sur votre stack technique, votre séniorité et la localisation du poste ; mentionnez une fourchette plutôt qu'un chiffre unique, et restez prêt à la justifier par vos compétences spécifiques (langages, certifications, technologies maîtrisées).",
+    "type_entretien": "RH",
+    "sous_theme": "pretentions_salariales",
+    "domaine": "tech",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_018",
+    "texte": "Pour un poste commercial, la rémunération inclut souvent une part variable liée aux objectifs : présentez un fixe cohérent avec le marché et interrogez-vous sur la structure de la part variable (commissions, primes sur objectifs) avant de fixer un chiffre global de prétention salariale.",
+    "type_entretien": "RH",
+    "sous_theme": "pretentions_salariales",
+    "domaine": "commerce",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_019",
+    "texte": "Pour un poste en industrie, la prétention salariale peut varier fortement selon la convention collective applicable, la région et les astreintes éventuelles ; renseignez-vous sur ces éléments avant l'entretien pour proposer une fourchette réaliste et argumentée.",
+    "type_entretien": "RH",
+    "sous_theme": "pretentions_salariales",
+    "domaine": "industrie",
+    "source": "corpus_interne_v1"
+  },
+  {
+    "id": "rh_020",
+    "texte": "Pour un poste en finance, les prétentions salariales doivent tenir compte de la taille de la structure (grand groupe ou PME), des certifications professionnelles détenues et d'éventuels bonus annuels liés à la performance ; présentez toujours une fourchette accompagnée du raisonnement qui la justifie.",
+    "type_entretien": "RH",
+    "sous_theme": "pretentions_salariales",
+    "domaine": "finance",
+    "source": "corpus_interne_v1"
+  }
+]
+
