@@ -7831,6 +7831,133 @@ input[aria-invalid="true"] {
   border-color: var(--primary);
 }
 
+/* Module Entretiens — écran de configuration (assistant RAG). */
+.setup-card {
+  padding: 1.8rem;
+  max-width: 620px;
+  margin: 0 auto;
+}
+
+.setup-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 1.6rem;
+}
+
+.setup-header-icon {
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: #5b3bff;
+  background: #eef2ff;
+}
+
+.setup-header-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.setup-header h3 {
+  margin-bottom: 0.3rem;
+}
+
+.setup-header p {
+  color: var(--text-3);
+  font-size: 0.87rem;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.setup-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.3rem;
+}
+
+.interview-type-group {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 0.6rem;
+}
+
+.interview-type-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 14px;
+  padding: 0.9rem 0.6rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-2);
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.interview-type-option svg {
+  width: 1.3rem;
+  height: 1.3rem;
+}
+
+.interview-type-option:hover {
+  border-color: var(--primary);
+  color: var(--text);
+}
+
+.interview-type-option.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(79, 70, 229, 0.22);
+}
+
+.setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  margin-top: 0.3rem;
+}
+
+.setup-actions .btn-main,
+.setup-actions .btn-secondary {
+  flex: 1 1 220px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.setup-actions .btn-main svg,
+.setup-actions .btn-secondary svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: 0 0 auto;
+}
+
+.setup-actions-hint {
+  font-size: 0.72rem;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+@media (max-width: 640px) {
+  .setup-card {
+    padding: 1.3rem;
+  }
+
+  .setup-actions .btn-main,
+  .setup-actions .btn-secondary {
+    flex-basis: 100%;
+  }
+}
+
 .cover-letter-empty {
   display: flex;
   flex-direction: column;

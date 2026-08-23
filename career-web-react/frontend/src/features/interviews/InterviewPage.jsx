@@ -206,32 +206,46 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
       <section className="interview-page">
         <div className="card setup-card">
           <div className="setup-header">
-            <h3>🎯 Assistant RAG & Simulateur d'Entretien IA</h3>
-            <p>
-              Entraînez-vous face à un Recruteur Senior IA alimenté par notre base de connaissances RAG (méthode STAR, conseils RH, questions techniques).
-            </p>
+            <div className="setup-header-icon">
+              <UiIcon name="matchmark" />
+            </div>
+            <div>
+              <h3>Assistant RAG &amp; Simulateur d'Entretien IA</h3>
+              <p>
+                Entraînez-vous face à un recruteur senior IA alimenté par notre base de connaissances RAG (méthode STAR, conseils RH, questions techniques).
+              </p>
+            </div>
           </div>
 
           <div className="setup-form">
             <div className="form-group">
-              <label>Type d'entretien :</label>
-              <div className="btn-group">
-                {["RH", "technique", "direction"].map((t) => (
+              <label>Type d'entretien</label>
+              <div className="interview-type-group">
+                {[
+                  { id: "RH", icon: "profile", label: "RH / Soft Skills" },
+                  { id: "technique", icon: "settings", label: "Technique / Métier" },
+                  { id: "direction", icon: "briefcase", label: "Direction / Vision" }
+                ].map((t) => (
                   <button
-                    key={t}
+                    key={t.id}
                     type="button"
-                    className={`btn-select ${typeEntretien === t ? "active" : ""}`}
-                    onClick={() => setTypeEntretien(t)}
+                    className={`interview-type-option ${typeEntretien === t.id ? "active" : ""}`}
+                    onClick={() => setTypeEntretien(t.id)}
                   >
-                    {t === "RH" ? "💼 Entretien RH / Soft Skills" : t === "technique" ? "💻 Entretien Technique / Metier" : "👔 Entretien Direction / Vision"}
+                    <UiIcon name={t.icon} />
+                    <span>{t.label}</span>
                   </button>
                 ))}
               </div>
             </div>
 
             <div className="form-group">
-              <label>Domaine professionnel :</label>
-              <select value={domaine} onChange={(e) => setDomaine(e.target.value)} className="select-input">
+              <label htmlFor="interview-domaine">Domaine professionnel</label>
+              <select
+                id="interview-domaine"
+                value={domaine}
+                onChange={(e) => setDomaine(e.target.value)}
+              >
                 <option value="générique">Générique / Tous secteurs</option>
                 <option value="tech">Tech / IT / Data / Software</option>
                 <option value="commerce">Commerce / Vente / Business Development</option>
@@ -241,13 +255,13 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
             </div>
 
             <div className="form-group">
-              <label>Offre d'emploi visée (optionnel) :</label>
+              <label htmlFor="interview-offre">Offre d'emploi visée <span className="muted">(optionnel)</span></label>
               <textarea
+                id="interview-offre"
                 value={offre}
                 onChange={(e) => setOffre(e.target.value)}
-                placeholder="Collez ici l'intitulé ou la description de l'offre pour que le recruteur ancre ses questions dans ce poste réel..."
+                placeholder="Collez ici l'intitulé ou la description de l'offre pour que le recruteur ancre ses questions dans ce poste réel…"
                 rows={4}
-                className="textarea-input"
               />
             </div>
 
@@ -258,7 +272,8 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
                 onClick={() => startSimulation("chat")}
                 disabled={loading}
               >
-                💬 Démarrer l'Entretien Écrit
+                <UiIcon name="chat" />
+                Démarrer l'entretien écrit
               </button>
               <button
                 type="button"
@@ -266,7 +281,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
                 onClick={() => startSimulation("voice")}
                 disabled={loading}
               >
-                📞 Démarrer l'Appel Vocale (Whisper + Voice)
+                <UiIcon name="phone" />
+                Démarrer l'appel vocal
+                <span className="setup-actions-hint">Whisper + Voice</span>
               </button>
             </div>
           </div>
