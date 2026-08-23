@@ -61,6 +61,7 @@ function formatContext(chunks) {
 
 export function registerInterviewRoutes(app) {
   const {
+    express,
     AI_PROVIDER,
     GROQ_API_KEY,
     OPENAI_API_KEY,
