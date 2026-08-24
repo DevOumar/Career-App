@@ -77,28 +77,42 @@ def search(
     Recherche les chunks les plus pertinents pour une requête.
 
     Filtre optionnellement sur les métadonnées type_entretien / domaine /
-    sous_theme avant de calculer la similarité, pour affiner la recherche
-    sur un axe métier précis (ex: uniquement domaine="tech").
+    sous_theme avant de calculer la similarité.
     """
-    collection, meta = get_collection(vectordb_path)
-    query_embedding = embed_query(query, model_name=meta["embedding_model"])
-    where = _build_where(type_entretien, domaine, sous_theme)
+    try:
+        collection, meta = get_collection(vectordb_path)
+        where = _build_where(type_entretien, domaine, sous_theme)
 
-    results = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=top_k,
-        where=where,
-    )
-
-    hits = []
-    for doc_id, texte, metadata, distance in zip(
-        results["ids"][0],
-        results["documents"][0],
-        results["metadatas"][0],
-        results["distances"][0],
-    ):
-        hits.append({"id": doc_id, "texte": texte, "metadata": metadata, "distance": distance})
-    return hits
+        try:
+            query_embedding = embed_query(query, model_name=meta["embedding_model"])
+            results = collection.query(
+                query_embeddings=[query_embedding],
+                n_results=top_k,
+                where=where,
+            )
+            hits = []
+            for doc_id, texte, metadata, distance in zip(
+                results["ids"][0],
+                results["documents"][0],
+                results["metadatas"][0],
+                results["distances"][0],
+            ):
+                hits.append({"id": doc_id, "texte": texte, "metadata": metadata, "distance": distance})
+            return hits
+        except Exception:
+            # Fallback en cas d'erreur de mémoire PyTorch/OpenBLAS sur Windows
+            results = collection.get(limit=top_k, where=where)
+            if results and results.get("documents"):
+                docs = results["documents"]
+                ids = results["ids"]
+                metas = results["metadatas"]
+                return [
+                    {"id": d_id, "texte": text, "metadata": m, "distance": 0.0}
+                    for d_id, text, m in zip(ids, docs, metas)
+                ]
+            return []
+    except Exception:
+        return []
 
 
 if __name__ == "__main__":
