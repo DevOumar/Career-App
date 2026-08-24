@@ -123,7 +123,7 @@ export function registerInterviewRoutes(app) {
     const groqKey = process.env.GROQ_API_KEY || app.locals.ctx?.GROQ_API_KEY;
     const openaiKey = process.env.OPENAI_API_KEY || app.locals.ctx?.OPENAI_API_KEY;
     const xaiKey = process.env.XAI_API_KEY || app.locals.ctx?.XAI_API_KEY;
-    const groqModel = process.env.GROQ_MODEL || process.env.AI_MODEL || "llama-3.3-70b-versatile";
+    const groqModel = process.env.GROQ_MODEL || (process.env.AI_MODEL && process.env.AI_MODEL !== "none" ? process.env.AI_MODEL : null) || "openai/gpt-oss-120b";
 
     if (groqKey) {
       try {
