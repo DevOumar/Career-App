@@ -40,6 +40,7 @@ import { registerMatchingRoutes } from "./routes/matching.js";
 import { registerCoverLetterRoutes } from "./routes/coverLetter.js";
 import { registerNegotiationRoutes } from "./routes/negotiation.js";
 import { registerApplicationsRoutes } from "./routes/applications.js";
+import { registerInterviewsRoutes } from "./routes/interviews.js";
 
 const BASE_PORT = Number(process.env.PORT || 8787);
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
@@ -4365,6 +4366,7 @@ registerMatchingRoutes(app);
 registerCoverLetterRoutes(app);
 registerNegotiationRoutes(app);
 registerApplicationsRoutes(app);
+registerInterviewsRoutes(app);
 
 const serverStart = await startServer(app);
 
