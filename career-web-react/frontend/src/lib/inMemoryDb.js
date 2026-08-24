@@ -747,3 +747,31 @@ export async function generateSchoolReport(userId, period = "monthly") {
     body: { userId, period }
   });
 }
+
+export async function startInterviewSession({ type_entretien, domaine, offre }) {
+  return request("/interviews/start", {
+    method: "POST",
+    body: { type_entretien, domaine, offre }
+  });
+}
+
+export async function sendInterviewMessage(message) {
+  return request("/interviews/message", {
+    method: "POST",
+    body: { message }
+  });
+}
+
+export async function sendInterviewAudioMessage(audioBlob) {
+  const apiBase = await resolveApiBase();
+  const response = await fetch(`${apiBase}/interviews/audio-message`, {
+    method: "POST",
+    headers: { "Content-Type": audioBlob.type || "audio/webm" },
+    body: audioBlob
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(data.error || "Erreur lors de la transcription audio.");
+  }
+  return data;
+}
