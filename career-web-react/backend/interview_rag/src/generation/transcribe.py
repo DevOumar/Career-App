@@ -41,16 +41,20 @@ def transcribe_audio(
     if not api_key:
         raise RuntimeError("GROQ_API_KEY manquant : renseignez-le dans votre fichier .env")
 
-    if not audio_bytes:
-        raise ValueError("Les données audio reçues sont vides.")
+    if not audio_bytes or len(audio_bytes) < 100:
+        return ""
 
     client = Groq(api_key=api_key)
     audio_file = (filename, io.BytesIO(audio_bytes))
 
-    transcription = client.audio.transcriptions.create(
-        file=audio_file,
-        model=model,
-        language=language,
-        response_format="json",
-    )
-    return transcription.text.strip()
+    try:
+        transcription = client.audio.transcriptions.create(
+            file=audio_file,
+            model=model,
+            language=language,
+            response_format="json",
+        )
+        return transcription.text.strip()
+    except Exception as exc:
+        print(f"[Whisper STT Warning] Erreur transcription: {exc}")
+        return ""
