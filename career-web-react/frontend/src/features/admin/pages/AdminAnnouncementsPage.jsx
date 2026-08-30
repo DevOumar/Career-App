@@ -285,7 +285,7 @@ export default function AdminAnnouncementsPage({ user, language }) {
       showCancelButton: true,
       confirmButtonText: "OK",
       cancelButtonText: copy.cancel,
-      confirmButtonColor: "#5964e8"
+      confirmButtonColor: "#1a0dab"
     });
     if (result.isConfirmed && result.value) {
       insertInMessage("", "", result.value);
@@ -344,7 +344,7 @@ export default function AdminAnnouncementsPage({ user, language }) {
       showCancelButton: true,
       confirmButtonText: copy.confirmBtn,
       cancelButtonText: copy.cancel,
-      confirmButtonColor: "#2f5bff"
+      confirmButtonColor: "#1a0dab"
     });
     if (!result.isConfirmed) return;
 

@@ -29,11 +29,11 @@ function InterviewAssistantIllustration() {
         strokeWidth="3"
         strokeLinecap="round"
       />
-      <rect x="216" y="42" width="84" height="84" rx="18" fill="#eef0ff" />
-      <rect x="240" y="66" width="36" height="30" rx="10" fill="#4f46e5" />
+      <rect x="216" y="42" width="84" height="84" rx="18" fill="#f5f3ee" />
+      <rect x="240" y="66" width="36" height="30" rx="10" fill="#1a0dab" />
       <circle cx="251" cy="80" r="3" fill="#fff" />
       <circle cx="265" cy="80" r="3" fill="#fff" />
-      <rect x="255" y="58" width="6" height="8" rx="3" fill="#4f46e5" />
+      <rect x="255" y="58" width="6" height="8" rx="3" fill="#1a0dab" />
       <path
         d="M122 70h34a8 8 0 018 8v6a8 8 0 01-8 8h-20l-8 8v-8h-6a8 8 0 01-8-8v-6a8 8 0 018-8z"
         fill="var(--primary)"
@@ -41,7 +41,7 @@ function InterviewAssistantIllustration() {
       />
       <path
         d="M186 96h30a7 7 0 017 7v5a7 7 0 01-7 7h-6v7l-9-7h-15a7 7 0 01-7-7v-5a7 7 0 017-7z"
-        fill="#4f46e5"
+        fill="#1a0dab"
         opacity="0.9"
       />
       <rect x="38" y="150" width="262" height="60" rx="16" fill="var(--bg-accent)" />

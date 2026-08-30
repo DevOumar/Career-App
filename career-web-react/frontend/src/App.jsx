@@ -227,8 +227,8 @@ export const THEME_PRESETS = [
   {
     id: "blue",
     label: { fr: "Bleu (défaut)", en: "Blue (default)" },
-    swatch: "#2f5bff",
-    vars: { "--primary": "#2f5bff", "--primary-2": "#6d7cff", "--primary-ink": "#101a4f", "--bg-accent": "#edf1ff" }
+    swatch: "#1a0dab",
+    vars: { "--primary": "#1a0dab", "--primary-2": "#1a0dab", "--primary-ink": "#120879", "--bg-accent": "#f0edf8" }
   },
   {
     id: "violet",

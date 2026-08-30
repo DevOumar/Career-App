@@ -157,7 +157,7 @@ export default function AdminLicenseCodesPage({ user, language, initialSearch })
       showCancelButton: true,
       confirmButtonText: copy.confirmRevokeBtn,
       cancelButtonText: copy.cancel,
-      confirmButtonColor: "#b91c1c"
+      confirmButtonColor: "#cf1322"
     });
     if (!result.isConfirmed) return;
     setBusyCode(code);

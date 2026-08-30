@@ -19,10 +19,10 @@ function CoverLetterIllustration() {
       <rect x="40" y="142" width="140" height="7" rx="3.5" fill="var(--line-strong)" />
       <rect x="40" y="158" width="90" height="7" rx="3.5" fill="var(--line-strong)" />
       <path d="M150 182l20 12 20-12" stroke="var(--primary)" strokeWidth="3" fill="none" strokeLinecap="round" />
-      <circle cx="252" cy="60" r="42" fill="#eef0ff" />
+      <circle cx="252" cy="60" r="42" fill="#f5f3ee" />
       <path
         d="M234 58l12 12 22-24"
-        stroke="var(--success, #16a34a)"
+        stroke="var(--success, #237804)"
         strokeWidth="6"
         fill="none"
         strokeLinecap="round"

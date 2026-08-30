@@ -133,7 +133,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
       showCancelButton: true,
       confirmButtonText: copy.removeConfirm,
       cancelButtonText: copy.cancel,
-      confirmButtonColor: "#b91c1c",
+      confirmButtonColor: "#cf1322",
       focusCancel: true
     });
 
