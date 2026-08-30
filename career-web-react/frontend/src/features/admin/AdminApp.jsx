@@ -162,7 +162,8 @@ function AdminApp({
   setSecurityForm,
   securitySaving,
   onSubmitPassword,
-  onDeleteAccount
+  onDeleteAccount,
+  onNavigateLegal
 }) {
   const allowedModules = getAllowedAdminModules(user);
   const [tab, setTab] = useState(() => {
@@ -631,7 +632,18 @@ function AdminApp({
         </main>
       </div>
 
-      <ConnectedFooter copy={landingCopy} onBrandClick={() => setTab("dashboard")} />
+      <ConnectedFooter
+        copy={landingCopy}
+        onBrandClick={() => setTab("dashboard")}
+        onHomeClick={() => setTab("dashboard")}
+        onPricingClick={() => setTab("pricing")}
+        onAboutClick={() => onNavigateLegal?.("about")}
+        onContactClick={() => onNavigateLegal?.("contact")}
+        onPrivacyClick={() => onNavigateLegal?.("privacy")}
+        onTermsClick={() => onNavigateLegal?.("terms")}
+        onCookiesClick={() => onNavigateLegal?.("cookies")}
+        onSecurityClick={() => onNavigateLegal?.("security")}
+      />
 
       {accountDrawerOpen ? (
         <AccountDrawer

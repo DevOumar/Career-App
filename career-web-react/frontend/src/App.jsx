@@ -740,6 +740,7 @@ export default function App() {
   const [session, setSession] = useState(null);
   const [premium, setPremium] = useState(null);
   const [activePage, setActivePage] = useState(readInitialActivePage);
+  const [legalPage, setLegalPage] = useState(null);
 
   const [authError, setAuthError] = useState("");
   const [pageMessage, setPageMessage] = useState("");
@@ -1639,9 +1640,7 @@ export default function App() {
     return (
       <div className="app-boot-splash">
         <div className="app-boot-loader" aria-hidden="true">
-          <span className="brand-mark" aria-hidden="true">
-            <UiIcon name="matchmark" />
-          </span>
+          <img src="/favicon.png" alt="" className="app-boot-icon" />
         </div>
       </div>
     );
@@ -1665,6 +1664,27 @@ export default function App() {
         landingCopy={landingCopy}
       />
     );
+  }
+
+  if (legalPage) {
+    // Pas de onLoginClick/onSignupClick ici : l'utilisateur est déjà connecté,
+    // ces boutons n'ont pas de sens (InfoPage/LegalDocPage les masquent
+    // automatiquement quand ces props sont absentes).
+    const sharedLegalProps = {
+      language,
+      setLanguage,
+      onBack: () => setLegalPage(null),
+      onNavigateLegal: (page) => setLegalPage(page),
+      landingCopy
+    };
+
+    if (legalPage === "privacy") return <PrivacyPolicyPage {...sharedLegalProps} />;
+    if (legalPage === "cookies") return <PrivacyPolicyPage {...sharedLegalProps} focusCookies />;
+    if (legalPage === "security") return <PrivacyPolicyPage {...sharedLegalProps} focusSecurity />;
+    if (legalPage === "terms") return <TermsOfServicePage {...sharedLegalProps} />;
+    if (legalPage === "about") return <AboutPage {...sharedLegalProps} />;
+    if (legalPage === "contact") return <ContactPage {...sharedLegalProps} />;
+    if (legalPage === "pricing") return <PublicPricingPage {...sharedLegalProps} currency={currency} />;
   }
 
   if (user.roleType === "admin") {
@@ -1697,6 +1717,7 @@ export default function App() {
         securitySaving={securitySaving}
         onSubmitPassword={submitPasswordChange}
         onDeleteAccount={handleDeleteAccount}
+        onNavigateLegal={setLegalPage}
       />
     );
   }
@@ -1731,6 +1752,7 @@ export default function App() {
         securitySaving={securitySaving}
         onSubmitPassword={submitPasswordChange}
         onDeleteAccount={handleDeleteAccount}
+        onNavigateLegal={setLegalPage}
       />
     );
   }
@@ -1958,7 +1980,21 @@ export default function App() {
         ) : null}
       </main>
 
-      <ConnectedFooter copy={landingCopy} onBrandClick={() => goTo("home")} />
+      <ConnectedFooter
+        copy={landingCopy}
+        onBrandClick={() => goTo("home")}
+        onHomeClick={() => goTo("home")}
+        onImportClick={() => goTo("import")}
+        onInterviewsClick={() => goTo("entretiens")}
+        onApplicationsClick={() => goTo("candidatures")}
+        onPricingClick={() => goTo("tarifs")}
+        onAboutClick={() => setLegalPage("about")}
+        onContactClick={() => setLegalPage("contact")}
+        onPrivacyClick={() => setLegalPage("privacy")}
+        onTermsClick={() => setLegalPage("terms")}
+        onCookiesClick={() => setLegalPage("cookies")}
+        onSecurityClick={() => setLegalPage("security")}
+      />
 
       {showRoleQuizModal ? <RoleQuizModal language={language} onComplete={handleCompleteRoleQuiz} /> : null}
 
@@ -2180,7 +2216,11 @@ export function ConnectedFooter({
   onContactClick,
   onPricingClick,
   onSecurityClick,
-  onBrandClick
+  onBrandClick,
+  onHomeClick,
+  onImportClick,
+  onInterviewsClick,
+  onApplicationsClick
 }) {
   const hasCompanyNav = Boolean(onAboutClick || onContactClick);
 
@@ -2201,13 +2241,15 @@ export function ConnectedFooter({
       <FooterColumn
         title={copy.footerProduct}
         links={copy.linksProduct}
-        onLinkClick={
-          onPricingClick
-            ? (_link, index) => {
-                if (index === 4) onPricingClick?.();
-              }
-            : undefined
-        }
+        onLinkClick={(_link, index) => {
+          // ["Fonctionnalités", "Matching CV", "Entretiens", "Offres", "Tarifs", "FAQ"]
+          if (index === 0) (onHomeClick || onBrandClick)?.();
+          if (index === 1) (onImportClick || onHomeClick)?.();
+          if (index === 2) (onInterviewsClick || onHomeClick)?.();
+          if (index === 3) (onApplicationsClick || onHomeClick)?.();
+          if (index === 4) onPricingClick?.();
+          if (index === 5) onAboutClick?.();
+        }}
       />
       <FooterColumn
         title={copy.footerCompany}

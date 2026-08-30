@@ -1,7 +1,6 @@
 import React from "react";
 // Petit loader générique utilisé par les pages Admin et École pendant le
 // chargement de leurs données.
-import { UiIcon } from "./UiIcon.jsx";
 
 export function AdminPageLoader({ language, label }) {
   return (
@@ -10,9 +9,7 @@ export function AdminPageLoader({ language, label }) {
       aria-label={label || (language === "en" ? "Loading data" : "Chargement des donnees")}
     >
       <div className="app-boot-loader" aria-hidden="true">
-        <span className="brand-mark" aria-hidden="true">
-          <UiIcon name="matchmark" />
-        </span>
+        <img src="/favicon.png" alt="" className="app-boot-icon" />
       </div>
     </div>
   );

@@ -69,12 +69,16 @@ function LegalDocPage({
         </div>
         <div className="landing-actions">
           <LanguageSwitch language={language} setLanguage={setLanguage} />
-          <button className="landing-link" type="button" onClick={onLoginClick}>
-            {language === "en" ? "Log in" : "Se connecter"}
-          </button>
-          <button className="landing-signup" type="button" onClick={onSignupClick}>
-            {language === "en" ? "Sign up" : "S'inscrire"}
-          </button>
+          {onLoginClick && (
+            <button className="landing-link" type="button" onClick={onLoginClick}>
+              {language === "en" ? "Log in" : "Se connecter"}
+            </button>
+          )}
+          {onSignupClick && (
+            <button className="landing-signup" type="button" onClick={onSignupClick}>
+              {language === "en" ? "Sign up" : "S'inscrire"}
+            </button>
+          )}
         </div>
       </header>
 
