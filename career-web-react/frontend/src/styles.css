@@ -1211,10 +1211,6 @@ select:focus-visible {
   margin-bottom: 0.5rem;
 }
 
-.footer-brand .brand-logo {
-  height: 2.4rem;
-}
-
 .footer-column {
   display: flex;
   flex-direction: column;
