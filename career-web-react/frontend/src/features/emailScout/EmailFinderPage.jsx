@@ -18,9 +18,9 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
     language === "en"
       ? {
           title: "Email Scout",
-          subtitle: "Guess a professional email address from a name and a company — free, pattern-based.",
+          subtitle: "Don't let an application stall for lack of a contact. Find a recruiter's professional email in seconds, for free.",
           disclaimer:
-            "Find the right professional email in seconds, for free. We test the most common formats and check live that the domain can receive mail — with an honest confidence level every time, never a made-up score.",
+            "No more guessing emails at random: we test the most common formats and check live that the domain can receive mail, giving you a reliable lead instead of a shot in the dark.",
           company: "Company name",
           companyPlaceholder: "e.g. Google",
           domain: "Or domain directly (optional)",
@@ -43,9 +43,9 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
         }
       : {
           title: "Email Scout",
-          subtitle: "Devinez une adresse email professionnelle à partir d'un nom et d'une entreprise — gratuit, basé sur des motifs.",
+          subtitle: "Ne laissez plus une candidature s'arrêter faute d'un contact. Retrouvez l'email professionnel d'un recruteur en quelques secondes, gratuitement.",
           disclaimer:
-            "Trouvez la bonne adresse email professionnelle en quelques secondes, gratuitement. On teste les formats les plus courants et on vérifie en direct que le domaine peut recevoir des emails — avec un niveau de confiance honnête à chaque fois.",
+            "Fini les emails envoyés au hasard : on teste les formats les plus courants et on vérifie en direct que le domaine peut recevoir des messages, pour vous donner une piste fiable plutôt qu'un coup de chance.",
           company: "Nom de l'entreprise",
           companyPlaceholder: "ex : Google",
           domain: "Ou domaine directement (optionnel)",

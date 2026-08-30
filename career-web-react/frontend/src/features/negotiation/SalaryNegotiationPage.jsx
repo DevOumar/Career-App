@@ -334,23 +334,43 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
     return (
       <div className="negotiation-layout">
         {historySidebar}
-        <section className="negotiation-summary advice-card">
-          <h3>{copy.summary}</h3>
-          <p>{summary.summary}</p>
-          <div className="three-cols">
+        <section className="negotiation-summary">
+          <div className="negotiation-summary-header">
+            <div className="negotiation-summary-icon">
+              <UiIcon name="matchmark" />
+            </div>
             <div>
-              <h5>{copy.strengths}</h5>
+              <h3>{copy.summary}</h3>
+              <p>{summary.summary}</p>
+            </div>
+          </div>
+
+          <div className="negotiation-summary-cols">
+            <div className="negotiation-summary-block strengths">
+              <h5>
+                <UiIcon name="thumbUp" />
+                {copy.strengths}
+              </h5>
               <ul>
                 {(summary.strengths || []).map((point, idx) => (
-                  <li key={`s-${idx}`}>{point}</li>
+                  <li key={`s-${idx}`}>
+                    <UiIcon name="check" />
+                    <span>{point}</span>
+                  </li>
                 ))}
               </ul>
             </div>
-            <div>
-              <h5>{copy.improvements}</h5>
+            <div className="negotiation-summary-block improvements">
+              <h5>
+                <UiIcon name="chart" />
+                {copy.improvements}
+              </h5>
               <ul>
                 {(summary.improvements || []).map((point, idx) => (
-                  <li key={`i-${idx}`}>{point}</li>
+                  <li key={`i-${idx}`}>
+                    <UiIcon name="chevron" />
+                    <span>{point}</span>
+                  </li>
                 ))}
               </ul>
             </div>

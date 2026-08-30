@@ -8313,12 +8313,135 @@ input[aria-invalid="true"] {
 }
 
 .negotiation-summary {
-  max-width: 700px;
+  max-width: 760px;
   margin: 2rem auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-md);
+  padding: 1.8rem;
 }
 
 .negotiation-summary h3 {
-  margin-top: 0;
+  margin: 0 0 0.5rem;
+}
+
+.negotiation-summary-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  padding-bottom: 1.4rem;
+  margin-bottom: 1.4rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.negotiation-summary-icon {
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  color: #5b3bff;
+  background: #eef2ff;
+}
+
+.negotiation-summary-icon svg {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
+.negotiation-summary-header p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.88rem;
+  line-height: 1.6;
+}
+
+.negotiation-summary-cols {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+
+.negotiation-summary-block {
+  border-radius: 14px;
+  padding: 1.1rem 1.2rem;
+  border: 1px solid var(--line);
+}
+
+.negotiation-summary-block.strengths {
+  background: rgba(16, 185, 129, 0.07);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.negotiation-summary-block.improvements {
+  background: rgba(245, 158, 11, 0.07);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.negotiation-summary-block h5 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.8rem;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.negotiation-summary-block h5 svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  flex: 0 0 auto;
+}
+
+.negotiation-summary-block.strengths h5 svg {
+  color: #10b981;
+}
+
+.negotiation-summary-block.improvements h5 svg {
+  color: #f59e0b;
+}
+
+.negotiation-summary-block ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.negotiation-summary-block li {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-2);
+}
+
+.negotiation-summary-block li svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+  margin-top: 0.2rem;
+}
+
+.negotiation-summary-block.strengths li svg {
+  color: #10b981;
+}
+
+.negotiation-summary-block.improvements li svg {
+  color: #f59e0b;
+  transform: rotate(-90deg);
+}
+
+@media (max-width: 640px) {
+  .negotiation-summary {
+    padding: 1.3rem;
+  }
 }
 
 /* Admin interface */
