@@ -434,6 +434,33 @@ export async function deleteNegotiationConversation({ userId, conversationId }) 
   });
 }
 
+export async function listInterviewConversations(userId) {
+  if (!userId) return [];
+  const data = await request(`/interview/conversations?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function saveInterviewConversation({ userId, title, payload }) {
+  const data = await request("/interview/conversations", {
+    method: "POST",
+    body: { userId, title, payload }
+  });
+  return data.conversation;
+}
+
+export async function updateInterviewConversation({ userId, conversationId, title, payload }) {
+  return request(`/interview/conversations/${encodeURIComponent(conversationId)}`, {
+    method: "PUT",
+    body: { userId, title, payload }
+  });
+}
+
+export async function deleteInterviewConversation({ userId, conversationId }) {
+  return request(`/interview/conversations/${encodeURIComponent(conversationId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
+}
+
 export async function listCoverLetters(userId) {
   if (!userId) return [];
   const data = await request(`/coverletter/conversations?userId=${encodeURIComponent(userId)}`);

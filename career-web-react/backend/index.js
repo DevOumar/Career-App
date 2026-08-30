@@ -484,6 +484,15 @@ await db.exec(`
     payload_json TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS interview_conversations (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS cover_letters (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,

@@ -1,6 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { getPlanById } from "../../data/plans.js";
+import {
+  listInterviewConversations,
+  saveInterviewConversation,
+  updateInterviewConversation,
+  deleteInterviewConversation
+} from "../../lib/inMemoryDb.js";
 
 // Client API du module Entretiens : appelle directement le backend JS
 // (backend/routes/interview.js, stateless — l'historique de conversation
@@ -100,7 +106,7 @@ function InterviewAssistantIllustration() {
   );
 }
 
-function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
+function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) {
   const isFreePlan = !getPlanById(subscription?.planId)?.grantsPremium;
 
   // Setup form states
@@ -115,6 +121,10 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
   const [loading, setLoading] = useState(false);
   const [statusText, setStatusText] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Historique des entretiens sauvegardés
+  const [conversations, setConversations] = useState([]);
+  const [conversationId, setConversationId] = useState(null);
 
   // Inputs & Media states
   const [inputText, setInputText] = useState("");
@@ -140,6 +150,81 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
       stopSpeaking();
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId) return undefined;
+    listInterviewConversations(userId)
+      .then((items) => {
+        if (!cancelled) setConversations(items || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  function conversationTitle() {
+    const typeLabel = typeEntretien === "technique" ? "Technique" : typeEntretien === "direction" ? "Direction" : "RH";
+    return domaine ? `${typeLabel} · ${domaine}` : typeLabel;
+  }
+
+  function buildConversationPayload(nextMessages) {
+    return { typeEntretien, domaine, offre, messages: nextMessages };
+  }
+
+  async function persistConversation(nextMessages) {
+    if (!userId) return;
+    const payload = buildConversationPayload(nextMessages);
+    try {
+      if (conversationId) {
+        await updateInterviewConversation({ userId, conversationId, payload });
+        setConversations((prev) =>
+          prev.map((item) => (item.id === conversationId ? { ...item, ...payload, updatedAt: new Date().toISOString() } : item))
+        );
+      } else {
+        const created = await saveInterviewConversation({ userId, title: conversationTitle(), payload });
+        setConversationId(created.id);
+        setConversations((prev) => [{ ...created }, ...prev]);
+      }
+    } catch (_err) {
+      // La sauvegarde de l'historique est secondaire : l'entretien en cours reste utilisable même si elle échoue.
+    }
+  }
+
+  function handleNewConversation() {
+    setInSession(false);
+    setMessages([]);
+    setConversationId(null);
+    setErrorMsg("");
+    conversationHistoryRef.current = [];
+    setMode("chat");
+  }
+
+  function handleResumeConversation(conv) {
+    setConversationId(conv.id);
+    setTypeEntretien(conv.typeEntretien || "rh");
+    setDomaine(conv.domaine || "");
+    setOffre(conv.offre || "");
+    setMessages(conv.messages || []);
+    conversationHistoryRef.current = [];
+    setMode("chat");
+    setInSession(true);
+    setErrorMsg("");
+  }
+
+  async function handleDeleteConversation(event, conv) {
+    event.stopPropagation();
+    if (!userId) return;
+    if (typeof window !== "undefined" && !window.confirm("Supprimer cet entretien ?")) return;
+    try {
+      await deleteInterviewConversation({ userId, conversationId: conv.id });
+      setConversations((prev) => prev.filter((item) => item.id !== conv.id));
+      if (conversationId === conv.id) handleNewConversation();
+    } catch (_err) {
+      // Non bloquant.
+    }
+  }
 
   useEffect(() => {
     if (inSession && messagesEndRef.current) {
@@ -231,6 +316,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
 
       setMessages([firstMsg]);
       setInSession(true);
+      persistConversation([firstMsg]);
 
       if (selectedMode === "call") {
         startCallTimer();
@@ -259,7 +345,8 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
       text,
     };
 
-    setMessages((prev) => [...prev, userMsg]);
+    const withUser = [...messages, userMsg];
+    setMessages(withUser);
     setInputText("");
     setLoading(true);
     setStatusText("Le recruteur analyse votre réponse...");
@@ -277,7 +364,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
         role: "recruiter",
         text: res.message,
       };
-      setMessages((prev) => [...prev, recruiterMsg]);
+      const withReply = [...withUser, recruiterMsg];
+      setMessages(withReply);
+      persistConversation(withReply);
 
       if (mode === "call") {
         setLastCaption({ role: "recruiter", text: res.message });
@@ -286,8 +375,8 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
         });
       }
     } catch (err) {
-      setMessages((prev) => [
-        ...prev,
+      setMessages([
+        ...withUser,
         {
           id: (Date.now() + 1).toString(),
           role: "recruiter",
@@ -341,7 +430,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
               role: "recruiter",
               text: res.message,
             };
-            setMessages((prev) => [...prev, userMsg, recruiterMsg]);
+            const nextMessages = [...messages, userMsg, recruiterMsg];
+            setMessages(nextMessages);
+            persistConversation(nextMessages);
           } catch (err) {
             setErrorMsg(err.message);
           } finally {
@@ -401,7 +492,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
               text: res.message,
             };
 
-            setMessages((prev) => [...prev, userMsg, recruiterMsg]);
+            const nextMessages = [...messages, userMsg, recruiterMsg];
+            setMessages(nextMessages);
+            persistConversation(nextMessages);
             setLastCaption({ role: "recruiter", text: res.message });
 
             setCallStatus("Le recruteur vous répond...");
@@ -444,7 +537,8 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
       role: "candidate",
       text: "Je souhaite clore l'entretien et obtenir mon bilan complet.",
     };
-    setMessages((prev) => [...prev, endMsg]);
+    const withEndMsg = [...messages, endMsg];
+    setMessages(withEndMsg);
 
     try {
       const res = await sendInterviewMessage(END_INTERVIEW_MESSAGE, {
@@ -459,7 +553,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
         role: "recruiter",
         text: res.message,
       };
-      setMessages((prev) => [...prev, reportMsg]);
+      const withReport = [...withEndMsg, reportMsg];
+      setMessages(withReport);
+      persistConversation(withReport);
 
       // If in call mode, switch back to chat to display full formatted report cleanly
       if (mode === "call") {
@@ -487,6 +583,8 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
     setIsRecordingCall(false);
     setInSession(false);
     setMessages([]);
+    setConversationId(null);
+    conversationHistoryRef.current = [];
     setErrorMsg("");
     setStatusText("");
   }
@@ -602,10 +700,44 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
     );
   }
 
+  const historySidebar = (
+    <aside className="interview-history">
+      <button type="button" className="interview-new-btn" onClick={handleNewConversation}>
+        <UiIcon name="plus" /> Nouvel entretien
+      </button>
+      <span className="interview-history-label">Historique</span>
+      {conversations.length ? (
+        <ul className="interview-history-list">
+          {conversations.map((conv) => (
+            <li
+              key={conv.id}
+              className={`interview-history-item${conv.id === conversationId ? " active" : ""}`}
+              onClick={() => handleResumeConversation(conv)}
+            >
+              <span className="interview-history-title">{conv.title || "Entretien"}</span>
+              <button
+                type="button"
+                className="interview-history-delete"
+                onClick={(event) => handleDeleteConversation(event, conv)}
+                aria-label="Supprimer"
+              >
+                <UiIcon name="trash" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="interview-history-empty">Aucun entretien enregistré pour l'instant.</p>
+      )}
+    </aside>
+  );
+
   // --- SETUP SCREEN ---
   if (!inSession) {
     return (
-      <section className="interview-page">
+      <div className="interview-layout">
+        {historySidebar}
+        <section className="interview-page">
         <div className="card setup-card">
           <div className="setup-header">
             <div className="setup-header-icon">
@@ -698,13 +830,16 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
             </div>
           )}
         </div>
-      </section>
+        </section>
+      </div>
     );
   }
 
   // --- ACTIVE SESSION SCREEN ---
   return (
-    <section className="interview-page interview-session">
+    <div className="interview-layout">
+      {historySidebar}
+      <section className="interview-page interview-session">
       <div className="interview-session-bar">
         <div className="interview-session-tags">
           <span className={`interview-session-tag ${typeEntretien}`}>
@@ -818,7 +953,8 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
           </div>
         </div>
       )}
-    </section>
+      </section>
+    </div>
   );
 }
 

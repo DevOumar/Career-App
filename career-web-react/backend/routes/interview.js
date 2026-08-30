@@ -67,7 +67,13 @@ export function registerInterviewRoutes(app) {
     AI_PROVIDER,
     GROQ_API_KEY,
     OPENAI_API_KEY,
-    XAI_API_KEY
+    XAI_API_KEY,
+    db,
+    crypto,
+    nowIso,
+    coerceString,
+    getUserRowById,
+    parseJsonField
   } = app.locals.ctx;
 
   async function callLlmMessages(messages) {
@@ -296,6 +302,113 @@ export function registerInterviewRoutes(app) {
     } catch (error) {
       console.error("Erreur API audio interview:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  // Historique des entretiens sauvegardés (même schéma que
+  // negotiation_conversations / cover_letters : payload_json libre).
+  app.get("/api/interview/conversations", async (req, res) => {
+    try {
+      const userId = coerceString(req.query.userId);
+      if (!userId) return res.status(400).json({ error: "userId requis." });
+
+      const { rows } = await db.query(
+        "SELECT id, title, created_at, updated_at, payload_json FROM interview_conversations WHERE user_id = $1 ORDER BY updated_at DESC",
+        [userId]
+      );
+
+      const items = rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        ...parseJsonField(row.payload_json, {})
+      }));
+
+      return res.json({ items });
+    } catch (error) {
+      return res.status(500).json({ error: error.message || "Erreur serveur." });
+    }
+  });
+
+  app.post("/api/interview/conversations", async (req, res) => {
+    try {
+      const userId = coerceString(req.body?.userId);
+      const payload = req.body?.payload;
+      const title = coerceString(req.body?.title) || "Entretien";
+
+      if (!userId || !payload) {
+        return res.status(400).json({ error: "userId et payload requis." });
+      }
+
+      const user = await getUserRowById(userId);
+      if (!user) return res.status(404).json({ error: "Utilisateur introuvable." });
+
+      const id = `int-${crypto.randomUUID()}`;
+      const createdAt = nowIso();
+
+      await db.query(
+        `INSERT INTO interview_conversations (id, user_id, title, created_at, updated_at, payload_json)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [id, userId, title, createdAt, createdAt, JSON.stringify(payload)]
+      );
+
+      return res.status(201).json({
+        conversation: { id, userId, title, createdAt, updatedAt: createdAt, ...payload }
+      });
+    } catch (error) {
+      return res.status(500).json({ error: error.message || "Erreur serveur." });
+    }
+  });
+
+  app.put("/api/interview/conversations/:id", async (req, res) => {
+    try {
+      const userId = coerceString(req.body?.userId);
+      const conversationId = coerceString(req.params.id);
+      const payload = req.body?.payload;
+      const title = coerceString(req.body?.title);
+
+      if (!userId || !conversationId || !payload) {
+        return res.status(400).json({ error: "userId, id et payload requis." });
+      }
+
+      const { rows } = await db.query(
+        "SELECT id FROM interview_conversations WHERE id = $1 AND user_id = $2",
+        [conversationId, userId]
+      );
+      if (!rows[0]) return res.status(404).json({ error: "Conversation introuvable." });
+
+      const updatedAt = nowIso();
+      if (title) {
+        await db.query(
+          "UPDATE interview_conversations SET payload_json = $1, updated_at = $2, title = $3 WHERE id = $4",
+          [JSON.stringify(payload), updatedAt, title, conversationId]
+        );
+      } else {
+        await db.query(
+          "UPDATE interview_conversations SET payload_json = $1, updated_at = $2 WHERE id = $3",
+          [JSON.stringify(payload), updatedAt, conversationId]
+        );
+      }
+
+      return res.json({ ok: true, updatedAt });
+    } catch (error) {
+      return res.status(500).json({ error: error.message || "Erreur serveur." });
+    }
+  });
+
+  app.delete("/api/interview/conversations/:id", async (req, res) => {
+    try {
+      const userId = coerceString(req.query.userId);
+      const conversationId = coerceString(req.params.id);
+      if (!userId || !conversationId) {
+        return res.status(400).json({ error: "userId et id requis." });
+      }
+
+      await db.query("DELETE FROM interview_conversations WHERE id = $1 AND user_id = $2", [conversationId, userId]);
+      return res.json({ ok: true });
+    } catch (error) {
+      return res.status(500).json({ error: error.message || "Erreur serveur." });
     }
   });
 }
