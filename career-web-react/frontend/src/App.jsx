@@ -226,7 +226,7 @@ function getCurrency() {
 export const THEME_PRESETS = [
   {
     id: "blue",
-    label: { fr: "Bleu (défaut)", en: "Blue (default)" },
+    label: { fr: "Bleu", en: "Blue" },
     swatch: "#1a0dab",
     vars: { "--primary": "#1a0dab", "--primary-2": "#1a0dab", "--primary-ink": "#120879", "--bg-accent": "#f0edf8" }
   },
@@ -244,7 +244,7 @@ export const THEME_PRESETS = [
   },
   {
     id: "orange",
-    label: { fr: "Corail", en: "Coral" },
+    label: { fr: "Corail (défaut)", en: "Coral (default)" },
     swatch: "#ea580c",
     vars: { "--primary": "#ea580c", "--primary-2": "#fb923c", "--primary-ink": "#431407", "--bg-accent": "#fff7ed" }
   },
@@ -265,14 +265,14 @@ export const THEME_PRESETS = [
 function getTheme() {
   try {
     const stored = localStorage.getItem("career_app_theme");
-    return THEME_PRESETS.some((item) => item.id === stored) ? stored : "blue";
+    return THEME_PRESETS.some((item) => item.id === stored) ? stored : "orange";
   } catch (_error) {
-    return "blue";
+    return "orange";
   }
 }
 
 function applyThemeVars(themeId) {
-  const preset = THEME_PRESETS.find((item) => item.id === themeId) || THEME_PRESETS[0];
+  const preset = THEME_PRESETS.find((item) => item.id === themeId) || THEME_PRESETS.find((item) => item.id === "orange");
   const root = document.documentElement;
   Object.entries(preset.vars).forEach(([key, value]) => {
     root.style.setProperty(key, value);
