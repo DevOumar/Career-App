@@ -8111,6 +8111,117 @@ input[aria-invalid="true"] {
   color: #fff;
 }
 
+.interview-message-bubble:has(.interview-bilan) {
+  max-width: 100%;
+}
+
+.interview-message-paragraph {
+  margin: 0 0 0.5rem;
+  line-height: 1.55;
+}
+
+.interview-message-paragraph:last-child {
+  margin-bottom: 0;
+}
+
+.interview-message-disclaimer {
+  display: block;
+  margin-top: 0.6rem;
+  padding-top: 0.4rem;
+  border-top: 1px dashed var(--line);
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--text-3);
+}
+
+/* Carte de bilan final (Terminer & Bilan) */
+.interview-bilan {
+  width: 100%;
+}
+
+.interview-bilan-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.7rem;
+  padding-bottom: 0.6rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--primary);
+}
+
+.interview-bilan-header svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.interview-bilan-intro {
+  margin: 0 0 0.9rem;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+.interview-bilan-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.interview-bilan-block {
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+}
+
+.interview-bilan-block h5 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.interview-bilan-block h5 svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.interview-bilan-block p {
+  margin: 0;
+  font-size: 0.87rem;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.interview-bilan-block.strengths {
+  background: rgba(16, 185, 129, 0.07);
+  border-color: rgba(16, 185, 129, 0.28);
+}
+
+.interview-bilan-block.strengths h5 svg {
+  color: #10b981;
+}
+
+.interview-bilan-block.improvements {
+  background: rgba(245, 158, 11, 0.07);
+  border-color: rgba(245, 158, 11, 0.3);
+}
+
+.interview-bilan-block.improvements h5 svg {
+  color: #f59e0b;
+}
+
+.interview-bilan-block.summary {
+  background: rgba(47, 91, 255, 0.06);
+  border-color: rgba(47, 91, 255, 0.25);
+}
+
+.interview-bilan-block.summary h5 svg {
+  color: var(--primary);
+}
+
 .interview-typing {
   align-self: flex-start;
   display: flex;

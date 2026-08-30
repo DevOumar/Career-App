@@ -492,41 +492,69 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
   }
 
   // --- Render formatted text with disclaimer handling ---
+  // Convertit le markdown **gras** minimal utilisé par le LLM en <strong>.
+  function parseBold(str) {
+    return str.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part));
+  }
+
+  const BILAN_PATTERN = /1\.\s*\*\*(.+?)\*\*\s*:?\s*([\s\S]*?)\n2\.\s*\*\*(.+?)\*\*\s*:?\s*([\s\S]*?)\n3\.\s*\*\*(.+?)\*\*\s*:?\s*([\s\S]*)/;
+
+  function renderBilanCard(cleanText) {
+    const match = cleanText.match(BILAN_PATTERN);
+    if (!match) return null;
+    const intro = cleanText.slice(0, match.index).trim();
+    const sections = [
+      { title: match[1].trim(), body: match[2].trim(), icon: "thumbUp", tone: "strengths" },
+      { title: match[3].trim(), body: match[4].trim(), icon: "chart", tone: "improvements" },
+      { title: match[5].trim(), body: match[6].trim(), icon: "check", tone: "summary" }
+    ];
+
+    return (
+      <div className="interview-bilan">
+        <div className="interview-bilan-header">
+          <UiIcon name="matchmark" />
+          <strong>Bilan de l'entretien</strong>
+        </div>
+        {intro && <p className="interview-bilan-intro">{parseBold(intro)}</p>}
+        <div className="interview-bilan-sections">
+          {sections.map((section, i) => (
+            <div key={i} className={`interview-bilan-block ${section.tone}`}>
+              <h5>
+                <UiIcon name={section.icon} />
+                {section.title}
+              </h5>
+              <p>{parseBold(section.body)}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   function renderMessageText(text) {
     const cleanText = text.replace(DISCLAIMER, "").trim();
     const hasDisclaimer = text.includes(DISCLAIMER);
+    const bilanCard = renderBilanCard(cleanText);
 
-    // Format paragraphs & linebreaks nicely
-    const paragraphs = cleanText.split("\n\n").map((p, i) => (
-      <p key={i} style={{ margin: "0 0 0.5rem 0", lineHeight: "1.55" }}>
-        {p.split("\n").map((line, j) => (
-          <React.Fragment key={j}>
-            {line}
-            {j < p.split("\n").length - 1 && <br />}
-          </React.Fragment>
+    const body = bilanCard || (
+      <>
+        {cleanText.split("\n\n").map((p, i) => (
+          <p className="interview-message-paragraph" key={i}>
+            {p.split("\n").map((line, j) => (
+              <React.Fragment key={j}>
+                {parseBold(line)}
+                {j < p.split("\n").length - 1 && <br />}
+              </React.Fragment>
+            ))}
+          </p>
         ))}
-      </p>
-    ));
+      </>
+    );
 
     return (
       <>
-        {paragraphs}
-        {hasDisclaimer && (
-          <span
-            className="disclaimer"
-            style={{
-              display: "block",
-              marginTop: "0.6rem",
-              fontSize: "0.75rem",
-              color: "var(--text-muted, #718096)",
-              fontStyle: "italic",
-              borderTop: "1px dashed var(--line, #e2e8f0)",
-              paddingTop: "0.4rem",
-            }}
-          >
-            {DISCLAIMER}
-          </span>
-        )}
+        {body}
+        {hasDisclaimer && <span className="interview-message-disclaimer">{DISCLAIMER}</span>}
       </>
     );
   }
