@@ -183,7 +183,9 @@ function ApplicationsPage({ language, userId, cvHistory }) {
                           {typeof item.matchScore === "number" ? <span className="kanban-score">{item.matchScore}%</span> : null}
                         </div>
                         {item.company ? <p className="kanban-company">{item.company}</p> : null}
-                        {item.location ? <p className="kanban-location">{item.location}</p> : null}
+                        {item.location && item.location !== "Non précisé" ? (
+                          <p className="kanban-location">{item.location}</p>
+                        ) : null}
                         <p className="kanban-date">
                           {item.status === "applied" && item.appliedAt
                             ? `${copy.appliedAtLabel} ${formatShortDate(item.appliedAt, language)}`

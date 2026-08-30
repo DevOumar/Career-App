@@ -72,7 +72,8 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
   }, [userId]);
 
   function conversationTitle() {
-    return offer?.title ? `${offer.title}${offer.location ? ` · ${offer.location}` : ""}` : copy.untitled;
+    const hasLocation = offer?.location && offer.location !== "Non précisé";
+    return offer?.title ? `${offer.title}${hasLocation ? ` · ${offer.location}` : ""}` : copy.untitled;
   }
 
   function buildPayload(nextMessages, nextSalaryReference, nextSummary) {
