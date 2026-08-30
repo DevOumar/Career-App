@@ -93,7 +93,7 @@ function ApplicationsPage({ language, userId, cvHistory }) {
       showCancelButton: true,
       confirmButtonText: copy.delete,
       cancelButtonText: copy.formCancel,
-      confirmButtonColor: "#dc2626"
+      confirmButtonColor: "#f5222d"
     });
     if (!result.isConfirmed) return;
     const previous = items;

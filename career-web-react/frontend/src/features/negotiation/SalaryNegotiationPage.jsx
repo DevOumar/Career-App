@@ -21,11 +21,11 @@ function NegotiationIllustration() {
       <rect x="20" y="150" width="90" height="12" rx="6" fill="var(--line)" />
       <rect x="60" y="30" width="10" height="130" rx="5" fill="var(--line)" />
       <rect x="45" y="70" width="40" height="60" rx="8" fill="var(--primary)" opacity="0.85" />
-      <circle cx="65" cy="52" r="16" fill="#eef0ff" stroke="var(--primary)" strokeWidth="2" />
+      <circle cx="65" cy="52" r="16" fill="#f5f3ee" stroke="var(--primary)" strokeWidth="2" />
       <rect x="210" y="150" width="90" height="12" rx="6" fill="var(--line)" />
       <rect x="248" y="30" width="10" height="130" rx="5" fill="var(--line)" />
-      <rect x="233" y="70" width="40" height="60" rx="8" fill="#4f46e5" opacity="0.85" />
-      <circle cx="253" cy="52" r="16" fill="#eef0ff" stroke="#4f46e5" strokeWidth="2" />
+      <rect x="233" y="70" width="40" height="60" rx="8" fill="#1a0dab" opacity="0.85" />
+      <circle cx="253" cy="52" r="16" fill="#f5f3ee" stroke="#1a0dab" strokeWidth="2" />
       <path
         d="M105 100h40a10 10 0 0110 10v4a10 10 0 01-10 10h-24l-10 10v-10h-6a10 10 0 01-10-10v-4a10 10 0 0110-10z"
         fill="var(--surface-2)"

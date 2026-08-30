@@ -120,7 +120,7 @@ export default function SchoolPromotionsPage({ user, language }) {
       showCancelButton: true,
       confirmButtonText: copy.delete,
       cancelButtonText: language === "en" ? "Cancel" : "Annuler",
-      confirmButtonColor: "#dc2626"
+      confirmButtonColor: "#f5222d"
     });
     if (!result.isConfirmed) return;
     await deleteSchoolPromotion(user.id, item.id);

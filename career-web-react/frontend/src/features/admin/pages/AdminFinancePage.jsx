@@ -191,7 +191,7 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
       showCancelButton: true,
       confirmButtonText: copy.confirmRefundBtn,
       cancelButtonText: copy.cancel,
-      confirmButtonColor: "#b91c1c"
+      confirmButtonColor: "#cf1322"
     });
     if (!result.isConfirmed) return;
     setRefundingId(item.id);

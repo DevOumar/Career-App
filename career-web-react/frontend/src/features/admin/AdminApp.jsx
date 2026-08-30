@@ -667,9 +667,9 @@ function AdminApp({
 }
 
 export const ADMIN_DASHBOARD_ROLES = [
-  { id: "student", icon: "profile", color: "#2f5bff" },
-  { id: "school", icon: "shield", color: "#0e9f6e" },
-  { id: "recruiter_firm", icon: "briefcase", color: "#d97706" }
+  { id: "student", icon: "profile", color: "#1a0dab" },
+  { id: "school", icon: "shield", color: "#237804" },
+  { id: "recruiter_firm", icon: "briefcase", color: "#fa8c16" }
 ];
 
 export function AdminTrendChart({ trend, language, valueKey = "count", formatValue }) {

@@ -290,7 +290,7 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
       showCancelButton: true,
       confirmButtonText: copy.deleteConfirm,
       cancelButtonText: copy.cancel,
-      confirmButtonColor: "#b91c1c",
+      confirmButtonColor: "#cf1322",
       focusCancel: true,
       preConfirm: (value) => {
         if (value !== item.email) {
@@ -343,7 +343,7 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
       showCancelButton: true,
       confirmButtonText: isSuspending ? copy.suspend : copy.reactivate,
       cancelButtonText: copy.cancel,
-      confirmButtonColor: isSuspending ? "#dc2626" : "#4f46e5",
+      confirmButtonColor: isSuspending ? "#f5222d" : "#1a0dab",
       focusCancel: true
     });
     if (!result.isConfirmed) return;
