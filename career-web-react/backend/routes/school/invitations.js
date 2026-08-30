@@ -307,19 +307,19 @@ app.post("/api/school/invitations/send", async (req, res) => {
     if (transporter) {
       const html = `
         <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
-          <h2 style="color:#2f5bff;margin:0 0 18px;">Career App</h2>
+          <h2 style="color:#2f5bff;margin:0 0 18px;">Career CV</h2>
           <p style="margin:0 0 14px;color:#1f2634;">Bonjour,</p>
           <p style="margin:0 0 14px;line-height:1.6;color:#1f2634;">
-            ${organizationName} vous invite à rejoindre Career App pour optimiser votre CV et préparer vos candidatures.
+            ${organizationName} vous invite à rejoindre Career CV pour optimiser votre CV et préparer vos candidatures.
           </p>
           <p style="margin:0 0 14px;color:#1f2634;">Votre code de licence : <strong>${activeCode.code}</strong></p>
           <p style="margin:0 0 14px;color:#1f2634;">Créez votre compte puis renseignez ce code depuis la page Tarifs pour activer votre accès gratuitement.</p>
-          <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career App</p>
+          <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career CV</p>
         </div>`;
-      const text = `Bonjour,\n\n${organizationName} vous invite à rejoindre Career App.\nVotre code de licence : ${activeCode.code}\nCréez votre compte puis renseignez ce code depuis la page Tarifs.\n\n— L'équipe Career App`;
+      const text = `Bonjour,\n\n${organizationName} vous invite à rejoindre Career CV.\nVotre code de licence : ${activeCode.code}\nCréez votre compte puis renseignez ce code depuis la page Tarifs.\n\n— L'équipe Career CV`;
       const recipient = AUTH_EMAIL_TO || email;
       try {
-        await transporter.sendMail({ from: MAIL_FROM, to: recipient, subject: "Invitation Career App", html, text });
+        await transporter.sendMail({ from: MAIL_FROM, to: recipient, subject: "Invitation Career CV", html, text });
       } catch (_error) {
         // Invitation is still recorded even if the email delivery fails.
       }

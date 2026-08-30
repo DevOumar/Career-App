@@ -11,8 +11,8 @@ import { PLANS, PLAN_SEGMENTS, getPlanById } from "../../data/plans.js";
 function PublicPricingPage({ language, setLanguage, onBack, onLoginClick, onSignupClick, onNavigateLegal, landingCopy, currency = "EUR" }) {
   const isEn = language === "en";
   const copy = isEn
-    ? { eyebrow: "Pricing", title: "Plans & pricing", subtitle: "Every plan currently in effect on Career App — no surprises." }
-    : { eyebrow: "Tarifs", title: "Plans & tarifs", subtitle: "Toutes les grilles tarifaires en vigueur sur Career App — sans surprise." };
+    ? { eyebrow: "Pricing", title: "Plans & pricing", subtitle: "Every plan currently in effect on Career CV — no surprises." }
+    : { eyebrow: "Tarifs", title: "Plans & tarifs", subtitle: "Toutes les grilles tarifaires en vigueur sur Career CV — sans surprise." };
   const pricingCopy = PRICING_COPY[language] || PRICING_COPY.fr;
 
   return (

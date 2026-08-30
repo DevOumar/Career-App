@@ -235,7 +235,7 @@ function SchoolApp({
             <span />
             <span />
           </button>
-          Career App <span className="admin-badge school-badge">École</span>
+          Career CV <span className="admin-badge school-badge">École</span>
         </div>
 
         <div className="topbar-search-box" ref={searchBoxRef}>
@@ -367,7 +367,7 @@ function SchoolApp({
                 {copy.logout}
               </button>
               <div className="user-dropdown-secured">
-                {copy.secured} <strong>Career App</strong>
+                {copy.secured} <strong>Career CV</strong>
               </div>
             </div>
           ) : null}

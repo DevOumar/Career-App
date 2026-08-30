@@ -52,7 +52,7 @@ export default function SchoolLicensePage({ user, language, currency }) {
     language === "en"
       ? {
           title: "My license",
-          subtitle: "Seats granted by Career App for your institution.",
+          subtitle: "Seats granted by Career CV for your institution.",
           seats: "Seats used",
           plan: "Plan",
           created: "Issued on",
@@ -64,11 +64,11 @@ export default function SchoolLicensePage({ user, language, currency }) {
           hide: "Hide code",
           remaining: "seats left",
           emptyTitle: "No license code yet",
-          empty: "Contact Career App to get a license for your institution."
+          empty: "Contact Career CV to get a license for your institution."
         }
       : {
           title: "Ma licence",
-          subtitle: "Sièges accordés par Career App pour votre établissement.",
+          subtitle: "Sièges accordés par Career CV pour votre établissement.",
           seats: "Sièges utilisés",
           plan: "Plan",
           created: "Émise le",
@@ -80,7 +80,7 @@ export default function SchoolLicensePage({ user, language, currency }) {
           hide: "Masquer le code",
           remaining: "sièges restants",
           emptyTitle: "Aucun code de licence",
-          empty: "Contactez Career App pour obtenir une licence pour votre établissement."
+          empty: "Contactez Career CV pour obtenir une licence pour votre établissement."
         };
 
   const [codes, setCodes] = useState([]);

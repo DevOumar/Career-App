@@ -101,7 +101,7 @@ const OPENAI_API_KEY = String(process.env.OPENAI_API_KEY || "").trim();
 const AI_TIMEOUT_MS = Number(process.env.AI_TIMEOUT_MS || 45000);
 const SMTP_USER = String(process.env.SMTP_USER || process.env.GMAIL_USER || "").trim();
 const SMTP_PASS = String(process.env.SMTP_PASS || process.env.GMAIL_APP_PASSWORD || "").trim();
-const MAIL_FROM_NAME = String(process.env.MAIL_FROM_NAME || "Career App").trim();
+const MAIL_FROM_NAME = String(process.env.MAIL_FROM_NAME || "Career CV").trim();
 const MAIL_FROM = String(process.env.MAIL_FROM || "").trim();
 const MAIL_FROM_ADDRESS = String(process.env.MAIL_FROM_ADDRESS || SMTP_USER).trim();
 const AUTH_EMAIL_TO = String(process.env.AUTH_EMAIL_TO || "").trim();
@@ -807,25 +807,25 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
   const isSignup = purpose === "signup";
 
   const subject = isSignup
-    ? `Bienvenue sur Career App - votre code de vérification : ${safeCode}`
-    : `${safeCode} est votre code de vérification Career App`;
+    ? `Bienvenue sur Career CV - votre code de vérification : ${safeCode}`
+    : `${safeCode} est votre code de vérification Career CV`;
 
-  const introTitle = isSignup ? "Bienvenue sur Career App !" : "Vérifiez votre messagerie";
+  const introTitle = isSignup ? "Bienvenue sur Career CV !" : "Vérifiez votre messagerie";
   const introText = isSignup
-    ? `Merci de rejoindre Career App, ${safeName}. Confirmez votre adresse <strong>${safeEmail}</strong> avec le code ci-dessous pour activer votre compte et commencer à optimiser vos candidatures.`
-    : `Utilisez le code ci-dessous pour continuer vers Career App avec l'adresse <strong>${safeEmail}</strong>.`;
+    ? `Merci de rejoindre Career CV, ${safeName}. Confirmez votre adresse <strong>${safeEmail}</strong> avec le code ci-dessous pour activer votre compte et commencer à optimiser vos candidatures.`
+    : `Utilisez le code ci-dessous pour continuer vers Career CV avec l'adresse <strong>${safeEmail}</strong>.`;
 
   const text = [
-    isSignup ? `Bienvenue sur Career App, ${firstName || ""} !`.trim() : `Bonjour ${firstName || ""}`.trim(),
+    isSignup ? `Bienvenue sur Career CV, ${firstName || ""} !`.trim() : `Bonjour ${firstName || ""}`.trim(),
     "",
     isSignup
-      ? `Merci de rejoindre Career App. Votre code de vérification est : ${code}`
-      : `Votre code de vérification Career App est : ${code}`,
+      ? `Merci de rejoindre Career CV. Votre code de vérification est : ${code}`
+      : `Votre code de vérification Career CV est : ${code}`,
     "",
     "Ce code expire dans 10 minutes.",
     "Ne le partagez avec personne. Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email.",
     "",
-    "Career App"
+    "Career CV"
   ].join("\n");
 
   const html = `<!doctype html>
@@ -833,7 +833,7 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>${isSignup ? "Bienvenue sur Career App" : "Code de vérification Career App"}</title>
+    <title>${isSignup ? "Bienvenue sur Career CV" : "Code de vérification Career CV"}</title>
   </head>
   <body style="margin:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#101828;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb;padding:32px 12px;">
@@ -843,7 +843,7 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
             <tr>
               <td style="padding:28px 30px 18px;">
                 <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#4f46e5,#10b981);vertical-align:middle;"></div>
-                <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#101828;vertical-align:middle;">Career App</span>
+                <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#101828;vertical-align:middle;">Career CV</span>
               </td>
             </tr>
             <tr>
@@ -871,7 +871,7 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
             </tr>
             <tr>
               <td style="padding:18px 30px;background:#f8fafc;border-top:1px solid #e5eaf3;color:#667085;font-size:12px;line-height:1.5;">
-                © ${new Date().getFullYear()} Career App. Email automatique envoyé pour sécuriser votre connexion.
+                © ${new Date().getFullYear()} Career CV. Email automatique envoyé pour sécuriser votre connexion.
               </td>
             </tr>
           </table>
@@ -908,13 +908,13 @@ function buildAnnouncementEmail({ subject, message, firstName }) {
 
   const html = `
     <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
-      <h2 style="color:#2f5bff;margin:0 0 18px;">Career App</h2>
+      <h2 style="color:#2f5bff;margin:0 0 18px;">Career CV</h2>
       <p style="margin:0 0 14px;color:#1f2634;">${greeting}</p>
       ${paragraphs}
-      <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career App</p>
+      <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career CV</p>
     </div>`;
 
-  const text = `${greeting}\n\n${message}\n\n— L'équipe Career App`;
+  const text = `${greeting}\n\n${message}\n\n— L'équipe Career CV`;
 
   return { subject, html, text };
 }
@@ -937,7 +937,7 @@ async function sendVerificationEmail({ to, code, firstName, purpose = "login" })
   const recipient = AUTH_EMAIL_TO || to;
 
   if (!SMTP_USER || !SMTP_PASS) {
-    console.warn("[Career App] SMTP non configure. Code affiche dans les logs uniquement.");
+    console.warn("[Career CV] SMTP non configure. Code affiche dans les logs uniquement.");
     return { sent: false, reason: "missing_smtp_config" };
   }
 
@@ -961,7 +961,7 @@ async function sendVerificationEmail({ to, code, firstName, purpose = "login" })
     });
     return { sent: true, recipient };
   } catch (error) {
-    console.warn(`[Career App] Echec d'envoi d'email SMTP (${error.message}). Code disponible dans la console ci-dessus.`);
+    console.warn(`[Career CV] Echec d'envoi d'email SMTP (${error.message}). Code disponible dans la console ci-dessus.`);
     return { sent: false, reason: "smtp_send_error", error: error.message };
   }
 }
@@ -982,7 +982,7 @@ async function createEmailVerificationCode(user, purpose = "login", targetEmail 
   );
 
   const delivery = await sendVerificationEmail({ to: email, code, firstName: user.first_name, purpose });
-  console.log(`[Career App] Code ${purpose} pour ${email}: ${code} (expire dans 10 min, email=${delivery.sent ? "envoye" : "non_configure"})`);
+  console.log(`[Career CV] Code ${purpose} pour ${email}: ${code} (expire dans 10 min, email=${delivery.sent ? "envoye" : "non_configure"})`);
   return { id, email, expiresAt, code };
 }
 
@@ -1026,7 +1026,7 @@ async function createSessionForRequest(req, userId) {
 
 function ensureUserCanAuthenticate(userRow) {
   if (coerceString(userRow?.status || "active") === "suspended") {
-    const error = new Error("Ce compte est suspendu. Veuillez contacter l'administrateur Career App pour rétablir l'accès.");
+    const error = new Error("Ce compte est suspendu. Veuillez contacter l'administrateur Career CV pour rétablir l'accès.");
     error.statusCode = 403;
     throw error;
   }

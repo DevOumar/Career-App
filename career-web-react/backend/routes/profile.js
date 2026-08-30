@@ -542,7 +542,7 @@ app.post("/api/account/connected-accounts/link-google", async (req, res) => {
       [googleId, userId]
     );
     if (existing.length) {
-      return res.status(409).json({ error: "Ce compte Google est déjà lié à un autre compte Career App." });
+      return res.status(409).json({ error: "Ce compte Google est déjà lié à un autre compte Career CV." });
     }
 
     await db.query("UPDATE users SET google_id = $1 WHERE id = $2", [googleId, userId]);

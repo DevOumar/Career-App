@@ -236,7 +236,7 @@ export function AccountDrawer({
           makePrimary: "Make primary",
           remove: "Remove",
           usernameHint: "3 to 30 characters: letters, numbers, - or _.",
-          secured: "Secured by Career App"
+          secured: "Secured by Career CV"
         }
       : {
           title: "Profil",
@@ -303,7 +303,7 @@ export function AccountDrawer({
           makePrimary: "Définir principale",
           remove: "Supprimer",
           usernameHint: "3 à 30 caractères : lettres, chiffres, - ou _.",
-          secured: "Sécurisé par Career App"
+          secured: "Sécurisé par Career CV"
         };
 
   const usernameValidation = editingUsername ? getUsernameValidation(profileForm.username, language) : "";

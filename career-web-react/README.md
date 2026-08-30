@@ -1,4 +1,4 @@
-# Career App
+# Career CV
 
 Plateforme d'accompagnement à la recherche d'emploi : import et analyse de CV, matching CV/offre par IA, simulateur d'entretiens, lettre de motivation générée par IA, simulateur de négociation salariale, tarifs par jetons.
 

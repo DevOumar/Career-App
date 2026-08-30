@@ -322,7 +322,7 @@ const LANDING_COPY = {
     atsTitleA: "Comprenez votre CV",
     atsTitleB: "avant d'envoyer la candidature",
     atsText:
-      "Career App transforme le CV et l'offre en lecture simple : score, mots-clés manquants, forces détectées et priorités d'amélioration.",
+      "Career CV transforme le CV et l'offre en lecture simple : score, mots-clés manquants, forces détectées et priorités d'amélioration.",
     atsPanelTitle: "Aperçu d'analyse",
     atsPanelHint: "Le module compare votre CV avec l'offre ciblée et prépare les prochaines actions.",
     featuresTitle: "Tout ce qu'il vous faut.",
@@ -355,7 +355,7 @@ const LANDING_COPY = {
     careerSubtitle: "Guide complet & analyse",
     faqEyebrow: "Questions fréquentes",
     faqTitle: "Des questions ?",
-    faqText: "Réponses courtes et claires sur ce que Career App fait réellement.",
+    faqText: "Réponses courtes et claires sur ce que Career CV fait réellement.",
     faq: [
       {
         q: "Mon CV sera-t-il compatible ATS ?",
@@ -382,7 +382,7 @@ const LANDING_COPY = {
         a: "Contactez notre support depuis la page Contact : chaque demande liée à un abonnement est traitée manuellement pour l'instant."
       }
     ],
-    footerText: "Career App aide les candidats à optimiser leur CV, cibler les bonnes offres et préparer leurs entretiens.",
+    footerText: "Career CV aide les candidats à optimiser leur CV, cibler les bonnes offres et préparer leurs entretiens.",
     footerProduct: "Produit",
     footerCompany: "Entreprise",
     footerLegal: "Légal",
@@ -414,7 +414,7 @@ const LANDING_COPY = {
     atsTitleA: "Understand your CV",
     atsTitleB: "before sending the application",
     atsText:
-      "Career App turns a CV and job post into a clear reading: score, missing keywords, detected strengths, and improvement priorities.",
+      "Career CV turns a CV and job post into a clear reading: score, missing keywords, detected strengths, and improvement priorities.",
     atsPanelTitle: "Analysis preview",
     atsPanelHint: "The module compares your CV with the target role and prepares the next actions.",
     featuresTitle: "Everything you need.",
@@ -447,7 +447,7 @@ const LANDING_COPY = {
     careerSubtitle: "Complete guide & analysis",
     faqEyebrow: "Frequently asked questions",
     faqTitle: "Questions?",
-    faqText: "Short, honest answers about what Career App actually does.",
+    faqText: "Short, honest answers about what Career CV actually does.",
     faq: [
       {
         q: "Will my CV be ATS-compatible?",
@@ -474,7 +474,7 @@ const LANDING_COPY = {
         a: "Contact our support from the Contact page: subscription requests are currently handled manually."
       }
     ],
-    footerText: "Career App helps candidates optimize CVs, target the right jobs, and prepare interviews.",
+    footerText: "Career CV helps candidates optimize CVs, target the right jobs, and prepare interviews.",
     footerProduct: "Product",
     footerCompany: "Company",
     footerLegal: "Legal",
@@ -1057,8 +1057,8 @@ export default function App() {
       setActivePage("home");
       setPageMessage(
         language === "en"
-          ? "Account verified. Welcome to Career App."
-          : "Compte vérifié. Bienvenue sur Career App."
+          ? "Account verified. Welcome to Career CV."
+          : "Compte vérifié. Bienvenue sur Career CV."
       );
     } catch (error) {
       setAuthError(getFriendlyErrorMessage(error, language));
@@ -1739,7 +1739,7 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          Career App
+          Career CV
         </div>
 
         <nav className="topnav">
@@ -1815,7 +1815,7 @@ export default function App() {
                 </span>
                 {appCopy.menu.logout}
               </button>
-              <div className="user-dropdown-secured">Secured by <strong>Career App</strong></div>
+              <div className="user-dropdown-secured">Secured by <strong>Career CV</strong></div>
             </div>
           ) : null}
         </div>
@@ -2190,7 +2190,7 @@ export function ConnectedFooter({
           <span className="brand-mark" aria-hidden="true">
             <UiIcon name="matchmark" />
           </span>
-          <strong>Career App</strong>
+          <strong>Career CV</strong>
         </div>
         <p>{copy.footerText}</p>
       </div>
@@ -2601,11 +2601,11 @@ function AuthScreen({
               <p>
                 {mode === "signup" && signupPhase === "code"
                   ? language === "en"
-                    ? "Welcome to Career App"
-                    : "Bienvenue sur Career App"
+                    ? "Welcome to Career CV"
+                    : "Bienvenue sur Career CV"
                   : language === "en"
-                    ? "to continue to Career App"
-                    : "pour continuer vers Career App"}
+                    ? "to continue to Career CV"
+                    : "pour continuer vers Career CV"}
                 {(loginStep === "code" && mode === "login") || (signupPhase === "code" && mode === "signup") ? (
                   <>
                     <br />
@@ -2889,7 +2889,7 @@ function AuthScreen({
                 )}
               </p>
               <small>
-                {language === "en" ? "Secured by" : "Sécurisé par"} <strong>Career App</strong>
+                {language === "en" ? "Secured by" : "Sécurisé par"} <strong>Career CV</strong>
               </small>
             </div>
           </div>

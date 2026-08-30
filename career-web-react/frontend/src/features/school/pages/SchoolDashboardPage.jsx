@@ -55,7 +55,7 @@ export default function SchoolDashboardPage({ user, language }) {
     language === "en"
       ? {
           title: "Dashboard",
-          subtitle: "Real-time indicators for your students on Career App.",
+          subtitle: "Real-time indicators for your students on Career CV.",
           students: "Associated students",
           seats: "Seats used",
           activation: "Activation rate",
@@ -78,7 +78,7 @@ export default function SchoolDashboardPage({ user, language }) {
         }
       : {
           title: "Dashboard",
-          subtitle: "Indicateurs en temps réel de vos étudiants sur Career App.",
+          subtitle: "Indicateurs en temps réel de vos étudiants sur Career CV.",
           students: "Étudiants associés",
           seats: "Sièges utilisés",
           activation: "Taux d'activation",

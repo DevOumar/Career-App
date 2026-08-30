@@ -1,6 +1,6 @@
-# Career App
+# Career CV
 
-Career App est une application de gestion de carrière et de recrutement : import et analyse de CV, matching CV/offre, optimisation ATS par IA, lettres de motivation, préparation d'entretiens, suivi de candidatures, et un espace admin/école dédié.
+Career CV est une application de gestion de carrière et de recrutement : import et analyse de CV, matching CV/offre, optimisation ATS par IA, lettres de motivation, préparation d'entretiens, suivi de candidatures, et un espace admin/école dédié.
 
 Le projet est une architecture **frontend/backend séparée** : une interface React (Vite) et une API Node/Express, toutes deux dans `career-web-react/`, avec une base PostgreSQL (Supabase en production, PGlite embarqué en repli local).
 

@@ -403,7 +403,7 @@ function AdminApp({
             <span />
             <span />
           </button>
-          Career App <span className="admin-badge">Admin</span>
+          Career CV <span className="admin-badge">Admin</span>
         </div>
 
         <div className="topbar-search-box" ref={searchBoxRef}>
@@ -575,7 +575,7 @@ function AdminApp({
                 {copy.logout}
               </button>
               <div className="user-dropdown-secured">
-                {copy.secured} <strong>Career App</strong>
+                {copy.secured} <strong>Career CV</strong>
               </div>
             </div>
           ) : null}

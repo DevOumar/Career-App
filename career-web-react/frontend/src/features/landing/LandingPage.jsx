@@ -137,7 +137,7 @@ function LandingPage({
           <span className="brand-mark" aria-hidden="true">
             <UiIcon name="matchmark" />
           </span>
-          <strong>Career App</strong>
+          <strong>Career CV</strong>
         </div>
         <div className="landing-actions">
           <LanguageSwitch language={language} setLanguage={setLanguage} />
@@ -172,7 +172,7 @@ function LandingPage({
             </div>
           </div>
 
-          <div className="hero-product" aria-label="Aperçu du produit Career App">
+          <div className="hero-product" aria-label="Aperçu du produit Career CV">
             <div className="career-dashboard-preview">
               <div className="dashboard-preview-top">
                 <div>
@@ -327,8 +327,8 @@ function LandingPage({
             </div>
             <p>
               {language === "en"
-                ? "Quick examples of roles that Career App can compare with your CV."
-                : "Quelques exemples de métiers que Career App peut comparer avec votre CV."}
+                ? "Quick examples of roles that Career CV can compare with your CV."
+                : "Quelques exemples de métiers que Career CV peut comparer avec votre CV."}
             </p>
           </div>
           <div className="career-grid">
@@ -359,7 +359,7 @@ function LandingPage({
             <span className="brand-mark" aria-hidden="true">
               <UiIcon name="matchmark" />
             </span>
-            <strong>Career App</strong>
+            <strong>Career CV</strong>
           </div>
           <p>{copy.footerText}</p>
         </div>
@@ -483,7 +483,7 @@ function InfoPage({
           <span className="brand-mark" aria-hidden="true">
             <UiIcon name="matchmark" />
           </span>
-          <strong>Career App</strong>
+          <strong>Career CV</strong>
         </div>
         <div className="landing-actions">
           <LanguageSwitch language={language} setLanguage={setLanguage} />
@@ -528,11 +528,11 @@ function AboutPage({ language, setLanguage, onBack, onLoginClick, onSignupClick,
   const copy = isEn
     ? {
         eyebrow: "About",
-        title: "About Career App",
+        title: "About Career CV",
         subtitle: "The AI copilot that helps you present yourself well and target the right opportunities.",
         missionTitle: "Our mission",
         missionBody:
-          "Job hunting shouldn't mean guessing what a recruiter wants to read. Career App was built to give every candidate the same tools a well-coached applicant already has: a clear read on how their CV stacks up against a role, the missing keywords worth adding, and a way to rehearse before the interview.",
+          "Job hunting shouldn't mean guessing what a recruiter wants to read. Career CV was built to give every candidate the same tools a well-coached applicant already has: a clear read on how their CV stacks up against a role, the missing keywords worth adding, and a way to rehearse before the interview.",
         howTitle: "What's inside",
         howItems: [
           { title: "CV Optimizer", text: "Upload a CV and a job offer to get a compatibility score, missing keywords, and concrete rewrite suggestions." },
@@ -552,11 +552,11 @@ function AboutPage({ language, setLanguage, onBack, onLoginClick, onSignupClick,
       }
     : {
         eyebrow: "À propos",
-        title: "À propos de Career App",
+        title: "À propos de Career CV",
         subtitle: "Le copilote IA qui vous aide à bien vous présenter et à cibler les bonnes opportunités.",
         missionTitle: "Notre mission",
         missionBody:
-          "Chercher un emploi ne devrait pas se résumer à deviner ce qu'un recruteur a envie de lire. Career App a été conçu pour donner à chaque candidat les mêmes outils qu'un candidat bien accompagné : une lecture claire de la compatibilité entre son CV et un poste, les mots-clés à ajouter, et un moyen de s'entraîner avant l'entretien.",
+          "Chercher un emploi ne devrait pas se résumer à deviner ce qu'un recruteur a envie de lire. Career CV a été conçu pour donner à chaque candidat les mêmes outils qu'un candidat bien accompagné : une lecture claire de la compatibilité entre son CV et un poste, les mots-clés à ajouter, et un moyen de s'entraîner avant l'entretien.",
         howTitle: "Ce que vous y trouverez",
         howItems: [
           { title: "CV Optimizer", text: "Importez un CV et une offre pour obtenir un score de compatibilité, les mots-clés manquants et des suggestions de réécriture concrètes." },

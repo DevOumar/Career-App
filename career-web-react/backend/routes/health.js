@@ -252,7 +252,7 @@ app.get("/", (_req, res) => {
     <html lang="fr">
     <head>
       <meta charset="UTF-8">
-      <title>Career App - Serveur API Express</title>
+      <title>Career CV - Serveur API Express</title>
       <style>
         body { font-family: system-ui, -apple-system, sans-serif; max-width: 600px; margin: 60px auto; padding: 20px; line-height: 1.6; color: #1f2937; }
         .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 12px; padding: 24px; text-align: center; }
