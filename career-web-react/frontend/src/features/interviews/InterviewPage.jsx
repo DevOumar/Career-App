@@ -1,8 +1,52 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { getPlanById } from "../../data/plans.js";
-import { INTERVIEW_COPY } from "./interviewCopy.js";
-import { VoiceInterviewCall } from "./VoiceInterviewCall.jsx";
+
+// Client API du module Entretiens : appelle directement le backend JS
+// (backend/routes/interview.js, stateless — l'historique de conversation
+// est renvoyé à chaque appel et doit être repassé au tour suivant), en
+// suivant le même schéma que le reste du module (fetch relatif vers
+// /api/interview/*, sans dépendance externe). Pas de service Python à
+// lancer en parallèle.
+async function startInterviewSession({ type_entretien, domaine, offre }) {
+  const response = await fetch("/api/interview/start", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ type_entretien, domaine, offre })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Impossible de démarrer la session.");
+  return { message: data.message, history: data.history || [] };
+}
+
+async function sendInterviewMessage(text, { history = [], type_entretien, domaine, offre } = {}) {
+  const response = await fetch("/api/interview/message", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: text, history, type_entretien, domaine, offre })
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Erreur lors de l'envoi du message.");
+  return { message: data.message, history: data.history || history };
+}
+
+async function sendInterviewAudioMessage(audioBlob, { type_entretien, domaine } = {}) {
+  const params = new URLSearchParams({ type_entretien: type_entretien || "RH", domaine: domaine || "générique" });
+  const response = await fetch(`/api/interview/audio-message?${params.toString()}`, {
+    method: "POST",
+    headers: { "Content-Type": audioBlob.type || "audio/webm" },
+    body: audioBlob
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(data.error || "Erreur lors de la transcription audio.");
+  return { transcribed_text: data.transcribed_text, message: data.message };
+}
+
+const DISCLAIMER =
+  "Cet assistant propose des conseils génériques de préparation et ne remplace pas un accompagnement RH ou un coach carrière personnalisé.";
+
+const END_INTERVIEW_MESSAGE =
+  "[Le candidat souhaite clore l'entretien. Conclus l'entretien et fournis le bilan complet et la correction finale en détaillant ses points forts et ses axes d'amélioration.]";
 
 function LockBadge({ cx, cy }) {
   return (
@@ -29,11 +73,11 @@ function InterviewAssistantIllustration() {
         strokeWidth="3"
         strokeLinecap="round"
       />
-      <rect x="216" y="42" width="84" height="84" rx="18" fill="#f5f3ee" />
-      <rect x="240" y="66" width="36" height="30" rx="10" fill="#1a0dab" />
+      <rect x="216" y="42" width="84" height="84" rx="18" fill="#eef0ff" />
+      <rect x="240" y="66" width="36" height="30" rx="10" fill="#4f46e5" />
       <circle cx="251" cy="80" r="3" fill="#fff" />
       <circle cx="265" cy="80" r="3" fill="#fff" />
-      <rect x="255" y="58" width="6" height="8" rx="3" fill="#1a0dab" />
+      <rect x="255" y="58" width="6" height="8" rx="3" fill="#4f46e5" />
       <path
         d="M122 70h34a8 8 0 018 8v6a8 8 0 01-8 8h-20l-8 8v-8h-6a8 8 0 01-8-8v-6a8 8 0 018-8z"
         fill="var(--primary)"
@@ -41,7 +85,7 @@ function InterviewAssistantIllustration() {
       />
       <path
         d="M186 96h30a7 7 0 017 7v5a7 7 0 01-7 7h-6v7l-9-7h-15a7 7 0 01-7-7v-5a7 7 0 017-7z"
-        fill="#1a0dab"
+        fill="#4f46e5"
         opacity="0.9"
       />
       <rect x="38" y="150" width="262" height="60" rx="16" fill="var(--bg-accent)" />
@@ -57,118 +101,434 @@ function InterviewAssistantIllustration() {
 }
 
 function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
-  const copy = INTERVIEW_COPY[language] || INTERVIEW_COPY.fr;
   const isFreePlan = !getPlanById(subscription?.planId)?.grantsPremium;
 
-  const [mode, setMode] = useState("setup"); // 'setup' | 'chat' | 'voice' | 'bilan'
-  const [typeEntretien, setTypeEntretien] = useState("RH");
-  const [domaine, setDomaine] = useState("générique");
+  // Setup form states
+  const [typeEntretien, setTypeEntretien] = useState("rh");
+  const [domaine, setDomaine] = useState("");
   const [offre, setOffre] = useState("");
 
+  // Session state
+  const [inSession, setInSession] = useState(false);
+  const [mode, setMode] = useState("chat"); // "chat" | "call"
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [bilanContent, setBilanContent] = useState("");
-  const chatStreamRef = useRef(null);
+  const [statusText, setStatusText] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+
+  // Inputs & Media states
+  const [inputText, setInputText] = useState("");
+  const [isRecordingChat, setIsRecordingChat] = useState(false);
+  const [isRecordingCall, setIsRecordingCall] = useState(false);
+
+  // Call mode timers and captions
+  const [callSeconds, setCallSeconds] = useState(0);
+  const [callStatus, setCallStatus] = useState("En attente...");
+  const [lastCaption, setLastCaption] = useState({ role: "", text: "" });
+
+  const messagesEndRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const callTimerRef = useRef(null);
+  // Historique de conversation pour le backend (stateless : renvoyé à
+  // chaque appel, mis à jour avec la réponse de chaque tour).
+  const conversationHistoryRef = useRef([]);
 
   useEffect(() => {
-    if (chatStreamRef.current) {
-      chatStreamRef.current.scrollTop = chatStreamRef.current.scrollHeight;
+    return () => {
+      stopCallTimer();
+      stopSpeaking();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (inSession && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, loading]);
 
-  async function startSimulation(selectedMode = "chat") {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/interview/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type_entretien: typeEntretien,
-          domaine,
-          offre
-        })
-      });
+  // --- Speech Synthesis ---
+  function speakText(text, onEnd) {
+    if (!("speechSynthesis" in window)) {
+      if (onEnd) onEnd();
+      return;
+    }
+    window.speechSynthesis.cancel();
+    const cleanText = text.replace(DISCLAIMER, "").trim();
+    if (!cleanText) {
+      if (onEnd) onEnd();
+      return;
+    }
 
-      if (response.ok) {
-        const data = await response.json();
-        setMessages([{ role: "assistant", content: data.message }]);
-        setMode(selectedMode);
-      }
-    } catch (err) {
-      console.error("Erreur start simulation:", err);
-    } finally {
-      setLoading(false);
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = "fr-FR";
+    utterance.rate = 1.0;
+    utterance.pitch = 1.0;
+
+    const voices = window.speechSynthesis.getVoices();
+    const frVoice = voices.find((v) => v.lang && v.lang.toLowerCase().startsWith("fr"));
+    if (frVoice) {
+      utterance.voice = frVoice;
+    }
+
+    if (onEnd) {
+      utterance.onend = onEnd;
+      utterance.onerror = onEnd;
+    }
+    window.speechSynthesis.speak(utterance);
+  }
+
+  function stopSpeaking() {
+    if ("speechSynthesis" in window) {
+      window.speechSynthesis.cancel();
     }
   }
 
-  async function sendMessage(forceFinish = false) {
-    const text = input.trim();
-    if (!text && !forceFinish) return;
+  // --- Call Timer ---
+  function startCallTimer() {
+    setCallSeconds(0);
+    clearInterval(callTimerRef.current);
+    callTimerRef.current = setInterval(() => {
+      setCallSeconds((prev) => prev + 1);
+    }, 1000);
+  }
 
-    const userMessage = { role: "user", content: text || "[Demande de bilan d'entretien]" };
-    const newMessages = [...messages, userMessage];
-    setMessages(newMessages);
-    setInput("");
-    setLoading(true);
-
-    try {
-      const response = await fetch("/api/interview/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: text,
-          history: newMessages,
-          type_entretien: typeEntretien,
-          domaine,
-          offre,
-          finishSession: forceFinish
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        const aiMessage = { role: "assistant", content: data.message };
-        setMessages((prev) => [...prev, aiMessage]);
-
-        if (data.isBilan || forceFinish) {
-          setBilanContent(data.message);
-          setMode("bilan");
-        }
-      }
-    } catch (err) {
-      console.error("Erreur envoi message:", err);
-    } finally {
-      setLoading(false);
+  function stopCallTimer() {
+    if (callTimerRef.current) {
+      clearInterval(callTimerRef.current);
+      callTimerRef.current = null;
     }
   }
 
-  async function handleEndVoiceCall() {
-    setLoading(true);
-    try {
-      const response = await fetch("/api/interview/message", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: "Clore l'entretien et fournir le bilan final",
-          history: messages,
-          type_entretien: typeEntretien,
-          domaine,
-          offre,
-          finishSession: true
-        })
-      });
+  function formatTime(totalSecs) {
+    const mins = Math.floor(totalSecs / 60)
+      .toString()
+      .padStart(2, "0");
+    const secs = (totalSecs % 60).toString().padStart(2, "0");
+    return `${mins}:${secs}`;
+  }
 
-      if (response.ok) {
-        const data = await response.json();
-        setBilanContent(data.message);
-        setMode("bilan");
+  // --- Start Session ---
+  async function handleStartSession(selectedMode) {
+    setErrorMsg("");
+    setLoading(true);
+    setStatusText("Initialisation du simulateur IA Groq RAG...");
+    setMode(selectedMode);
+
+    try {
+      const res = await startInterviewSession({
+        type_entretien: typeEntretien,
+        domaine: domaine.trim(),
+        offre: offre.trim(),
+      });
+      conversationHistoryRef.current = res.history || [];
+
+      const firstMsg = {
+        id: Date.now().toString(),
+        role: "recruiter",
+        text: res.message || "Bonjour, nous allons démarrer l'entretien.",
+      };
+
+      setMessages([firstMsg]);
+      setInSession(true);
+
+      if (selectedMode === "call") {
+        startCallTimer();
+        setCallStatus("En entretien téléphonique...");
+        setLastCaption({ role: "recruiter", text: firstMsg.text });
+        speakText(firstMsg.text, () => {
+          setCallStatus("Cliquez sur 'Parler au micro' pour répondre");
+        });
       }
     } catch (err) {
-      console.error("Erreur fin d'appel:", err);
+      setErrorMsg(err.message || "Impossible de démarrer la session.");
     } finally {
       setLoading(false);
+      setStatusText("");
     }
+  }
+
+  // --- Send Text Message ---
+  async function handleSendText() {
+    const text = inputText.trim();
+    if (!text || loading) return;
+
+    const userMsg = {
+      id: Date.now().toString(),
+      role: "candidate",
+      text,
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setInputText("");
+    setLoading(true);
+    setStatusText("Le recruteur analyse votre réponse...");
+
+    try {
+      const res = await sendInterviewMessage(text, {
+        history: conversationHistoryRef.current,
+        type_entretien: typeEntretien,
+        domaine: domaine.trim(),
+        offre: offre.trim(),
+      });
+      conversationHistoryRef.current = res.history || conversationHistoryRef.current;
+      const recruiterMsg = {
+        id: (Date.now() + 1).toString(),
+        role: "recruiter",
+        text: res.message,
+      };
+      setMessages((prev) => [...prev, recruiterMsg]);
+
+      if (mode === "call") {
+        setLastCaption({ role: "recruiter", text: res.message });
+        speakText(res.message, () => {
+          setCallStatus("Cliquez sur 'Parler au micro' pour votre prochaine réplique");
+        });
+      }
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: (Date.now() + 1).toString(),
+          role: "recruiter",
+          text: `Erreur : ${err.message}`,
+        },
+      ]);
+    } finally {
+      setLoading(false);
+      setStatusText("");
+    }
+  }
+
+  // --- Record Audio in Chat ---
+  async function toggleChatRecording() {
+    if (isRecordingChat) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecordingChat(false);
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunksRef.current = [];
+        const mr = new MediaRecorder(stream);
+        mediaRecorderRef.current = mr;
+
+        mr.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        };
+
+        mr.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+          if (audioBlob.size === 0) return;
+
+          setLoading(true);
+          setStatusText("Whisper transcrit votre message vocal...");
+
+          try {
+            const res = await sendInterviewAudioMessage(audioBlob, {
+              type_entretien: typeEntretien,
+              domaine: domaine.trim(),
+            });
+            const userMsg = {
+              id: Date.now().toString(),
+              role: "candidate",
+              text: `[Vocal] ${res.transcribed_text}`,
+            };
+            const recruiterMsg = {
+              id: (Date.now() + 1).toString(),
+              role: "recruiter",
+              text: res.message,
+            };
+            setMessages((prev) => [...prev, userMsg, recruiterMsg]);
+          } catch (err) {
+            setErrorMsg(err.message);
+          } finally {
+            setLoading(false);
+            setStatusText("");
+          }
+        };
+
+        mr.start();
+        setIsRecordingChat(true);
+      } catch (err) {
+        alert("Accès au microphone refusé ou non supporté.");
+      }
+    }
+  }
+
+  // --- Record Audio in Call Mode ---
+  async function toggleCallRecording() {
+    if (isRecordingCall) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecordingCall(false);
+    } else {
+      try {
+        stopSpeaking();
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        audioChunksRef.current = [];
+        const mr = new MediaRecorder(stream);
+        mediaRecorderRef.current = mr;
+
+        mr.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        };
+
+        mr.onstop = async () => {
+          stream.getTracks().forEach((t) => t.stop());
+          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+          if (audioBlob.size === 0) return;
+
+          setCallStatus("Whisper analyse votre réponse orale...");
+          setLoading(true);
+
+          try {
+            const res = await sendInterviewAudioMessage(audioBlob, {
+              type_entretien: typeEntretien,
+              domaine: domaine.trim(),
+            });
+            const userMsg = {
+              id: Date.now().toString(),
+              role: "candidate",
+              text: `[Vocal] ${res.transcribed_text}`,
+            };
+            const recruiterMsg = {
+              id: (Date.now() + 1).toString(),
+              role: "recruiter",
+              text: res.message,
+            };
+
+            setMessages((prev) => [...prev, userMsg, recruiterMsg]);
+            setLastCaption({ role: "recruiter", text: res.message });
+
+            setCallStatus("Le recruteur vous répond...");
+            speakText(res.message, () => {
+              setCallStatus("Cliquez sur 'Parler' pour votre prochaine réplique");
+            });
+          } catch (err) {
+            setCallStatus(`Erreur : ${err.message}`);
+          } finally {
+            setLoading(false);
+          }
+        };
+
+        mr.start();
+        setIsRecordingCall(true);
+        setCallStatus("🔴 Enregistrement vocal en cours... Parle à voix haute !");
+      } catch (err) {
+        setCallStatus("Erreur micro : Accès refusé ou microphone non disponible.");
+      }
+    }
+  }
+
+  // --- Conclude / End Interview ---
+  async function handleEndInterview() {
+    stopCallTimer();
+    stopSpeaking();
+    if (isRecordingCall || isRecordingChat) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      setIsRecordingCall(false);
+      setIsRecordingChat(false);
+    }
+
+    setLoading(true);
+    setStatusText("Clôture de l'entretien et génération du bilan complet...");
+
+    const endMsg = {
+      id: Date.now().toString(),
+      role: "candidate",
+      text: "Je souhaite clore l'entretien et obtenir mon bilan complet.",
+    };
+    setMessages((prev) => [...prev, endMsg]);
+
+    try {
+      const res = await sendInterviewMessage(END_INTERVIEW_MESSAGE, {
+        history: conversationHistoryRef.current,
+        type_entretien: typeEntretien,
+        domaine: domaine.trim(),
+        offre: offre.trim(),
+      });
+      conversationHistoryRef.current = res.history || conversationHistoryRef.current;
+      const reportMsg = {
+        id: (Date.now() + 1).toString(),
+        role: "recruiter",
+        text: res.message,
+      };
+      setMessages((prev) => [...prev, reportMsg]);
+
+      // If in call mode, switch back to chat to display full formatted report cleanly
+      if (mode === "call") {
+        setMode("chat");
+        speakText(
+          "L'entretien est terminé. Voici votre bilan complet avec vos points forts et axes d'amélioration."
+        );
+      }
+    } catch (err) {
+      setErrorMsg(err.message);
+    } finally {
+      setLoading(false);
+      setStatusText("");
+    }
+  }
+
+  // --- Reset Session ---
+  function handleReset() {
+    stopCallTimer();
+    stopSpeaking();
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    setIsRecordingChat(false);
+    setIsRecordingCall(false);
+    setInSession(false);
+    setMessages([]);
+    setErrorMsg("");
+    setStatusText("");
+  }
+
+  // --- Render formatted text with disclaimer handling ---
+  function renderMessageText(text) {
+    const cleanText = text.replace(DISCLAIMER, "").trim();
+    const hasDisclaimer = text.includes(DISCLAIMER);
+
+    // Format paragraphs & linebreaks nicely
+    const paragraphs = cleanText.split("\n\n").map((p, i) => (
+      <p key={i} style={{ margin: "0 0 0.5rem 0", lineHeight: "1.55" }}>
+        {p.split("\n").map((line, j) => (
+          <React.Fragment key={j}>
+            {line}
+            {j < p.split("\n").length - 1 && <br />}
+          </React.Fragment>
+        ))}
+      </p>
+    ));
+
+    return (
+      <>
+        {paragraphs}
+        {hasDisclaimer && (
+          <span
+            className="disclaimer"
+            style={{
+              display: "block",
+              marginTop: "0.6rem",
+              fontSize: "0.75rem",
+              color: "var(--text-muted, #718096)",
+              fontStyle: "italic",
+              borderTop: "1px dashed var(--line, #e2e8f0)",
+              paddingTop: "0.4rem",
+            }}
+          >
+            {DISCLAIMER}
+          </span>
+        )}
+      </>
+    );
   }
 
   if (isFreePlan) {
@@ -178,20 +538,33 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
           <span className="interview-locked-badge">
             <UiIcon name="chart" /> Trajectoire Pro
           </span>
-          <h2>{copy.lockedTitle}</h2>
-          <p>{copy.lockedText}</p>
+          <h2>Préparez vos entretiens avec l'IA RAG</h2>
+          <p>
+            Le simulateur d'entretien IA (feedback en direct, entretiens RH & techniques,
+            transcription vocale Whisper, bilan détaillé) est inclus dans le plan Pro.
+          </p>
           <ul className="interview-locked-features">
-            {copy.lockedFeatures.map((feature, index) => (
-              <li key={feature}>
-                <span className={`interview-locked-feature-icon icon-${index}`}>
-                  <UiIcon name={["chat", "shield", "network"][index] || "shield"} />
-                </span>
-                {feature}
-              </li>
-            ))}
+            <li>
+              <span className="interview-locked-feature-icon icon-0">
+                <UiIcon name="chat" />
+              </span>
+              Simulateur interactif RH & Technique avec RAG
+            </li>
+            <li>
+              <span className="interview-locked-feature-icon icon-1">
+                <UiIcon name="shield" />
+              </span>
+              Mode appel vocal avec synthèse vocale & Whisper STT
+            </li>
+            <li>
+              <span className="interview-locked-feature-icon icon-2">
+                <UiIcon name="network" />
+              </span>
+              Bilan global personnalisé et conseils d'amélioration
+            </li>
           </ul>
           <button type="button" className="btn-main ready" onClick={onGoToTarifs}>
-            {copy.lockedCta} <UiIcon name="chevron" className="btn-chevron" />
+            Débloquer l'accès Pro <UiIcon name="chevron" className="btn-chevron" />
           </button>
         </div>
         <div className="interview-locked-art">
@@ -201,181 +574,469 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
     );
   }
 
-  if (mode === "setup") {
+  // --- SETUP SCREEN ---
+  if (!inSession) {
     return (
-      <section className="interview-page">
-        <div className="card setup-card">
-          <div className="setup-header">
-            <div className="setup-header-icon">
-              <UiIcon name="matchmark" />
-            </div>
-            <div>
-              <h3>Assistant RAG &amp; Simulateur d'Entretien IA</h3>
-              <p>
-                Entraînez-vous face à un recruteur senior IA alimenté par notre base de connaissances RAG (méthode STAR, conseils RH, questions techniques).
-              </p>
-            </div>
-          </div>
-
-          <div className="setup-form">
-            <div className="form-group">
-              <label>Type d'entretien</label>
-              <div className="interview-type-group">
-                {[
-                  { id: "RH", icon: "profile", label: "RH / Soft Skills" },
-                  { id: "technique", icon: "settings", label: "Technique / Métier" },
-                  { id: "direction", icon: "briefcase", label: "Direction / Vision" }
-                ].map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`interview-type-option ${typeEntretien === t.id ? "active" : ""}`}
-                    onClick={() => setTypeEntretien(t.id)}
-                  >
-                    <UiIcon name={t.icon} />
-                    <span>{t.label}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="interview-domaine">Domaine professionnel</label>
-              <select
-                id="interview-domaine"
-                value={domaine}
-                onChange={(e) => setDomaine(e.target.value)}
-              >
-                <option value="générique">Générique / Tous secteurs</option>
-                <option value="tech">Tech / IT / Data / Software</option>
-                <option value="commerce">Commerce / Vente / Business Development</option>
-                <option value="finance">Finance / Gestion / Comptabilité</option>
-                <option value="industrie">Industrie / Ingénierie / Logistique</option>
-              </select>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="interview-offre">Offre d'emploi visée <span className="muted">(optionnel)</span></label>
-              <textarea
-                id="interview-offre"
-                value={offre}
-                onChange={(e) => setOffre(e.target.value)}
-                placeholder="Collez ici l'intitulé ou la description de l'offre pour que le recruteur ancre ses questions dans ce poste réel…"
-                rows={4}
-              />
-            </div>
-
-            <div className="setup-actions">
-              <button
-                type="button"
-                className="btn-main"
-                onClick={() => startSimulation("chat")}
-                disabled={loading}
-              >
-                <UiIcon name="chat" />
-                Démarrer l'entretien écrit
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => startSimulation("voice")}
-                disabled={loading}
-              >
-                <UiIcon name="phone" />
-                Démarrer l'appel vocal
-                <span className="setup-actions-hint">Whisper + Voice</span>
-              </button>
-            </div>
-          </div>
+      <section className="interview-page card" style={{ maxWidth: "860px", margin: "1.5rem auto", padding: "2rem" }}>
+        <div style={{ marginBottom: "1.5rem", textAlign: "center" }}>
+          <h2 style={{ fontSize: "1.6rem", fontWeight: "700", marginBottom: "0.4rem" }}>
+            🎯 Simulateur d'Entretien IA (RAG Groq & Speech)
+          </h2>
+          <p style={{ color: "var(--text-2, #64748b)", fontSize: "0.95rem" }}>
+            Configurez votre session pour commencer la simulation avec le recruteur virtuel.
+          </p>
         </div>
-      </section>
-    );
-  }
 
-  if (mode === "voice") {
-    return (
-      <section className="interview-page">
-        <VoiceInterviewCall
-          typeEntretien={typeEntretien}
-          domaine={domaine}
-          onEndCall={handleEndVoiceCall}
-        />
-      </section>
-    );
-  }
+        {errorMsg && (
+          <div
+            style={{
+              padding: "0.8rem 1rem",
+              background: "#fee2e2",
+              border: "1px solid #fca5a5",
+              color: "#991b1b",
+              borderRadius: "10px",
+              marginBottom: "1.2rem",
+              fontSize: "0.9rem",
+            }}
+          >
+            ⚠️ {errorMsg}
+          </div>
+        )}
 
-  if (mode === "bilan") {
-    return (
-      <section className="interview-page">
-        <div className="card bilan-card">
-          <div className="bilan-header">
-            <h3>📊 Bilan Global & Evaluation d'Entretien</h3>
-            <p>Voici l'analyse détaillée générée par le Recruteur IA et le moteur RAG.</p>
+        <div style={{ display: "grid", gap: "1.2rem" }}>
+          <div>
+            <label style={{ fontWeight: "600", display: "block", marginBottom: "0.4rem" }}>
+              Type d'entretien :
+            </label>
+            <select
+              value={typeEntretien}
+              onChange={(e) => setTypeEntretien(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.75rem",
+                borderRadius: "10px",
+                border: "1px solid var(--line, #cbd5e1)",
+                background: "var(--surface, #fff)",
+                fontSize: "0.95rem",
+              }}
+            >
+              <option value="rh">Entretien RH (Soft Skills, Parcours & Culture Fit)</option>
+              <option value="technique">Entretien Technique (Compétences dures & Problem Solving)</option>
+              <option value="direction">Entretien Direction (Management & Vision)</option>
+            </select>
           </div>
 
-          <div className="bilan-body">
-            <div className="markdown-content">
-              {bilanContent.split("\n").map((line, i) => (
-                <p key={i}>{line}</p>
-              ))}
-            </div>
+          <div>
+            <label style={{ fontWeight: "600", display: "block", marginBottom: "0.4rem" }}>
+              Domaine / Poste ciblé :
+            </label>
+            <input
+              type="text"
+              placeholder="Ex: Développeur Fullstack React / Python, Chef de Projet Digital..."
+              value={domaine}
+              onChange={(e) => setDomaine(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.75rem",
+                borderRadius: "10px",
+                border: "1px solid var(--line, #cbd5e1)",
+                background: "var(--surface, #fff)",
+                fontSize: "0.95rem",
+              }}
+            />
           </div>
 
-          <div className="bilan-actions">
-            <button type="button" className="btn-main" onClick={() => setMode("setup")}>
-              🔄 Relancer un nouvel entretien
+          <div>
+            <label style={{ fontWeight: "600", display: "block", marginBottom: "0.4rem" }}>
+              Offre d'emploi (Optionnel - collez le texte de l'annonce) :
+            </label>
+            <textarea
+              rows={4}
+              placeholder="Collez ici le descriptif du poste pour ancrer l'entretien dans un rôle précis..."
+              value={offre}
+              onChange={(e) => setOffre(e.target.value)}
+              style={{
+                width: "100%",
+                padding: "0.75rem",
+                borderRadius: "10px",
+                border: "1px solid var(--line, #cbd5e1)",
+                background: "var(--surface, #fff)",
+                fontSize: "0.95rem",
+                fontFamily: "inherit",
+              }}
+            />
+          </div>
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "1rem",
+              marginTop: "1rem",
+            }}
+          >
+            <button
+              type="button"
+              className="btn-main"
+              onClick={() => handleStartSession("chat")}
+              disabled={loading}
+              style={{
+                padding: "0.85rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+                fontSize: "1rem",
+              }}
+            >
+              💬 Démarrer par Écrit (Chat)
+            </button>
+
+            <button
+              type="button"
+              className="btn-main"
+              onClick={() => handleStartSession("call")}
+              disabled={loading}
+              style={{
+                padding: "0.85rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: "0.5rem",
+                fontSize: "1rem",
+                background: "linear-gradient(135deg, #10b981, #059669)",
+              }}
+            >
+              📞 Démarrer en Appel (Vocal)
             </button>
           </div>
+
+          {loading && (
+            <p style={{ textAlign: "center", color: "var(--primary)", fontWeight: "600", margin: "0.5rem 0 0 0" }}>
+              ⏳ {statusText}
+            </p>
+          )}
         </div>
       </section>
     );
   }
 
+  // --- ACTIVE SESSION SCREEN ---
   return (
-    <section className="interview-page">
-      <div className="chat card">
-        <div className="chat-top">
-          <div className="avatar">👔</div>
-          <div>
-            <h3>Recruteur Senior IA</h3>
-            <p>Entretien {typeEntretien} — Domaine {domaine}</p>
-          </div>
-          <button type="button" className="btn-secondary btn-sm" onClick={() => sendMessage(true)}>
-            🏁 Clore & Obtenir Bilan
-          </button>
-        </div>
-
-        <div className="chat-stream" ref={chatStreamRef}>
-          {messages.map((msg, idx) => (
-            <div key={idx} className={`msg ${msg.role === "user" ? "user" : "ai"}`}>
-              <p>{msg.content}</p>
-            </div>
-          ))}
-          {loading ? (
-            <div className="msg ai loading">
-              <p>Le recruteur prépare sa réponse...</p>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="chat-input-row">
-          <textarea
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                sendMessage(false);
-              }
+    <section className="interview-page" style={{ maxWidth: "1000px", margin: "1rem auto" }}>
+      {/* Top Header Navigation */}
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          marginBottom: "1rem",
+          padding: "0.8rem 1.2rem",
+          background: "var(--surface, #fff)",
+          borderRadius: "12px",
+          border: "1px solid var(--line, #e2e8f0)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
+          <span
+            style={{
+              padding: "0.3rem 0.7rem",
+              borderRadius: "20px",
+              background: typeEntretien === "technique" ? "#dbeafe" : "#dcfce7",
+              color: typeEntretien === "technique" ? "#1e40af" : "#166534",
+              fontWeight: "700",
+              fontSize: "0.82rem",
+              textTransform: "uppercase",
             }}
-            placeholder="Répondez à la question du recruteur..."
-            rows={2}
-          />
-          <button type="button" className="btn-main" onClick={() => sendMessage(false)} disabled={loading}>
-            Envoyer
+          >
+            {typeEntretien === "technique" ? "Entretien Technique" : typeEntretien === "direction" ? "Entretien Direction" : "Entretien RH"}
+          </span>
+          {domaine && (
+            <span style={{ fontSize: "0.9rem", color: "var(--text-2, #64748b)", fontWeight: "500" }}>
+              • {domaine}
+            </span>
+          )}
+        </div>
+
+        <div style={{ display: "flex", gap: "0.6rem" }}>
+          <button
+            type="button"
+            className="btn-main"
+            onClick={handleEndInterview}
+            disabled={loading}
+            style={{
+              padding: "0.45rem 0.9rem",
+              fontSize: "0.85rem",
+              background: "#ea580c",
+            }}
+          >
+            🏁 Terminer & Bilan
+          </button>
+
+          <button
+            type="button"
+            onClick={handleReset}
+            style={{
+              padding: "0.45rem 0.9rem",
+              fontSize: "0.85rem",
+              borderRadius: "8px",
+              border: "1px solid var(--line, #cbd5e1)",
+              background: "transparent",
+              cursor: "pointer",
+              fontWeight: "600",
+            }}
+          >
+            🔄 Recommencer
           </button>
         </div>
       </div>
+
+      {/* CALL MODE SCREEN */}
+      {mode === "call" ? (
+        <div
+          className="card"
+          style={{
+            padding: "2.5rem 1.5rem",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: "1.5rem",
+            background: "linear-gradient(180deg, #0f172a, #1e293b)",
+            color: "#fff",
+            borderRadius: "20px",
+            boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
+          }}
+        >
+          <div style={{ fontSize: "2rem", fontWeight: "800", letterSpacing: "2px", color: "#38bdf8" }}>
+            ⏱️ {formatTime(callSeconds)}
+          </div>
+
+          <div
+            style={{
+              width: "100px",
+              height: "100px",
+              borderRadius: "50%",
+              background: isRecordingCall ? "#ef4444" : "#3b82f6",
+              display: "grid",
+              placeItems: "center",
+              boxShadow: isRecordingCall ? "0 0 0 15px rgba(239, 68, 68, 0.3)" : "0 0 0 10px rgba(59, 130, 246, 0.2)",
+              transition: "all 0.3s ease",
+            }}
+          >
+            <span style={{ fontSize: "2.5rem" }}>{isRecordingCall ? "🎙️" : "👔"}</span>
+          </div>
+
+          <p style={{ fontSize: "1.1rem", fontWeight: "600", color: "#e2e8f0", maxWidth: "500px" }}>
+            {callStatus}
+          </p>
+
+          {/* Last Caption display */}
+          {lastCaption.text && (
+            <div
+              style={{
+                maxWidth: "650px",
+                width: "100%",
+                padding: "1rem 1.2rem",
+                borderRadius: "14px",
+                background: "rgba(255, 255, 255, 0.08)",
+                backdropFilter: "blur(6px)",
+                textAlign: "left",
+                fontSize: "0.95rem",
+                lineHeight: "1.5",
+                color: "#cbd5e1",
+              }}
+            >
+              <strong style={{ color: "#38bdf8", display: "block", marginBottom: "0.3rem" }}>
+                {lastCaption.role === "recruiter" ? "Recruteur RH :" : "Vous :"}
+              </strong>
+              {lastCaption.text.replace(DISCLAIMER, "").trim()}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
+            <button
+              type="button"
+              onClick={toggleCallRecording}
+              disabled={loading}
+              style={{
+                padding: "0.85rem 1.8rem",
+                borderRadius: "30px",
+                border: "none",
+                background: isRecordingCall ? "#ef4444" : "#2563eb",
+                color: "#fff",
+                fontWeight: "700",
+                fontSize: "1rem",
+                cursor: "pointer",
+                boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
+              }}
+            >
+              {isRecordingCall ? "⏹️ Stop / Envoyer" : "🎤 Parler au micro"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setMode("chat")}
+              style={{
+                padding: "0.85rem 1.5rem",
+                borderRadius: "30px",
+                border: "1px solid rgba(255,255,255,0.2)",
+                background: "transparent",
+                color: "#fff",
+                fontWeight: "600",
+                fontSize: "0.95rem",
+                cursor: "pointer",
+              }}
+            >
+              💬 Basculer en Chat
+            </button>
+          </div>
+        </div>
+      ) : (
+        /* CHAT MODE SCREEN */
+        <div
+          className="card"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            height: "650px",
+            borderRadius: "16px",
+            padding: "0",
+            overflow: "hidden",
+          }}
+        >
+          {/* Chat Messages Stream */}
+          <div
+            style={{
+              flex: "1",
+              overflowY: "auto",
+              padding: "1.2rem",
+              display: "flex",
+              flexDirection: "column",
+              gap: "1rem",
+              background: "var(--bg-accent, #f8fafc)",
+            }}
+          >
+            {messages.map((msg) => {
+              const isRecruiter = msg.role === "recruiter";
+              return (
+                <div
+                  key={msg.id}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: isRecruiter ? "flex-start" : "flex-end",
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: "0.75rem",
+                      fontWeight: "700",
+                      color: "var(--text-muted, #64748b)",
+                      marginBottom: "0.25rem",
+                      marginRight: isRecruiter ? "0" : "0.4rem",
+                      marginLeft: isRecruiter ? "0.4rem" : "0",
+                    }}
+                  >
+                    {isRecruiter ? "Recruteur IA" : "Vous"}
+                  </span>
+
+                  <div
+                    style={{
+                      maxWidth: "80%",
+                      padding: "0.85rem 1.1rem",
+                      borderRadius: isRecruiter ? "16px 16px 16px 4px" : "16px 16px 4px 16px",
+                      background: isRecruiter ? "var(--surface, #ffffff)" : "var(--primary, #2563eb)",
+                      color: isRecruiter ? "var(--text, #0f172a)" : "#ffffff",
+                      boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
+                      border: isRecruiter ? "1px solid var(--line, #e2e8f0)" : "none",
+                      fontSize: "0.95rem",
+                    }}
+                  >
+                    {renderMessageText(msg.text)}
+                  </div>
+                </div>
+              );
+            })}
+
+            {loading && (
+              <div style={{ alignSelf: "flex-start", padding: "0.6rem 1rem", background: "#e2e8f0", borderRadius: "12px" }}>
+                <small style={{ color: "#475569", fontWeight: "600" }}>⏳ {statusText || "Réflexion en cours..."}</small>
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Chat Input Bar */}
+          <div
+            style={{
+              padding: "0.8rem 1rem",
+              background: "var(--surface, #fff)",
+              borderTop: "1px solid var(--line, #e2e8f0)",
+              display: "flex",
+              gap: "0.6rem",
+              alignItems: "center",
+            }}
+          >
+            <button
+              type="button"
+              onClick={toggleChatRecording}
+              disabled={loading}
+              title="Enregistrer un message vocal"
+              style={{
+                padding: "0.7rem",
+                borderRadius: "50%",
+                border: "none",
+                background: isRecordingChat ? "#ef4444" : "#f1f5f9",
+                color: isRecordingChat ? "#fff" : "#475569",
+                cursor: "pointer",
+                display: "grid",
+                placeItems: "center",
+                transition: "all 0.2s",
+              }}
+            >
+              🎙️
+            </button>
+
+            <textarea
+              rows={2}
+              placeholder="Saisissez votre réponse au recruteur (Entrée pour envoyer)..."
+              value={inputText}
+              onChange={(e) => setInputText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendText();
+                }
+              }}
+              disabled={loading}
+              style={{
+                flex: "1",
+                padding: "0.65rem 0.85rem",
+                borderRadius: "10px",
+                border: "1px solid var(--line, #cbd5e1)",
+                fontSize: "0.95rem",
+                resize: "none",
+                fontFamily: "inherit",
+              }}
+            />
+
+            <button
+              type="button"
+              className="btn-main"
+              onClick={handleSendText}
+              disabled={loading || !inputText.trim()}
+              style={{
+                padding: "0.7rem 1.2rem",
+                borderRadius: "10px",
+                fontSize: "0.95rem",
+              }}
+            >
+              Envoyer
+            </button>
+          </div>
+        </div>
+      )}
     </section>
   );
 }
