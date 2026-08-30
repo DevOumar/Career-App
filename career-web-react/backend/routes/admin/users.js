@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerAdminUsersRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerAdminUsersRoutes(app) {
 app.get("/api/admin/users", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const search = coerceString(req.query?.search).toLowerCase();
@@ -313,6 +315,7 @@ app.get("/api/admin/users", async (req, res) => {
 app.get("/api/admin/org-accounts", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const roleType = coerceString(req.query?.roleType);
@@ -387,6 +390,7 @@ app.get("/api/admin/org-accounts", async (req, res) => {
 app.post("/api/admin/users", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     requireFields(req.body, ["firstName", "lastName", "email", "password", "accountType"]);
@@ -493,6 +497,7 @@ app.post("/api/admin/users", async (req, res) => {
 app.post("/api/admin/users/update", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const targetUserId = coerceString(req.body?.userId);
@@ -553,6 +558,7 @@ app.post("/api/admin/users/update", async (req, res) => {
 app.post("/api/admin/users/status", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const targetUserId = coerceString(req.body?.userId);
@@ -582,6 +588,7 @@ app.post("/api/admin/users/status", async (req, res) => {
 app.post("/api/admin/users/delete", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const targetUserId = coerceString(req.body?.userId);

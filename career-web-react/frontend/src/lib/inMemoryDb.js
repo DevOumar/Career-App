@@ -68,12 +68,26 @@ async function resolveApiBase() {
   return resolvePromise;
 }
 
+function getStoredSessionToken() {
+  try {
+    return localStorage.getItem("career_app_token") || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
 async function request(path, options = {}) {
   const apiBase = await resolveApiBase();
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
 
-  if (options.token) {
-    headers.Authorization = `Bearer ${options.token}`;
+  // Le token de session est attaché automatiquement à chaque requête (le
+  // serveur vérifie désormais que le userId envoyé en body/query correspond
+  // bien à la session active) — options.token permet de le forcer/écraser
+  // explicitement (ex. juste après une connexion, avant qu'il soit relu du
+  // storage), mais ce n'est plus nécessaire dans le cas général.
+  const token = options.token || getStoredSessionToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
   }
 
   let response;

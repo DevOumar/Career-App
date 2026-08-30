@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerSchoolNotificationsRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerSchoolNotificationsRoutes(app) {
 app.get("/api/school/notifications", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const metrics = await buildSchoolMetrics(userId);
     const generated = buildSchoolAlerts(metrics, coerceString(req.query?.language || "fr")).map((item, index) => ({
@@ -279,6 +281,7 @@ app.get("/api/school/notifications", async (req, res) => {
 app.post("/api/school/notifications/read", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     await db.query("UPDATE school_notifications SET read_at = $1 WHERE school_user_id = $2 AND COALESCE(read_at, '') = ''", [
       nowIso(),

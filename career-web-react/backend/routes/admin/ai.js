@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerAdminAiRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerAdminAiRoutes(app) {
 app.get("/api/admin/ai-samples", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const search = coerceString(req.query?.search).toLowerCase();
@@ -299,6 +301,7 @@ app.get("/api/admin/ai-samples", async (req, res) => {
 app.get("/api/admin/ai-monitoring", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const { rows: cvRows } = await db.query("SELECT id, created_at, parsed_json FROM cvs ORDER BY created_at DESC LIMIT 500");

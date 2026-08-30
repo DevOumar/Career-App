@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerHealthRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,

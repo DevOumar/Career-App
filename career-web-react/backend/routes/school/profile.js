@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerSchoolProfileRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerSchoolProfileRoutes(app) {
 app.get("/api/school/profile", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const school = await requireSchoolOwner(userId);
     const profile = await getSchoolOrgProfile(userId);
     return res.json({
@@ -267,6 +269,7 @@ app.get("/api/school/profile", async (req, res) => {
 app.put("/api/school/profile", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const profile = req.body?.profile || {};
     await db.query(

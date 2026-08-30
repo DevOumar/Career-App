@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerSchoolInsightsRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerSchoolInsightsRoutes(app) {
 app.get("/api/school/insights", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
 
     const students = await getSchoolStudentRows(userId);

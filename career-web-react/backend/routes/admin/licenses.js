@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerAdminLicensesRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerAdminLicensesRoutes(app) {
 app.get("/api/admin/license-codes", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const search = coerceString(req.query?.search).toLowerCase();
@@ -295,6 +297,7 @@ app.get("/api/admin/license-codes", async (req, res) => {
 app.post("/api/admin/license-codes/revoke", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const code = coerceString(req.body?.code).toUpperCase();
@@ -315,6 +318,7 @@ app.post("/api/admin/license-codes/revoke", async (req, res) => {
 app.post("/api/admin/license-codes/restore", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const code = coerceString(req.body?.code).toUpperCase();

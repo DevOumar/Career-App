@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerSchoolInvitationsRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerSchoolInvitationsRoutes(app) {
 app.get("/api/school/invitations", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
 
     const { rows } = await db.query(
@@ -272,6 +274,7 @@ app.get("/api/school/invitations", async (req, res) => {
 app.post("/api/school/invitations/send", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const school = await requireSchoolOwner(userId);
 
     const email = normalizeEmail(req.body?.email);

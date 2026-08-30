@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerSchoolReportsRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerSchoolReportsRoutes(app) {
 app.get("/api/school/reports", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const metrics = await buildSchoolMetrics(userId);
     const { rows } = await db.query("SELECT * FROM school_reports WHERE school_user_id = $1 ORDER BY created_at DESC LIMIT 50", [userId]);
@@ -276,6 +278,7 @@ app.get("/api/school/reports", async (req, res) => {
 app.post("/api/school/reports/generate", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const period = coerceString(req.body?.period || "monthly");
     const metrics = await buildSchoolMetrics(userId);

@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerAdminSettingsRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerAdminSettingsRoutes(app) {
 app.get("/api/admin/settings", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     return res.json({
@@ -263,6 +265,7 @@ app.get("/api/admin/settings", async (req, res) => {
 app.post("/api/admin/settings", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const key = coerceString(req.body?.key);

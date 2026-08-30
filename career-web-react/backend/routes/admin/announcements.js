@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerAdminAnnouncementsRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerAdminAnnouncementsRoutes(app) {
 app.get("/api/admin/announcements/audience-count", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const audience = coerceString(req.query?.audience);
@@ -260,6 +262,7 @@ app.get("/api/admin/announcements/audience-count", async (req, res) => {
 app.get("/api/admin/announcements", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const { rows } = await db.query("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 100");
@@ -282,6 +285,7 @@ app.get("/api/admin/announcements", async (req, res) => {
 app.post("/api/admin/announcements/send", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const subject = coerceString(req.body?.subject);

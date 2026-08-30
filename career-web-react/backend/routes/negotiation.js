@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerNegotiationRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -293,6 +294,7 @@ app.post("/api/negotiation/reply", async (req, res) => {
 app.get("/api/negotiation/conversations", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) {
       return res.status(400).json({ error: "userId requis." });
     }
@@ -319,6 +321,7 @@ app.get("/api/negotiation/conversations", async (req, res) => {
 app.post("/api/negotiation/conversations", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const payload = req.body?.payload;
     const title = coerceString(req.body?.title) || "Négociation";
 
@@ -351,6 +354,7 @@ app.post("/api/negotiation/conversations", async (req, res) => {
 app.put("/api/negotiation/conversations/:id", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const conversationId = coerceString(req.params.id);
     const payload = req.body?.payload;
     const title = coerceString(req.body?.title);
@@ -389,6 +393,7 @@ app.put("/api/negotiation/conversations/:id", async (req, res) => {
 app.delete("/api/negotiation/conversations/:id", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const conversationId = coerceString(req.params.id);
     if (!userId || !conversationId) {
       return res.status(400).json({ error: "userId et id requis." });

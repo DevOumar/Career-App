@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerEmailFinderRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -249,6 +250,7 @@ export function registerEmailFinderRoutes(app) {
 app.post("/api/email-finder/search", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const companyName = coerceString(req.body?.companyName);
     const domainOverride = coerceString(req.body?.domain)
       .toLowerCase()

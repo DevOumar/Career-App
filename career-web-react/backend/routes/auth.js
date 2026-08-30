@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerAuthRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -566,6 +567,7 @@ app.post("/api/auth/password", async (req, res) => {
     const authHeader = String(req.headers.authorization || "");
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const currentPassword = String(req.body?.currentPassword || "");
     const newPassword = String(req.body?.newPassword || "");
     const logoutOtherSessions = Boolean(req.body?.logoutOtherSessions);

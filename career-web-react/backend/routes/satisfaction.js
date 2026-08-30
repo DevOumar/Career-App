@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerSatisfactionRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -249,6 +250,7 @@ export function registerSatisfactionRoutes(app) {
 app.get("/api/satisfaction/status", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) return res.status(400).json({ error: "userId requis." });
 
     const user = await getUserRowById(userId);
@@ -270,6 +272,7 @@ app.get("/api/satisfaction/status", async (req, res) => {
 app.post("/api/satisfaction/dismiss", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) return res.status(400).json({ error: "userId requis." });
     await db.query("UPDATE users SET satisfaction_last_prompted_at = $1 WHERE id = $2", [nowIso(), userId]);
     return res.json({ ok: true });
@@ -281,6 +284,7 @@ app.post("/api/satisfaction/dismiss", async (req, res) => {
 app.post("/api/satisfaction", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const score = Number(req.body?.score);
     if (!userId) return res.status(400).json({ error: "userId requis." });
     if (!Number.isInteger(score) || score < 1 || score > 10) {

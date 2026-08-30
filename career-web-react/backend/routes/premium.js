@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerPremiumRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -249,6 +250,7 @@ export function registerPremiumRoutes(app) {
 app.get("/api/premium", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) {
       return res.status(400).json({ error: "userId requis." });
     }
@@ -265,6 +267,7 @@ app.get("/api/premium", async (req, res) => {
 app.post("/api/premium/activate", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) {
       return res.status(400).json({ error: "userId requis." });
     }

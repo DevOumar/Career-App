@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerAdminFinanceRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerAdminFinanceRoutes(app) {
 app.get("/api/admin/finance", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const source = coerceString(req.query?.source);
@@ -346,6 +348,7 @@ app.get("/api/admin/finance", async (req, res) => {
 app.post("/api/admin/transactions/:id/refund", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     if (!stripe) {

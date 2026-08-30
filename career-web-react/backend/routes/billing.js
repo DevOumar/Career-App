@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerBillingRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -256,6 +257,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     }
 
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const planId = coerceString(req.body?.planId);
     const billingCycle = coerceString(req.body?.billingCycle) === "annual" ? "annual" : "monthly";
 
@@ -324,6 +326,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
 app.post("/api/plans/activate", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const planId = coerceString(req.body?.planId);
     const billingCycle = coerceString(req.body?.billingCycle);
 
@@ -356,6 +359,7 @@ app.post("/api/plans/activate", async (req, res) => {
 app.post("/api/plans/redeem", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const code = coerceString(req.body?.code).toUpperCase();
 
     if (!userId || !code) {

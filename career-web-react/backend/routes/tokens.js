@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerTokensRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -249,6 +250,7 @@ export function registerTokensRoutes(app) {
 app.post("/api/tokens/consume", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const amount = Math.max(1, coerceInteger(req.body?.amount, 1));
 
     if (!userId) {

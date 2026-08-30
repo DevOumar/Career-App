@@ -63,6 +63,7 @@ function formatContext(chunks) {
 
 export function registerInterviewRoutes(app) {
   const {
+    requireMatchingSession,
     express,
     AI_PROVIDER,
     GROQ_API_KEY,
@@ -310,6 +311,7 @@ export function registerInterviewRoutes(app) {
   app.get("/api/interview/conversations", async (req, res) => {
     try {
       const userId = coerceString(req.query.userId);
+      if (!requireMatchingSession(req, res, userId)) return;
       if (!userId) return res.status(400).json({ error: "userId requis." });
 
       const { rows } = await db.query(
@@ -334,6 +336,7 @@ export function registerInterviewRoutes(app) {
   app.post("/api/interview/conversations", async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
+      if (!requireMatchingSession(req, res, userId)) return;
       const payload = req.body?.payload;
       const title = coerceString(req.body?.title) || "Entretien";
 
@@ -364,6 +367,7 @@ export function registerInterviewRoutes(app) {
   app.put("/api/interview/conversations/:id", async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
+      if (!requireMatchingSession(req, res, userId)) return;
       const conversationId = coerceString(req.params.id);
       const payload = req.body?.payload;
       const title = coerceString(req.body?.title);
@@ -400,6 +404,7 @@ export function registerInterviewRoutes(app) {
   app.delete("/api/interview/conversations/:id", async (req, res) => {
     try {
       const userId = coerceString(req.query.userId);
+      if (!requireMatchingSession(req, res, userId)) return;
       const conversationId = coerceString(req.params.id);
       if (!userId || !conversationId) {
         return res.status(400).json({ error: "userId et id requis." });

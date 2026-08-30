@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerCvRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -352,6 +353,7 @@ app.post("/api/cv/optimize-ats", async (req, res) => {
 app.post("/api/cv", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const cvRecord = req.body?.cvRecord;
 
     if (!userId || !cvRecord) {
@@ -400,6 +402,7 @@ app.post("/api/cv", async (req, res) => {
 app.get("/api/cv", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) {
       return res.status(400).json({ error: "userId requis." });
     }

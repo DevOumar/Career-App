@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerSchoolStudentsRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerSchoolStudentsRoutes(app) {
 app.get("/api/school/students", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
 
     const search = coerceString(req.query?.search).toLowerCase();
@@ -308,6 +310,7 @@ app.get("/api/school/students", async (req, res) => {
 app.post("/api/school/students/remove", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
 
     const studentId = coerceString(req.body?.studentId);
@@ -351,6 +354,7 @@ app.post("/api/school/students/remove", async (req, res) => {
 app.get("/api/school/students/export", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const students = await getSchoolStudentRows(userId);
     const header = ["prenom", "nom", "email", "date_inscription"].join(",");

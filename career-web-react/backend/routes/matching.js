@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerMatchingRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -300,6 +301,7 @@ app.get("/api/offers", async (_req, res) => {
 app.post("/api/matches", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const payload = req.body?.payload;
 
     if (!userId || !payload) {
@@ -335,6 +337,7 @@ app.post("/api/matches", async (req, res) => {
 app.get("/api/matches/latest", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) {
       return res.status(400).json({ error: "userId requis." });
     }
@@ -364,6 +367,7 @@ app.get("/api/matches/latest", async (req, res) => {
 app.post("/api/matches/feedback", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const matchRunId = coerceString(req.body?.matchRunId);
     const useful = Boolean(req.body?.useful);
 
@@ -395,6 +399,7 @@ app.post("/api/matches/feedback", async (req, res) => {
 app.get("/api/matches/feedback", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const matchRunId = coerceString(req.query.matchRunId);
     if (!userId || !matchRunId) {
       return res.status(400).json({ error: "userId et matchRunId requis." });

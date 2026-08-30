@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerAdminCvsAndMatchingRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerAdminCvsAndMatchingRoutes(app) {
 app.get("/api/admin/cvs", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const search = coerceString(req.query?.search).toLowerCase();
@@ -299,6 +301,7 @@ app.get("/api/admin/cvs", async (req, res) => {
 app.post("/api/admin/cvs/:id/reanalyze", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
     const cvId = coerceString(req.params.id);
     const { rows } = await db.query("SELECT source_text FROM cvs WHERE id = $1 LIMIT 1", [cvId]);
@@ -315,6 +318,7 @@ app.post("/api/admin/cvs/:id/reanalyze", async (req, res) => {
 app.delete("/api/admin/cvs/:id", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
     const cvId = coerceString(req.params.id);
     await db.query("DELETE FROM cvs WHERE id = $1", [cvId]);
@@ -328,6 +332,7 @@ app.delete("/api/admin/cvs/:id", async (req, res) => {
 app.get("/api/admin/matches", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
     const search = coerceString(req.query?.search).toLowerCase();
     const { rows: runRows } = await db.query("SELECT id, user_id, created_at, payload_json FROM match_runs ORDER BY created_at DESC LIMIT 500");
@@ -381,6 +386,7 @@ app.get("/api/admin/matches", async (req, res) => {
 app.get("/api/admin/quality", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
     const search = coerceString(req.query?.search).toLowerCase();
     const { rows: cvRows } = await db.query("SELECT id, user_id, created_at, file_name, parsed_json FROM cvs ORDER BY created_at DESC LIMIT 500");

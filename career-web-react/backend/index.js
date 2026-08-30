@@ -343,6 +343,58 @@ const authRateLimiter = rateLimit({
 });
 app.use("/api/auth", authRateLimiter);
 
+// Résout la session (token Bearer) sur CHAQUE requête, avant les routes :
+// req.sessionUserId contient l'id de l'utilisateur réellement authentifié
+// pour cette requête (ou null si aucun token valide). Ne bloque rien ici
+// (beaucoup de routes sont publiques, ex. /api/health, /api/offers) — les
+// routes qui manipulent des données propres à un utilisateur appellent
+// requireMatchingSession(req, res, userId) pour vérifier que le userId
+// qu'elles reçoivent (body/query) correspond bien à la session active,
+// plutôt que de faire confiance à un userId envoyé tel quel par le client.
+app.use(async (req, res, next) => {
+  try {
+    const authHeader = String(req.headers.authorization || "");
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
+    if (!token) {
+      req.sessionUserId = null;
+      return next();
+    }
+    const { rows } = await db.query("SELECT user_id, expires_at FROM sessions WHERE token = $1 LIMIT 1", [token]);
+    const session = rows[0];
+    if (!session) {
+      req.sessionUserId = null;
+      return next();
+    }
+    if (session.expires_at && new Date(session.expires_at).getTime() < Date.now()) {
+      await db.query("DELETE FROM sessions WHERE token = $1", [token]);
+      req.sessionUserId = null;
+      return next();
+    }
+    req.sessionUserId = session.user_id;
+    return next();
+  } catch (error) {
+    console.error("Erreur resolution de session:", error);
+    req.sessionUserId = null;
+    return next();
+  }
+});
+
+// À appeler en tout début de route avec le userId reçu du client (body ou
+// query) : renvoie false (et a déjà répondu 401/403) si ce userId ne
+// correspond pas à la session active pour cette requête. Utilisation :
+//   if (!requireMatchingSession(req, res, userId)) return;
+function requireMatchingSession(req, res, claimedUserId) {
+  if (!req.sessionUserId) {
+    res.status(401).json({ error: "Authentification requise." });
+    return false;
+  }
+  if (!claimedUserId || req.sessionUserId !== claimedUserId) {
+    res.status(403).json({ error: "Accès refusé." });
+    return false;
+  }
+  return true;
+}
+
 await db.exec(`
   CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -4154,6 +4206,7 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  requireMatchingSession,
   cors,
   crypto,
   express,

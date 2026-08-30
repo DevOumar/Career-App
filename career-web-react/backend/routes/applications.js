@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerApplicationsRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -249,6 +250,7 @@ export function registerApplicationsRoutes(app) {
 app.get("/api/applications", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) {
       return res.status(400).json({ error: "userId requis." });
     }
@@ -267,6 +269,7 @@ app.get("/api/applications", async (req, res) => {
 app.post("/api/applications", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) {
       return res.status(400).json({ error: "userId requis." });
     }
@@ -324,6 +327,7 @@ app.post("/api/applications", async (req, res) => {
 app.put("/api/applications/:id", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const id = coerceString(req.params.id);
     if (!userId || !id) {
       return res.status(400).json({ error: "userId et id requis." });
@@ -393,6 +397,7 @@ app.put("/api/applications/:id", async (req, res) => {
 app.delete("/api/applications/:id", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const id = coerceString(req.params.id);
     if (!userId || !id) {
       return res.status(400).json({ error: "userId et id requis." });

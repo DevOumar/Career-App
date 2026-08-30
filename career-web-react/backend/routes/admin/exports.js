@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerAdminExportRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerAdminExportRoutes(app) {
 app.get("/api/admin/export/accounts", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const { rows } = await db.query(
@@ -279,6 +281,7 @@ app.get("/api/admin/export/accounts", async (req, res) => {
 app.get("/api/admin/export/transactions", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const { rows } = await db.query(
@@ -315,6 +318,7 @@ app.get("/api/admin/export/transactions", async (req, res) => {
 app.get("/api/admin/export/license-codes", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const { rows } = await db.query(

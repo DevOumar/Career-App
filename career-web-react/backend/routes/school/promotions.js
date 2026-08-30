@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerSchoolPromotionsRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerSchoolPromotionsRoutes(app) {
 app.get("/api/school/promotions", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const students = await getSchoolStudentRows(userId);
     const { rows } = await db.query("SELECT * FROM school_promotions WHERE school_user_id = $1 ORDER BY created_at DESC", [userId]);
@@ -282,6 +284,7 @@ app.get("/api/school/promotions", async (req, res) => {
 app.post("/api/school/promotions", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const name = coerceString(req.body?.name);
     if (!name) return res.status(400).json({ error: "Le nom de la promotion est requis." });
@@ -310,6 +313,7 @@ app.post("/api/school/promotions", async (req, res) => {
 app.post("/api/school/promotions/:id/students", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const promotionId = coerceString(req.params.id);
     const studentId = coerceString(req.body?.studentId);

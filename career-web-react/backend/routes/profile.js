@@ -4,6 +4,7 @@
 // l'initialisation complète (DB ouverte, helpers définis).
 export function registerProfileRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -249,6 +250,7 @@ export function registerProfileRoutes(app) {
 app.patch("/api/profile", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     if (!userId) {
       return res.status(400).json({ error: "userId requis." });
     }
@@ -282,6 +284,7 @@ app.patch("/api/profile", async (req, res) => {
 app.patch("/api/account", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const patch = req.body?.patch || {};
 
     if (!userId) {
@@ -372,6 +375,7 @@ app.patch("/api/account", async (req, res) => {
 app.post("/api/account/emails/request", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const email = normalizeEmail(req.body?.email);
 
     if (!userId || !email.includes("@")) {
@@ -408,6 +412,7 @@ app.post("/api/account/emails/request", async (req, res) => {
 app.post("/api/account/emails/verify", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const email = normalizeEmail(req.body?.email);
     const code = coerceString(req.body?.code).replace(/\D/g, "");
 
@@ -464,6 +469,7 @@ app.post("/api/account/emails/verify", async (req, res) => {
 app.patch("/api/account/emails/primary", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const emailId = coerceString(req.body?.emailId);
     const user = await getUserRowById(userId);
     if (!user || !emailId) {
@@ -497,6 +503,7 @@ app.patch("/api/account/emails/primary", async (req, res) => {
 app.delete("/api/account/emails", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const emailId = coerceString(req.body?.emailId);
     const { rows } = await db.query(
       "SELECT * FROM user_email_addresses WHERE id = $1 AND user_id = $2 LIMIT 1",
@@ -524,6 +531,7 @@ app.post("/api/account/connected-accounts/link-google", async (req, res) => {
       return res.status(500).json({ error: "Connexion Google non configurée sur le serveur." });
     }
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const credential = coerceString(req.body?.credential);
     const user = await getUserRowById(userId);
     if (!user || !credential) {
@@ -557,6 +565,7 @@ app.post("/api/account/connected-accounts/link-google", async (req, res) => {
 app.post("/api/account/connected-accounts/remove", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const provider = coerceString(req.body?.provider || "google");
     const user = await getUserRowById(userId);
     if (!user) {
@@ -577,6 +586,7 @@ app.post("/api/account/connected-accounts/remove", async (req, res) => {
 app.delete("/api/account", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const confirmation = coerceString(req.body?.confirmation);
 
     if (!userId || confirmation !== "Supprimer le compte") {
@@ -611,6 +621,7 @@ app.delete("/api/account", async (req, res) => {
 app.patch("/api/profile/avatar", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     const avatarDataUrl = normalizeAvatarDataUrl(req.body?.avatarDataUrl || "");
 
     if (!userId) {

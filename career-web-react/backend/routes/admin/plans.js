@@ -2,6 +2,7 @@
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
 export function registerAdminPlansRoutes(app) {
   const {
+    requireMatchingSession,
     cors,
     crypto,
     express,
@@ -247,6 +248,7 @@ export function registerAdminPlansRoutes(app) {
 app.get("/api/admin/plans", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const { rows } = await db.query("SELECT * FROM plan_overrides");
@@ -278,6 +280,7 @@ app.get("/api/admin/plans", async (req, res) => {
 app.put("/api/admin/plans/:id", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
 
     const planId = coerceString(req.params.id);
@@ -378,6 +381,7 @@ app.put("/api/admin/plans/:id", async (req, res) => {
 app.post("/api/admin/plans/:id/reset", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdmin(adminUserId);
     const planId = coerceString(req.params.id);
     await db.query("DELETE FROM plan_overrides WHERE plan_id = $1", [planId]);
