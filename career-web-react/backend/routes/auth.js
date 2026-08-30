@@ -341,16 +341,49 @@ app.post("/api/auth/register", async (req, res) => {
   }
 });
 
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_LOCKOUT_MINUTES = 15;
+
 app.post("/api/auth/login", async (req, res) => {
   try {
     const identifier = coerceString(req.body?.identifier || req.body?.email);
     const password = String(req.body?.password || "");
 
     const user = await getUserRowByIdentifier(identifier);
-    if (!user || !verifyPassword(password, user.password_salt, user.password_hash)) {
+    if (!user) {
       return res.status(401).json({ error: "Identifiants invalides." });
     }
+
+    // Compte verrouillé suite à trop d'échecs récents : on ne teste même
+    // pas le mot de passe (évite de laisser une chance supplémentaire
+    // pendant le verrouillage, et limite le travail fait par requête).
+    const lockedUntil = user.locked_until ? new Date(user.locked_until).getTime() : 0;
+    if (lockedUntil && lockedUntil > Date.now()) {
+      const minutesLeft = Math.max(1, Math.ceil((lockedUntil - Date.now()) / 60000));
+      return res.status(429).json({
+        error: `Trop de tentatives échouées. Réessayez dans ${minutesLeft} min ou utilisez la connexion par code email.`
+      });
+    }
+
+    if (!verifyPassword(password, user.password_salt, user.password_hash)) {
+      const attempts = Number(user.failed_login_attempts || 0) + 1;
+      if (attempts >= LOGIN_MAX_ATTEMPTS) {
+        await db.query(
+          "UPDATE users SET failed_login_attempts = 0, locked_until = $1 WHERE id = $2",
+          [addMinutes(new Date(), LOGIN_LOCKOUT_MINUTES), user.id]
+        );
+        await logSecurityEvent(req, user.id, "login_locked", { method: "password", attempts });
+      } else {
+        await db.query("UPDATE users SET failed_login_attempts = $1 WHERE id = $2", [attempts, user.id]);
+      }
+      return res.status(401).json({ error: "Identifiants invalides." });
+    }
+
     ensureUserCanAuthenticate(user);
+
+    if (Number(user.failed_login_attempts || 0) > 0 || user.locked_until) {
+      await db.query("UPDATE users SET failed_login_attempts = 0, locked_until = '' WHERE id = $1", [user.id]);
+    }
 
     const token = await createSessionForRequest(req, user.id);
     await logSecurityEvent(req, user.id, "login_password", { method: "password" });
@@ -586,9 +619,13 @@ app.get("/api/auth/session", async (req, res) => {
       return res.status(401).json({ error: "Session invalide." });
     }
 
-    const sessionRows = await db.query("SELECT user_id FROM sessions WHERE token = $1 LIMIT 1", [token]);
+    const sessionRows = await db.query("SELECT user_id, expires_at FROM sessions WHERE token = $1 LIMIT 1", [token]);
     const session = sessionRows.rows[0];
     if (!session) {
+      return res.status(401).json({ error: "Session expirée." });
+    }
+    if (session.expires_at && new Date(session.expires_at).getTime() < Date.now()) {
+      await db.query("DELETE FROM sessions WHERE token = $1", [token]);
       return res.status(401).json({ error: "Session expirée." });
     }
 

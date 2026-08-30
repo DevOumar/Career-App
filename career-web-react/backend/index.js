@@ -1,6 +1,7 @@
 import cors from "cors";
 import crypto from "crypto";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import dns from "node:dns/promises";
@@ -43,6 +44,7 @@ import { registerApplicationsRoutes } from "./routes/applications.js";
 import { registerInterviewRoutes } from "./routes/interview.js";
 
 const BASE_PORT = Number(process.env.PORT || 8787);
+const SESSION_LIFETIME_MINUTES = 30 * 24 * 60; // 30 jours
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
 const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
 
@@ -324,6 +326,22 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 });
 
 app.use(express.json({ limit: "10mb" }));
+
+// Anti-bourrinage sur les routes d'authentification (connexion, inscription,
+// demande/vérification de code) : au-delà de 20 requêtes en 15 minutes
+// depuis la même IP, on bloque temporairement. Ne remplace pas le
+// verrouillage par compte (voir requireLoginAttemptsAllowed dans
+// routes/auth.js) : ceci protège contre le bourrinage massif/distribué
+// (spam d'inscriptions, énumération d'emails), le verrouillage par compte
+// protège un compte ciblé précis.
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Trop de tentatives. Réessayez dans quelques minutes." }
+});
+app.use("/api/auth", authRateLimiter);
 
 await db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -653,6 +671,9 @@ await db.exec(`
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_agent TEXT NOT NULL DEFAULT '';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS ip_address TEXT NOT NULL DEFAULT '';
   ALTER TABLE sessions ADD COLUMN IF NOT EXISTS last_seen_at TEXT NOT NULL DEFAULT '';
+  ALTER TABLE sessions ADD COLUMN IF NOT EXISTS expires_at TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS failed_login_attempts INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TEXT NOT NULL DEFAULT '';
   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS stripe_payment_intent_id TEXT;
   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS refunded INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE transactions ADD COLUMN IF NOT EXISTS refunded_at TEXT;
@@ -661,6 +682,16 @@ await db.exec(`
   ALTER TABLE cvs ADD COLUMN IF NOT EXISTS parsed_json TEXT NOT NULL DEFAULT '{}';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS satisfaction_last_prompted_at TEXT NOT NULL DEFAULT '';
 `);
+
+// Sessions déjà expirées avant l'ajout de la colonne expires_at (créées
+// sans date d'expiration) : on leur donne 30 jours à partir de maintenant
+// plutôt que de les supprimer immédiatement (déconnexion surprise de tout
+// le monde au déploiement de ce changement).
+await db.query(
+  "UPDATE sessions SET expires_at = $1 WHERE COALESCE(expires_at, '') = ''",
+  [addMinutes(new Date(), SESSION_LIFETIME_MINUTES)]
+);
+await db.query("DELETE FROM sessions WHERE expires_at <> '' AND expires_at < $1", [nowIso()]);
 
 await db.query("UPDATE users SET updated_at = created_at WHERE COALESCE(updated_at, '') = ''");
 await db.query(
@@ -1025,10 +1056,11 @@ function getBrowserName(userAgent = "") {
 async function createSessionForRequest(req, userId) {
   const token = `sess-${crypto.randomUUID()}`;
   const timestamp = nowIso();
+  const expiresAt = addMinutes(new Date(), SESSION_LIFETIME_MINUTES);
   await db.query(
-    `INSERT INTO sessions (token, user_id, created_at, user_agent, ip_address, last_seen_at)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
-    [token, userId, timestamp, getRequestUserAgent(req), getRequestIp(req), timestamp]
+    `INSERT INTO sessions (token, user_id, created_at, user_agent, ip_address, last_seen_at, expires_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+    [token, userId, timestamp, getRequestUserAgent(req), getRequestIp(req), timestamp, expiresAt]
   );
   return token;
 }
