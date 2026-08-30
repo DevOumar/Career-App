@@ -23,6 +23,7 @@ export const NEGOTIATION_COPY = {
     noHistory: "Aucune conversation pour l'instant.",
     deleteConversation: "Supprimer",
     deleteConfirm: "Supprimer cette conversation ?",
+    cancel: "Annuler",
     untitled: "Négociation sans titre"
   },
   en: {
@@ -48,6 +49,7 @@ export const NEGOTIATION_COPY = {
     noHistory: "No conversation yet.",
     deleteConversation: "Delete",
     deleteConfirm: "Delete this conversation?",
+    cancel: "Cancel",
     untitled: "Untitled negotiation"
   }
 };

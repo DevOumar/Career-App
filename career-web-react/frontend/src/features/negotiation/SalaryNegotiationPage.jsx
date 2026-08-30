@@ -1,4 +1,5 @@
 import React from "react";
+import Swal from "sweetalert2";
 // Module Négociation salariale : chat avec un recruteur IA, référence de
 // marché réelle quand disponible, bilan de fin de session, historique des
 // conversations sauvegardées.
@@ -130,7 +131,16 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
   async function handleDeleteConversation(event, conv) {
     event.stopPropagation();
     if (!userId) return;
-    if (typeof window !== "undefined" && !window.confirm(copy.deleteConfirm)) return;
+    const result = await Swal.fire({
+      icon: "warning",
+      title: copy.deleteConfirm,
+      text: conv.title || copy.untitled,
+      showCancelButton: true,
+      confirmButtonText: copy.deleteConversation,
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#f5222d"
+    });
+    if (!result.isConfirmed) return;
     try {
       await deleteNegotiationConversation({ userId, conversationId: conv.id });
       setConversations((prev) => prev.filter((item) => item.id !== conv.id));

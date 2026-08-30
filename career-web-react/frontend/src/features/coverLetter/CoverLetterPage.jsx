@@ -1,4 +1,5 @@
 import React from "react";
+import Swal from "sweetalert2";
 // Module Lettre de motivation IA : génération multi-ton/multi-modèle,
 // édition avant export, historique des lettres.
 import { useState, useEffect } from "react";
@@ -120,7 +121,16 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   async function handleDeleteConversation(event, conv) {
     event.stopPropagation();
     if (!userId) return;
-    if (typeof window !== "undefined" && !window.confirm(copy.deleteConfirm)) return;
+    const result = await Swal.fire({
+      icon: "warning",
+      title: copy.deleteConfirm,
+      text: conv.title || copy.untitled,
+      showCancelButton: true,
+      confirmButtonText: copy.deleteConversation,
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#f5222d"
+    });
+    if (!result.isConfirmed) return;
     try {
       await deleteCoverLetter({ userId, conversationId: conv.id });
       setConversations((prev) => prev.filter((item) => item.id !== conv.id));

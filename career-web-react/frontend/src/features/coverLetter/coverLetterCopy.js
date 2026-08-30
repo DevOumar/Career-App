@@ -24,6 +24,7 @@ export const COVER_LETTER_COPY = {
     noHistory: "Aucune lettre pour l'instant.",
     deleteConversation: "Supprimer",
     deleteConfirm: "Supprimer cette lettre ?",
+    cancel: "Annuler",
     untitled: "Lettre sans titre"
   },
   en: {
@@ -51,6 +52,7 @@ export const COVER_LETTER_COPY = {
     noHistory: "No letter yet.",
     deleteConversation: "Delete",
     deleteConfirm: "Delete this letter?",
+    cancel: "Cancel",
     untitled: "Untitled letter"
   }
 };

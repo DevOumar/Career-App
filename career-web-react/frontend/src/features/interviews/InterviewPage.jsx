@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { getPlanById } from "../../data/plans.js";
 import {
@@ -216,7 +217,16 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
   async function handleDeleteConversation(event, conv) {
     event.stopPropagation();
     if (!userId) return;
-    if (typeof window !== "undefined" && !window.confirm("Supprimer cet entretien ?")) return;
+    const result = await Swal.fire({
+      icon: "warning",
+      title: "Supprimer cet entretien ?",
+      text: conv.title || "Entretien",
+      showCancelButton: true,
+      confirmButtonText: "Supprimer",
+      cancelButtonText: "Annuler",
+      confirmButtonColor: "#f5222d"
+    });
+    if (!result.isConfirmed) return;
     try {
       await deleteInterviewConversation({ userId, conversationId: conv.id });
       setConversations((prev) => prev.filter((item) => item.id !== conv.id));
