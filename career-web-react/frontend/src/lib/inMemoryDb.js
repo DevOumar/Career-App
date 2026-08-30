@@ -270,6 +270,17 @@ export async function createStripeCheckoutSession({ userId, planId, billingCycle
   });
 }
 
+export async function confirmStripeCheckoutSession({ userId, sessionId }) {
+  return request("/stripe/confirm-checkout-session", {
+    method: "POST",
+    body: { userId, sessionId }
+  });
+}
+
+export async function listBillingTransactions(userId) {
+  return request(`/billing/transactions?userId=${encodeURIComponent(userId)}`);
+}
+
 export async function getHealth() {
   return request("/health");
 }

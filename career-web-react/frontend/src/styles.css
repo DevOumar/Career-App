@@ -7106,6 +7106,88 @@ input[aria-invalid="true"] {
   color: var(--primary);
 }
 
+.pricing-main-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 0.5rem;
+}
+
+.pricing-main-tab {
+  border: none;
+  background: transparent;
+  padding: 0.7rem 1.4rem;
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--text-2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+
+.pricing-main-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.billing-history-table-wrap {
+  overflow-x: auto;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 0.5rem;
+}
+
+.billing-history-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.billing-history-table th,
+.billing-history-table td {
+  text-align: left;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.billing-history-table th {
+  color: var(--text-2);
+  font-weight: 700;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.billing-history-table tr:last-child td {
+  border-bottom: none;
+}
+
+.billing-status-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.billing-status-pill.paid {
+  background: rgba(34, 197, 94, 0.14);
+  color: #16a34a;
+}
+
+.billing-status-pill.free {
+  background: rgba(100, 116, 139, 0.14);
+  color: var(--text-2);
+}
+
+.billing-status-pill.refunded {
+  background: rgba(239, 68, 68, 0.14);
+  color: #dc2626;
+}
+
 .pricing-segment-tabs {
   display: flex;
   justify-content: center;

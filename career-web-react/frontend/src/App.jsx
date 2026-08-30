@@ -40,6 +40,7 @@ import {
   changeUserPassword,
   consumeTokens,
   createStripeCheckoutSession,
+  confirmStripeCheckoutSession,
   deleteUserAccount,
   extractCvFile,
   findEmail,
@@ -848,13 +849,27 @@ export default function App() {
     setActivePage("tarifs");
     if (stripeStatus === "success") {
       setPageMessage(language === "en" ? "Payment confirmed, plan activated." : "Paiement confirmé, plan activé.");
-      // Le webhook Stripe qui active réellement le plan est asynchrone : on
-      // relit la session un peu après le retour pour refléter le nouveau
-      // plan dès qu'il est possible, sans bloquer l'affichage immédiat.
       const currentToken = localStorage.getItem("career_app_token") || "";
-      if (currentToken) {
-        setTimeout(() => syncSession(currentToken), 1500);
-      }
+      const sessionId = params.get("session_id");
+      // Le webhook Stripe qui active normalement le plan est asynchrone (et
+      // injoignable en local sans `stripe listen`) : on confirme aussi la
+      // session directement auprès de Stripe en filet de sécurité, avant de
+      // relire la session utilisateur pour refléter le nouveau plan.
+      const confirmThenSync = async () => {
+        if (sessionId && currentToken) {
+          try {
+            const snapshot = await getUserFromSession(currentToken);
+            if (snapshot?.user?.id) {
+              await confirmStripeCheckoutSession({ userId: snapshot.user.id, sessionId });
+            }
+          } catch (_error) {
+            // Le webhook a pu déjà traiter l'événement entre-temps ; on
+            // laisse simplement syncSession refléter l'état réel ensuite.
+          }
+        }
+        if (currentToken) syncSession(currentToken);
+      };
+      setTimeout(confirmThenSync, 1200);
     }
   }, []);
 

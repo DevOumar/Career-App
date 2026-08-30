@@ -316,7 +316,7 @@ app.put("/api/admin/plans/:id", async (req, res) => {
     if (plan.grantsPremium && stripe) {
       if (isSinglePrice) {
         if (nextAnnual !== currentAnnual || !existing?.stripe_price_id_annual) {
-          const product = await stripe.products.create({ name: `Career CV - ${plan.name.fr} (tarif admin)` });
+          const product = await stripe.products.create({ name: `Career CV - ${plan.name.fr}` });
           const price = await stripe.prices.create({
             product: product.id,
             unit_amount: Math.round(nextAnnual * 100),
@@ -326,7 +326,7 @@ app.put("/api/admin/plans/:id", async (req, res) => {
         }
       } else {
         if (nextMonthly !== currentMonthly || !existing?.stripe_price_id_monthly) {
-          const product = await stripe.products.create({ name: `Career CV - ${plan.name.fr} (mensuel, tarif admin)` });
+          const product = await stripe.products.create({ name: `Career CV - ${plan.name.fr} (mensuel)` });
           const price = await stripe.prices.create({
             product: product.id,
             unit_amount: Math.round(nextMonthly * 100),
@@ -336,7 +336,7 @@ app.put("/api/admin/plans/:id", async (req, res) => {
           stripePriceIdMonthly = price.id;
         }
         if (nextAnnual !== currentAnnual || !existing?.stripe_price_id_annual) {
-          const product = await stripe.products.create({ name: `Career CV - ${plan.name.fr} (annuel, tarif admin)` });
+          const product = await stripe.products.create({ name: `Career CV - ${plan.name.fr} (annuel)` });
           const price = await stripe.prices.create({
             product: product.id,
             unit_amount: Math.round(nextAnnual * 100),

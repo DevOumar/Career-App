@@ -310,6 +310,26 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
   }
 
   try {
+    // event.id est unique par événement Stripe (y compris les retries : un
+    // même événement retenté garde le même id) — on ne l'applique qu'une
+    // seule fois, même si Stripe le renvoie plusieurs fois ou si la session
+    // a déjà été traitée par le filet de sécurité /confirm-checkout-session.
+    const isNewEvent = await claimStripeEventOnce(event.id);
+    if (!isNewEvent) {
+      return res.json({ received: true, handled: false, reason: "already_processed" });
+    }
+    // Pour checkout.session.completed, on protège aussi sur l'id de session
+    // lui-même : /confirm-checkout-session (filet de secours côté front, cf.
+    // routes/billing.js) peut avoir déjà traité cette session avant que le
+    // webhook n'arrive.
+    if (event.type === "checkout.session.completed") {
+      const sessionClaimId = `session:${event.data.object.id}`;
+      const isNewSession = await claimStripeEventOnce(sessionClaimId);
+      if (!isNewSession) {
+        return res.json({ received: true, handled: false, reason: "session_already_processed" });
+      }
+    }
+
     const result = await applyStripeWebhookEvent(event, {
       db,
       parseJsonField,
@@ -664,6 +684,16 @@ await db.exec(`
     stripe_price_id_monthly TEXT,
     stripe_price_id_annual TEXT,
     updated_at TEXT NOT NULL
+  );
+
+  -- Déduplication des événements Stripe (webhook + confirmation manuelle de
+  -- secours peuvent recevoir le même événement plusieurs fois : retries
+  -- réseau Stripe, ou webhook + confirm-checkout-session sur la même
+  -- session). Un id Stripe (evt_... ou cs_...) ne doit être appliqué qu'une
+  -- seule fois.
+  CREATE TABLE IF NOT EXISTS processed_stripe_events (
+    id TEXT PRIMARY KEY,
+    processed_at TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS transactions (
@@ -3668,6 +3698,26 @@ function generateLicenseCode() {
   return code;
 }
 
+// Marque un événement Stripe (id evt_... du webhook, ou id cs_... d'une
+// session Checkout pour le filet de sécurité manuel) comme traité. Retourne
+// true la première fois (l'appelant doit appliquer l'événement), false si
+// déjà traité (l'appelant doit l'ignorer) — protège contre les doublons dus
+// aux retries webhook de Stripe ou au chevauchement webhook / confirmation
+// manuelle sur la même session.
+async function claimStripeEventOnce(eventId) {
+  if (!eventId) return true;
+  try {
+    const result = await db.query(
+      "INSERT INTO processed_stripe_events (id, processed_at) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
+      [eventId, nowIso()]
+    );
+    return result.rowCount > 0;
+  } catch (error) {
+    console.error("Erreur verification idempotence evenement Stripe:", error);
+    return true;
+  }
+}
+
 async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeIds = null, source = "instant") {
   const cycle = billingCycle === "annual" ? "annual" : plan.monthlyPrice == null ? "annual" : "monthly";
   const startedAt = nowIso();
@@ -4431,6 +4481,7 @@ app.locals.ctx = {
   generateLicenseCodeForPlan,
   generateLicenseCode,
   applyPlanToUser,
+  claimStripeEventOnce,
   SATISFACTION_COOLDOWN_MS,
   csvCell,
   toCsv,

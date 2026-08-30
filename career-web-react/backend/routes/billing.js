@@ -5,6 +5,7 @@
 export function registerBillingRoutes(app) {
   const {
     requireMatchingSession,
+    claimStripeEventOnce,
     cors,
     crypto,
     express,
@@ -247,6 +248,41 @@ export function registerBillingRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
+app.get("/api/billing/transactions", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+
+    const { rows } = await db.query(
+      `SELECT id, plan_id, billing_cycle, listed_amount, amount_collected, currency, source,
+              license_code, refunded, refunded_at, created_at
+       FROM transactions WHERE user_id = $1 ORDER BY created_at DESC`,
+      [userId]
+    );
+    const transactions = rows.map((row) => {
+      const plan = PLANS.find((item) => item.id === row.plan_id) || null;
+      return {
+        id: row.id,
+        planId: row.plan_id,
+        planName: plan ? plan.name.fr : row.plan_id,
+        billingCycle: row.billing_cycle,
+        listedAmount: Number(row.listed_amount),
+        amountCollected: Number(row.amount_collected),
+        currency: row.currency,
+        source: row.source,
+        licenseCode: row.license_code,
+        refunded: Boolean(row.refunded),
+        refundedAt: row.refunded_at,
+        createdAt: row.created_at
+      };
+    });
+    return res.json({ transactions });
+  } catch (error) {
+    console.error("Erreur lecture historique de paiement:", error);
+    return res.status(500).json({ error: "Impossible de charger l'historique de paiement." });
+  }
+});
+
 app.post("/api/stripe/create-checkout-session", async (req, res) => {
   try {
     if (!stripe) {
@@ -310,16 +346,68 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       mode: resolveStripeMode(plan),
       planId: plan.id,
       billingCycle,
-      successUrl: `${APP_URL}/#/app/tarifs?stripe=success`,
+      successUrl: `${APP_URL}/#/app/tarifs?stripe=success&session_id={CHECKOUT_SESSION_ID}`,
       cancelUrl: `${APP_URL}/#/app/tarifs?stripe=cancel`,
       quantity
     });
 
-    const session = await stripe.checkout.sessions.create(params);
+    // Clé d'idempotence Stripe : un double-clic ou un retry réseau du front
+    // sur la même minute pour le même utilisateur/plan réutilise la même
+    // session au lieu d'en créer une seconde. Passée la fenêtre d'une
+    // minute, un nouvel achat du même plan crée bien une nouvelle session.
+    const idempotencyKey = `checkout:${userId}:${planId}:${billingCycle}:${quantity}:${Math.floor(Date.now() / 60000)}`;
+    const session = await stripe.checkout.sessions.create(params, { idempotencyKey });
     return res.json({ url: session.url });
   } catch (error) {
     console.error("Erreur création session Stripe Checkout:", error);
     return res.status(500).json({ error: error.message || "Impossible de créer la session de paiement." });
+  }
+});
+
+// Filet de sécurité pour le retour de Stripe Checkout : le webhook
+// /api/stripe/webhook active normalement le plan de façon asynchrone, mais en
+// local (pas d'URL publique joignable par Stripe sans `stripe listen`) ou en
+// cas de retard du webhook, l'utilisateur reviendrait sur "success" sans que
+// son plan soit activé. On revérifie donc ici directement auprès de Stripe
+// avec le session_id renvoyé dans l'URL de succès, et on applique la même
+// logique d'activation que le webhook si le paiement est bien confirmé.
+app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
+  try {
+    if (!stripe) {
+      return res.status(503).json({ error: "Paiement Stripe non configuré côté serveur." });
+    }
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const sessionId = coerceString(req.body?.sessionId);
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId manquant." });
+    }
+
+    const session = await stripe.checkout.sessions.retrieve(sessionId);
+    if (session.client_reference_id !== userId) {
+      return res.status(403).json({ error: "Cette session de paiement ne correspond pas à cet utilisateur." });
+    }
+    if (session.payment_status !== "paid" && session.status !== "complete") {
+      return res.json({ handled: false, reason: "not_paid" });
+    }
+
+    // Même protection anti-doublon que le webhook (même id de réclamation
+    // "session:<id>") : si le webhook a déjà traité cette session avant que
+    // ce filet de secours ne s'exécute (ou l'inverse), on ne l'applique
+    // qu'une fois.
+    const isNewSession = await claimStripeEventOnce(`session:${session.id}`);
+    if (!isNewSession) {
+      return res.json({ handled: false, reason: "already_processed" });
+    }
+
+    const result = await applyStripeWebhookEvent(
+      { type: "checkout.session.completed", data: { object: session } },
+      { db, parseJsonField, getPlanById: getEffectivePlanById, applyPlanToUser, generateLicenseCodeForPlan }
+    );
+    return res.json(result);
+  } catch (error) {
+    console.error("Erreur confirmation session Stripe Checkout:", error);
+    return res.status(500).json({ error: error.message || "Impossible de confirmer le paiement." });
   }
 });
 

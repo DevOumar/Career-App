@@ -7,6 +7,7 @@ import { CURRENCY_OPTIONS, getCurrencyOption, formatAmountInCurrency, formatPlan
 import { InfoPage } from "../landing/LandingPage.jsx";
 import { PRICING_COPY } from "./pricingCopy.js";
 import { PLANS, PLAN_SEGMENTS, getPlanById } from "../../data/plans.js";
+import { listBillingTransactions } from "../../lib/inMemoryDb.js";
 
 function PublicPricingPage({ language, setLanguage, onBack, onLoginClick, onSignupClick, onNavigateLegal, landingCopy, currency = "EUR" }) {
   const isEn = language === "en";
@@ -96,6 +97,88 @@ function allowedPricingSegmentsForRole(roleType) {
   return ["candidate"];
 }
 
+function BillingHistoryTab({ userId, language, currency }) {
+  const copy = PRICING_COPY[language] || PRICING_COPY.fr;
+  const [transactions, setTransactions] = useState([]);
+  const [status, setStatus] = useState("loading");
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    setStatus("loading");
+    listBillingTransactions(userId)
+      .then((data) => {
+        if (cancelled) return;
+        setTransactions(data.transactions || []);
+        setStatus("ready");
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  const sourceLabel = (source) => {
+    if (source === "stripe") return copy.historySourceStripe;
+    if (source === "license_redeem") return copy.historySourceLicenseRedeem;
+    return copy.historySourceInstant;
+  };
+
+  const statusLabel = (txn) => {
+    if (txn.refunded) return copy.historyStatusRefunded;
+    if (txn.amountCollected > 0) return copy.historyStatusPaid;
+    return copy.historyStatusFree;
+  };
+
+  if (status === "loading") {
+    return <p className="muted">{copy.historyLoading}</p>;
+  }
+  if (status === "error") {
+    return <p className="form-error">{copy.historyError}</p>;
+  }
+  if (!transactions.length) {
+    return <p className="muted">{copy.historyEmpty}</p>;
+  }
+
+  return (
+    <div className="billing-history-table-wrap">
+      <table className="billing-history-table">
+        <thead>
+          <tr>
+            <th>{copy.historyColDate}</th>
+            <th>{copy.historyColPlan}</th>
+            <th>{copy.historyColAmount}</th>
+            <th>{copy.historyColSource}</th>
+            <th>{copy.historyColStatus}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {transactions.map((txn) => (
+            <tr key={txn.id}>
+              <td>{new Date(txn.createdAt).toLocaleDateString(language === "en" ? "en-GB" : "fr-FR")}</td>
+              <td>
+                {txn.planName}
+                {txn.billingCycle ? (
+                  <span className="muted"> · {txn.billingCycle === "annual" ? copy.historyCycleAnnual : copy.historyCycleMonthly}</span>
+                ) : null}
+              </td>
+              <td>{formatAmountInCurrency(txn.amountCollected, currency)}</td>
+              <td>{sourceLabel(txn.source)}</td>
+              <td>
+                <span className={`billing-status-pill ${txn.refunded ? "refunded" : txn.amountCollected > 0 ? "paid" : "free"}`}>
+                  {statusLabel(txn)}
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PricingPage({
   user,
   premium,
@@ -112,6 +195,7 @@ function PricingPage({
   const allowedSegments = allowedPricingSegmentsForRole(user?.roleType);
   const visibleSegments = PRICING_SEGMENTS.filter((item) => allowedSegments.includes(item.id));
   const [segment, setSegment] = useState(allowedSegments[0]);
+  const [mainTab, setMainTab] = useState("plans");
   const [billingCycle, setBillingCycle] = useState("monthly");
   const [licenseCode, setLicenseCode] = useState("");
   const [studentSeats, setStudentSeats] = useState(30);
@@ -151,6 +235,27 @@ function PricingPage({
         </div>
       </header>
 
+      <div className="pricing-main-tabs">
+        <button
+          type="button"
+          className={`pricing-main-tab ${mainTab === "plans" ? "active" : ""}`}
+          onClick={() => setMainTab("plans")}
+        >
+          {copy.tabPlans}
+        </button>
+        <button
+          type="button"
+          className={`pricing-main-tab ${mainTab === "history" ? "active" : ""}`}
+          onClick={() => setMainTab("history")}
+        >
+          {copy.tabHistory}
+        </button>
+      </div>
+
+      {mainTab === "history" ? (
+        <BillingHistoryTab userId={user?.id} language={language} currency={currency} />
+      ) : (
+      <>
       {visibleSegments.length > 1 ? (
       <div className="pricing-segment-tabs">
         {visibleSegments.map((item) => (
@@ -276,6 +381,8 @@ function PricingPage({
           </button>
         </div>
       </div>
+      </>
+      )}
     </section>
   );
 }
