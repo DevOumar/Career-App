@@ -1202,12 +1202,17 @@ select:focus-visible {
 
 .landing-footer p {
   max-width: 380px;
+  margin: 0;
   color: #6f6c74;
   line-height: 1.7;
 }
 
 .footer-brand {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.footer-brand .brand-logo {
+  height: 2.4rem;
 }
 
 .footer-column {
