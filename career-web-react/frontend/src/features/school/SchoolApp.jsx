@@ -235,7 +235,7 @@ function SchoolApp({
             <span />
             <span />
           </button>
-          Career CV <span className="admin-badge school-badge">École</span>
+          <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" /> <span className="admin-badge school-badge">École</span>
         </div>
 
         <div className="topbar-search-box" ref={searchBoxRef}>

@@ -403,7 +403,7 @@ function AdminApp({
             <span />
             <span />
           </button>
-          Career CV <span className="admin-badge">Admin</span>
+          <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" /> <span className="admin-badge">Admin</span>
         </div>
 
         <div className="topbar-search-box" ref={searchBoxRef}>

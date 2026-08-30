@@ -1264,9 +1264,18 @@ select:focus-visible {
 }
 
 .brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 1.06rem;
   font-weight: 800;
   color: var(--primary-ink);
+}
+
+.brand-logo {
+  height: 1.9rem;
+  width: auto;
+  display: block;
 }
 
 .brand-badge {

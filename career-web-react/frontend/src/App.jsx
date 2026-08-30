@@ -1739,7 +1739,7 @@ export default function App() {
     <div className="app-shell">
       <header className="topbar">
         <div className="brand">
-          Career CV
+          <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
         </div>
 
         <nav className="topnav">
