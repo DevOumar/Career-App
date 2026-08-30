@@ -62,6 +62,32 @@ function inferCompany(text) {
   return lines[1]?.length <= 60 ? lines[1] : "Offre importée";
 }
 
+// Même heuristique que extractLocalJobSummary côté backend (index.js) :
+// cherche une ligne mentionnant une grande ville, la France, ou le
+// télétravail, plutôt que de renvoyer "Non précisé" à chaque fois.
+const LOCATION_PATTERN =
+  /(paris|lyon|nantes|lille|marseille|toulouse|bordeaux|strasbourg|nice|rennes|montpellier|grenoble|belgique|suisse|luxembourg|canada|france|remote|t[ée]l[ée]travail|hybride)/i;
+
+function inferLocation(text) {
+  // Test la ligne brute (pas normalize(), qui remplace les accents par des
+  // espaces et casserait "télétravail" en "te le travail" non contigu).
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const match = lines.find((line) => LOCATION_PATTERN.test(line));
+  return match ? match.slice(0, 80) : "Non précisé";
+}
+
+function inferContract(text) {
+  const lines = String(text || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const match = lines.find((line) => /\b(cdi|cdd|stage|alternance|freelance|int[ée]rim)\b/i.test(line));
+  return match ? match.slice(0, 60) : "À définir";
+}
+
 function inferJobDescription(text) {
   const lines = String(text || "")
     .split(/\r?\n/)
@@ -88,8 +114,8 @@ export function extractOfferSummary(text) {
     id: "custom-offer",
     company,
     title,
-    location: "Non précisé",
-    contract: "À définir",
+    location: inferLocation(text),
+    contract: inferContract(text),
     premium: false,
     sector: "Général",
     experienceMin,
