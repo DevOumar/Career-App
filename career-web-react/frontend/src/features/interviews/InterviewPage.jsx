@@ -596,76 +596,78 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
             </div>
           )}
 
-          <div className="setup-form">
-            <div className="form-group">
-              <label>Type d'entretien</label>
-              <div className="interview-type-group">
-                {[
-                  { id: "rh", icon: "profile", label: "RH / Soft Skills" },
-                  { id: "technique", icon: "settings", label: "Technique / Métier" },
-                  { id: "direction", icon: "briefcase", label: "Direction / Vision" }
-                ].map((t) => (
-                  <button
-                    key={t.id}
-                    type="button"
-                    className={`interview-type-option ${typeEntretien === t.id ? "active" : ""}`}
-                    onClick={() => setTypeEntretien(t.id)}
-                  >
-                    <UiIcon name={t.icon} />
-                    <span>{t.label}</span>
-                  </button>
-                ))}
+          {loading ? (
+            <div className="extracting-state">
+              <div className="loader-ring" />
+              <strong>Préparation de votre entretien</strong>
+              <span>{statusText || "L'IA prépare vos premières questions…"}</span>
+            </div>
+          ) : (
+            <div className="setup-form">
+              <div className="form-group">
+                <label>Type d'entretien</label>
+                <div className="interview-type-group">
+                  {[
+                    { id: "rh", icon: "profile", label: "RH / Soft Skills" },
+                    { id: "technique", icon: "settings", label: "Technique / Métier" },
+                    { id: "direction", icon: "briefcase", label: "Direction / Vision" }
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      className={`interview-type-option ${typeEntretien === t.id ? "active" : ""}`}
+                      onClick={() => setTypeEntretien(t.id)}
+                    >
+                      <UiIcon name={t.icon} />
+                      <span>{t.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="interview-domaine">Domaine / poste ciblé <span className="muted">(optionnel)</span></label>
+                <input
+                  id="interview-domaine"
+                  type="text"
+                  placeholder="Ex : Développeur Fullstack React, Chef de projet digital…"
+                  value={domaine}
+                  onChange={(e) => setDomaine(e.target.value)}
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="interview-offre">Offre d'emploi visée <span className="muted">(optionnel)</span></label>
+                <textarea
+                  id="interview-offre"
+                  rows={4}
+                  placeholder="Collez ici le descriptif du poste pour ancrer l'entretien dans un rôle précis…"
+                  value={offre}
+                  onChange={(e) => setOffre(e.target.value)}
+                />
+              </div>
+
+              <div className="setup-actions">
+                <button
+                  type="button"
+                  className="btn-main"
+                  onClick={() => handleStartSession("chat")}
+                  disabled={loading}
+                >
+                  <UiIcon name="chat" />
+                  Démarrer l'entretien écrit
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => handleStartSession("call")}
+                  disabled={loading}
+                >
+                  <UiIcon name="phone" />
+                  Démarrer l'appel vocal
+                </button>
               </div>
             </div>
-
-            <div className="form-group">
-              <label htmlFor="interview-domaine">Domaine / poste ciblé <span className="muted">(optionnel)</span></label>
-              <input
-                id="interview-domaine"
-                type="text"
-                placeholder="Ex : Développeur Fullstack React, Chef de projet digital…"
-                value={domaine}
-                onChange={(e) => setDomaine(e.target.value)}
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="interview-offre">Offre d'emploi visée <span className="muted">(optionnel)</span></label>
-              <textarea
-                id="interview-offre"
-                rows={4}
-                placeholder="Collez ici le descriptif du poste pour ancrer l'entretien dans un rôle précis…"
-                value={offre}
-                onChange={(e) => setOffre(e.target.value)}
-              />
-            </div>
-
-            <div className="setup-actions">
-              <button
-                type="button"
-                className="btn-main"
-                onClick={() => handleStartSession("chat")}
-                disabled={loading}
-              >
-                <UiIcon name="chat" />
-                Démarrer l'entretien écrit
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => handleStartSession("call")}
-                disabled={loading}
-              >
-                <UiIcon name="phone" />
-                Démarrer l'appel vocal
-              </button>
-            </div>
-          </div>
-
-          {loading && (
-            <p style={{ textAlign: "center", color: "var(--primary)", fontWeight: "600", margin: "0.5rem 0 0 0" }}>
-              ⏳ {statusText}
-            </p>
           )}
         </div>
       </section>
@@ -674,284 +676,103 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
 
   // --- ACTIVE SESSION SCREEN ---
   return (
-    <section className="interview-page" style={{ maxWidth: "1000px", margin: "1rem auto" }}>
-      {/* Top Header Navigation */}
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          marginBottom: "1rem",
-          padding: "0.8rem 1.2rem",
-          background: "var(--surface, #fff)",
-          borderRadius: "12px",
-          border: "1px solid var(--line, #e2e8f0)",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-          <span
-            style={{
-              padding: "0.3rem 0.7rem",
-              borderRadius: "20px",
-              background: typeEntretien === "technique" ? "#dbeafe" : "#dcfce7",
-              color: typeEntretien === "technique" ? "#1e40af" : "#166534",
-              fontWeight: "700",
-              fontSize: "0.82rem",
-              textTransform: "uppercase",
-            }}
-          >
-            {typeEntretien === "technique" ? "Entretien Technique" : typeEntretien === "direction" ? "Entretien Direction" : "Entretien RH"}
+    <section className="interview-page interview-session">
+      <div className="interview-session-bar">
+        <div className="interview-session-tags">
+          <span className={`interview-session-tag ${typeEntretien}`}>
+            {typeEntretien === "technique" ? "Entretien technique" : typeEntretien === "direction" ? "Entretien direction" : "Entretien RH"}
           </span>
-          {domaine && (
-            <span style={{ fontSize: "0.9rem", color: "var(--text-2, #64748b)", fontWeight: "500" }}>
-              • {domaine}
-            </span>
-          )}
+          {domaine && <span className="interview-session-domain">{domaine}</span>}
         </div>
 
-        <div style={{ display: "flex", gap: "0.6rem" }}>
-          <button
-            type="button"
-            className="btn-main"
-            onClick={handleEndInterview}
-            disabled={loading}
-            style={{
-              padding: "0.45rem 0.9rem",
-              fontSize: "0.85rem",
-              background: "#ea580c",
-            }}
-          >
-            🏁 Terminer & Bilan
+        <div className="interview-session-actions">
+          <button type="button" className="btn-main" onClick={handleEndInterview} disabled={loading}>
+            <UiIcon name="check" />
+            Terminer &amp; bilan
           </button>
-
-          <button
-            type="button"
-            onClick={handleReset}
-            style={{
-              padding: "0.45rem 0.9rem",
-              fontSize: "0.85rem",
-              borderRadius: "8px",
-              border: "1px solid var(--line, #cbd5e1)",
-              background: "transparent",
-              cursor: "pointer",
-              fontWeight: "600",
-            }}
-          >
-            🔄 Recommencer
+          <button type="button" className="btn-secondary" onClick={handleReset}>
+            <UiIcon name="history" />
+            Recommencer
           </button>
         </div>
       </div>
 
       {/* CALL MODE SCREEN */}
       {mode === "call" ? (
-        <div
-          className="card"
-          style={{
-            padding: "2.5rem 1.5rem",
-            textAlign: "center",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            gap: "1.5rem",
-            background: "linear-gradient(180deg, #0f172a, #1e293b)",
-            color: "#fff",
-            borderRadius: "20px",
-            boxShadow: "0 10px 25px rgba(0,0,0,0.3)",
-          }}
-        >
-          <div style={{ fontSize: "2rem", fontWeight: "800", letterSpacing: "2px", color: "#38bdf8" }}>
-            ⏱️ {formatTime(callSeconds)}
-          </div>
+        <div className="interview-call-card">
+          <div className="interview-call-timer">{formatTime(callSeconds)}</div>
 
-          <div
-            style={{
-              width: "100px",
-              height: "100px",
-              borderRadius: "50%",
-              background: isRecordingCall ? "#ef4444" : "#3b82f6",
-              display: "grid",
-              placeItems: "center",
-              boxShadow: isRecordingCall ? "0 0 0 15px rgba(239, 68, 68, 0.3)" : "0 0 0 10px rgba(59, 130, 246, 0.2)",
-              transition: "all 0.3s ease",
-            }}
-          >
+          <div className={`interview-call-avatar ${isRecordingCall ? "recording" : ""}`}>
             <UiIcon name={isRecordingCall ? "chat" : "profile"} className="interview-call-avatar-icon" />
           </div>
 
-          <p style={{ fontSize: "1.1rem", fontWeight: "600", color: "#e2e8f0", maxWidth: "500px" }}>
-            {callStatus}
-          </p>
+          <p className="interview-call-status">{callStatus}</p>
 
-          {/* Last Caption display */}
           {lastCaption.text && (
-            <div
-              style={{
-                maxWidth: "650px",
-                width: "100%",
-                padding: "1rem 1.2rem",
-                borderRadius: "14px",
-                background: "rgba(255, 255, 255, 0.08)",
-                backdropFilter: "blur(6px)",
-                textAlign: "left",
-                fontSize: "0.95rem",
-                lineHeight: "1.5",
-                color: "#cbd5e1",
-              }}
-            >
-              <strong style={{ color: "#38bdf8", display: "block", marginBottom: "0.3rem" }}>
-                {lastCaption.role === "recruiter" ? "Recruteur RH :" : "Vous :"}
-              </strong>
+            <div className="interview-call-caption">
+              <strong>{lastCaption.role === "recruiter" ? "Recruteur RH :" : "Vous :"}</strong>
               {lastCaption.text.replace(DISCLAIMER, "").trim()}
             </div>
           )}
 
-          <div style={{ display: "flex", gap: "1rem", marginTop: "1rem" }}>
+          <div className="interview-call-actions">
             <button
               type="button"
+              className={`interview-call-mic-btn ${isRecordingCall ? "recording" : ""}`}
               onClick={toggleCallRecording}
               disabled={loading}
-              style={{
-                padding: "0.85rem 1.8rem",
-                borderRadius: "30px",
-                border: "none",
-                background: isRecordingCall ? "#ef4444" : "#2563eb",
-                color: "#fff",
-                fontWeight: "700",
-                fontSize: "1rem",
-                cursor: "pointer",
-                boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
-              }}
             >
+              <UiIcon name="phone" />
               {isRecordingCall ? "Arrêter et envoyer" : "Parler au micro"}
             </button>
 
-            <button
-              type="button"
-              onClick={() => setMode("chat")}
-              style={{
-                padding: "0.85rem 1.5rem",
-                borderRadius: "30px",
-                border: "1px solid rgba(255,255,255,0.2)",
-                background: "transparent",
-                color: "#fff",
-                fontWeight: "600",
-                fontSize: "0.95rem",
-                cursor: "pointer",
-              }}
-            >
-              💬 Basculer en Chat
+            <button type="button" className="interview-call-switch-btn" onClick={() => setMode("chat")}>
+              <UiIcon name="chat" />
+              Basculer en chat
             </button>
           </div>
         </div>
       ) : (
         /* CHAT MODE SCREEN */
-        <div
-          className="card"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            height: "650px",
-            borderRadius: "16px",
-            padding: "0",
-            overflow: "hidden",
-          }}
-        >
-          {/* Chat Messages Stream */}
-          <div
-            style={{
-              flex: "1",
-              overflowY: "auto",
-              padding: "1.2rem",
-              display: "flex",
-              flexDirection: "column",
-              gap: "1rem",
-              background: "var(--bg-accent, #f8fafc)",
-            }}
-          >
+        <div className="interview-chat-card">
+          <div className="interview-chat-stream">
             {messages.map((msg) => {
               const isRecruiter = msg.role === "recruiter";
               return (
-                <div
-                  key={msg.id}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: isRecruiter ? "flex-start" : "flex-end",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "0.75rem",
-                      fontWeight: "700",
-                      color: "var(--text-muted, #64748b)",
-                      marginBottom: "0.25rem",
-                      marginRight: isRecruiter ? "0" : "0.4rem",
-                      marginLeft: isRecruiter ? "0.4rem" : "0",
-                    }}
-                  >
-                    {isRecruiter ? "Recruteur IA" : "Vous"}
-                  </span>
-
-                  <div
-                    style={{
-                      maxWidth: "80%",
-                      padding: "0.85rem 1.1rem",
-                      borderRadius: isRecruiter ? "16px 16px 16px 4px" : "16px 16px 4px 16px",
-                      background: isRecruiter ? "var(--surface, #ffffff)" : "var(--primary, #2563eb)",
-                      color: isRecruiter ? "var(--text, #0f172a)" : "#ffffff",
-                      boxShadow: "0 2px 6px rgba(0,0,0,0.05)",
-                      border: isRecruiter ? "1px solid var(--line, #e2e8f0)" : "none",
-                      fontSize: "0.95rem",
-                    }}
-                  >
-                    {renderMessageText(msg.text)}
-                  </div>
+                <div key={msg.id} className={`interview-message ${isRecruiter ? "recruiter" : "candidate"}`}>
+                  <span className="interview-message-role">{isRecruiter ? "Recruteur IA" : "Vous"}</span>
+                  <div className="interview-message-bubble">{renderMessageText(msg.text)}</div>
                 </div>
               );
             })}
 
             {loading && (
-              <div style={{ alignSelf: "flex-start", padding: "0.6rem 1rem", background: "#e2e8f0", borderRadius: "12px" }}>
-                <small style={{ color: "#475569", fontWeight: "600" }}>⏳ {statusText || "Réflexion en cours..."}</small>
+              <div className="interview-typing">
+                <span className="interview-typing-dots">
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                {statusText || "Le recruteur réfléchit…"}
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Chat Input Bar */}
-          <div
-            style={{
-              padding: "0.8rem 1rem",
-              background: "var(--surface, #fff)",
-              borderTop: "1px solid var(--line, #e2e8f0)",
-              display: "flex",
-              gap: "0.6rem",
-              alignItems: "center",
-            }}
-          >
+          <div className="interview-chat-input-bar">
             <button
               type="button"
+              className={`interview-mic-btn ${isRecordingChat ? "recording" : ""}`}
               onClick={toggleChatRecording}
               disabled={loading}
               title="Enregistrer un message vocal"
-              style={{
-                padding: "0.7rem",
-                borderRadius: "50%",
-                border: "none",
-                background: isRecordingChat ? "#ef4444" : "#f1f5f9",
-                color: isRecordingChat ? "#fff" : "#475569",
-                cursor: "pointer",
-                display: "grid",
-                placeItems: "center",
-                transition: "all 0.2s",
-              }}
             >
-              🎙️
+              <UiIcon name="phone" />
             </button>
 
             <textarea
               rows={2}
-              placeholder="Saisissez votre réponse au recruteur (Entrée pour envoyer)..."
+              placeholder="Saisissez votre réponse au recruteur (Entrée pour envoyer)…"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={(e) => {
@@ -961,28 +782,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
                 }
               }}
               disabled={loading}
-              style={{
-                flex: "1",
-                padding: "0.65rem 0.85rem",
-                borderRadius: "10px",
-                border: "1px solid var(--line, #cbd5e1)",
-                fontSize: "0.95rem",
-                resize: "none",
-                fontFamily: "inherit",
-              }}
             />
 
-            <button
-              type="button"
-              className="btn-main"
-              onClick={handleSendText}
-              disabled={loading || !inputText.trim()}
-              style={{
-                padding: "0.7rem 1.2rem",
-                borderRadius: "10px",
-                fontSize: "0.95rem",
-              }}
-            >
+            <button type="button" className="btn-main" onClick={handleSendText} disabled={loading || !inputText.trim()}>
               Envoyer
             </button>
           </div>
