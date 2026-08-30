@@ -631,7 +631,7 @@ function AdminApp({
         </main>
       </div>
 
-      <ConnectedFooter copy={landingCopy} />
+      <ConnectedFooter copy={landingCopy} onBrandClick={() => setTab("dashboard")} />
 
       {accountDrawerOpen ? (
         <AccountDrawer

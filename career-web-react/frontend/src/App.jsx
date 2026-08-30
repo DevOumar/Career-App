@@ -1958,7 +1958,7 @@ export default function App() {
         ) : null}
       </main>
 
-      <ConnectedFooter copy={landingCopy} />
+      <ConnectedFooter copy={landingCopy} onBrandClick={() => goTo("home")} />
 
       {showRoleQuizModal ? <RoleQuizModal language={language} onComplete={handleCompleteRoleQuiz} /> : null}
 
@@ -2179,16 +2179,23 @@ export function ConnectedFooter({
   onAboutClick,
   onContactClick,
   onPricingClick,
-  onSecurityClick
+  onSecurityClick,
+  onBrandClick
 }) {
   const hasCompanyNav = Boolean(onAboutClick || onContactClick);
 
   return (
     <footer className="connected-footer">
       <div>
-        <div className="landing-brand footer-brand">
-          <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
-        </div>
+        {onBrandClick ? (
+          <button type="button" className="landing-brand footer-brand brand-link" onClick={onBrandClick}>
+            <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
+          </button>
+        ) : (
+          <div className="landing-brand footer-brand">
+            <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
+          </div>
+        )}
         <p>{copy.footerText}</p>
       </div>
       <FooterColumn
