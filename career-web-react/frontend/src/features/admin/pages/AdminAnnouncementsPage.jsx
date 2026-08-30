@@ -132,7 +132,7 @@ export default function AdminAnnouncementsPage({ user, language }) {
         }
       : {
           title: "Emails d'annonce",
-          subtitle: "Envoie un vrai email à un segment d'utilisateurs via le serveur SMTP configuré.",
+          subtitle: "Envoyez un vrai email à un segment d'utilisateurs via le serveur SMTP configuré.",
           audience: "Audience",
           subject: "Objet",
           message: "Message",
@@ -166,11 +166,11 @@ export default function AdminAnnouncementsPage({ user, language }) {
           subjectLine: "Objet :",
           normalText: "Texte normal",
           attachment: "Pièce jointe",
-          attachmentHint: "Ajoute un PDF, une image ou un document bureautique à cette campagne.",
+          attachmentHint: "Ajoutez un PDF, une image ou un document bureautique à cette campagne.",
           attachFile: "Joindre un fichier",
           removeFile: "Retirer le fichier",
           draftSaved: "Brouillon enregistré.",
-          linkPrompt: "Colle le lien à insérer",
+          linkPrompt: "Collez le lien à insérer",
           importantPrefix: "[Important]",
           platformPrefix: "[Plateforme]",
           schoolPrefix: "[Écoles]"

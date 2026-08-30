@@ -1,6 +1,6 @@
 export const PROFILE_COPY = {
   fr: {
-    addHeadline: "Ajoute un titre professionnel cible.",
+    addHeadline: "Ajoutez un titre professionnel cible.",
     completeness: "Complétude du profil",
     plan: "Plan",
     professional: "Profil professionnel",

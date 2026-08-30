@@ -43,9 +43,9 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
         }
       : {
           title: "Email Scout",
-          subtitle: "Devine une adresse email professionnelle à partir d'un nom et d'une entreprise — gratuit, basé sur des motifs.",
+          subtitle: "Devinez une adresse email professionnelle à partir d'un nom et d'une entreprise — gratuit, basé sur des motifs.",
           disclaimer:
-            "Trouve la bonne adresse email professionnelle en quelques secondes, gratuitement. On teste les formats les plus courants et on vérifie en direct que le domaine peut recevoir des emails — avec un niveau de confiance honnête à chaque fois, jamais un score inventé.",
+            "Trouvez la bonne adresse email professionnelle en quelques secondes, gratuitement. On teste les formats les plus courants et on vérifie en direct que le domaine peut recevoir des emails — avec un niveau de confiance honnête à chaque fois.",
           company: "Nom de l'entreprise",
           companyPlaceholder: "ex : Google",
           domain: "Ou domaine directement (optionnel)",
@@ -58,13 +58,13 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
           searching: "Recherche…",
           noTokens: "Vous n'avez plus de jetons. Passez à un plan supérieur pour continuer à utiliser Email Scout.",
           domainNoMxTitle: "Domaine sans email",
-          domainNoMx: "Ce domaine ne semble pas accepter d'emails — vérifie le nom de l'entreprise ou le domaine.",
+          domainNoMx: "Ce domaine ne semble pas accepter d'emails — vérifiez le nom de l'entreprise ou le domaine.",
           bestMatch: "Email le plus probable",
           otherSuggestions: "Autres suggestions",
           copy: "Copier",
           copied: "Copié !",
           emptyTitle: "Aucune recherche",
-          empty: "Remplis le formulaire pour obtenir des suggestions d'email."
+          empty: "Remplissez le formulaire pour obtenir des suggestions d'email."
         };
 
   const [companyName, setCompanyName] = useState("");

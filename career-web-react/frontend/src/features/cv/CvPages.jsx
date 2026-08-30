@@ -312,7 +312,7 @@ function ImportPage({
                   </EditableBlock>
                   ))
                 ) : (
-                  <p className="review-empty">{language === "en" ? "No education detected. Add it manually if needed." : "Aucune formation détectée. Ajoute-la manuellement si besoin."}</p>
+                  <p className="review-empty">{language === "en" ? "No education detected. Add it manually if needed." : "Aucune formation détectée. Ajoutez-la manuellement si besoin."}</p>
                 )}
                 <button className="btn-ghost full" onClick={() => addCollectionItem("educationItems", { school: "", degree: "", dates: "", description: "" })}>
                   + {copy.addEducation}

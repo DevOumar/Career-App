@@ -106,7 +106,7 @@ export const CV_COPY = {
 
     analysis: {
       unavailableTitle: "Analyse indisponible",
-      unavailableText: "Importe un CV et lance le matching depuis l'onglet Importer.",
+      unavailableText: "Importez un CV et lancez le matching depuis l'onglet Importer.",
       skillCoverage: "Couverture compétences",
       experienceFit: "Adéquation expérience",
       verdict: "Verdict",

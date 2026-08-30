@@ -1208,7 +1208,7 @@ export default function App() {
         throw new Error(
           language === "en"
             ? "The file seems empty or unreadable. Upload a text-based PDF or DOCX."
-            : "Le fichier semble vide ou non lisible. Importe un PDF texte ou un DOCX lisible."
+            : "Le fichier semble vide ou non lisible. Importez un PDF texte ou un DOCX lisible."
         );
       }
       setCvSourceText(text);
@@ -1244,7 +1244,7 @@ export default function App() {
         parsed: nextReview
       });
       setImportStep("job");
-      setPageMessage(language === "en" ? "CV saved. Add the target job." : "CV enregistré. Ajoute maintenant le poste visé.");
+      setPageMessage(language === "en" ? "CV saved. Add the target job." : "CV enregistré. Ajoutez maintenant le poste visé.");
     } catch (error) {
       setProcessingError(getFriendlyErrorMessage(error, language));
     }
@@ -1264,7 +1264,7 @@ export default function App() {
     try {
       clearMessages();
       if (offerText.trim().length < 50) {
-        throw new Error(language === "en" ? "Paste at least 50 characters for the job description." : "Colle au moins 50 caractères pour la description du poste.");
+        throw new Error(language === "en" ? "Paste at least 50 characters for the job description." : "Collez au moins 50 caractères pour la description du poste.");
       }
       setIsReviewingJob(true);
       const result = await extractJobOffer({ text: offerText });
