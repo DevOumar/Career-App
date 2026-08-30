@@ -30,6 +30,9 @@ export function AccountDrawer({
   setActivePanel,
   onClose,
   onSaveAccount,
+  onSaveProfile,
+  roleOptions = [],
+  sectorOptions = [],
   onAvatarUpload,
   avatarUploading,
   onRequestSecondaryEmail,
@@ -42,6 +45,10 @@ export function AccountDrawer({
   setSecurityForm,
   securitySaving,
   onSubmitPassword,
+  onRevokeSession,
+  currentSessionId,
+  onExportData,
+  onExportSummary,
   onDeleteAccount
 }) {
   const [profileForm, setProfileForm] = useState({
@@ -49,6 +56,22 @@ export function AccountDrawer({
     lastName: user.lastName || "",
     username: user.username || ""
   });
+  // targetRole/sector alimentent le % de complétude du profil (voir
+  // App.jsx) — les proposer ici évite d'obliger l'utilisateur à aller sur
+  // la page Profil complète juste pour ces deux champs. Mêmes listes
+  // d'options que le quiz de bienvenue (roleOptions/sectorOptions), pour
+  // rester cohérent entre inscription et modification ultérieure.
+  const [careerForm, setCareerForm] = useState({
+    targetRole: user.profile?.targetRole || "",
+    sector: user.profile?.sector || ""
+  });
+  const otherLabel = language === "en" ? "Other" : "Autre";
+  const [roleIsOther, setRoleIsOther] = useState(
+    Boolean(careerForm.targetRole) && !roleOptions.includes(careerForm.targetRole)
+  );
+  const [sectorIsOther, setSectorIsOther] = useState(
+    Boolean(careerForm.sector) && !sectorOptions.includes(careerForm.sector)
+  );
   const [emailForm, setEmailForm] = useState("");
   const [pendingEmail, setPendingEmail] = useState("");
   const [emailCode, setEmailCode] = useState("");
@@ -102,6 +125,9 @@ export function AccountDrawer({
         lastName: profileForm.lastName,
         username: profileForm.username
       });
+      if (onSaveProfile && (careerForm.targetRole !== (user.profile?.targetRole || "") || careerForm.sector !== (user.profile?.sector || ""))) {
+        await onSaveProfile({ targetRole: careerForm.targetRole, sector: careerForm.sector });
+      }
       setEditingProfile(false);
       setEditingUsername(false);
     } finally {
@@ -377,6 +403,64 @@ export function AccountDrawer({
                         <label>
                           {language === "en" ? "Last name" : "Nom"}
                           <input value={profileForm.lastName} onChange={(event) => setProfileForm((prev) => ({ ...prev, lastName: event.target.value }))} />
+                        </label>
+                      </div>
+                      <div className="account-inline-fields two">
+                        <label>
+                          {language === "en" ? "Target role" : "Poste visé"}
+                          <select
+                            value={roleIsOther ? otherLabel : careerForm.targetRole}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              if (value === otherLabel) {
+                                setRoleIsOther(true);
+                                setCareerForm((prev) => ({ ...prev, targetRole: "" }));
+                              } else {
+                                setRoleIsOther(false);
+                                setCareerForm((prev) => ({ ...prev, targetRole: value }));
+                              }
+                            }}
+                          >
+                            <option value="">{language === "en" ? "Select..." : "Choisir..."}</option>
+                            {roleOptions.map((item) => (
+                              <option key={item} value={item}>{item}</option>
+                            ))}
+                          </select>
+                          {roleIsOther ? (
+                            <input
+                              value={careerForm.targetRole}
+                              placeholder={language === "en" ? "Your target role..." : "Précisez le poste visé..."}
+                              onChange={(event) => setCareerForm((prev) => ({ ...prev, targetRole: event.target.value }))}
+                            />
+                          ) : null}
+                        </label>
+                        <label>
+                          {language === "en" ? "Sector" : "Secteur"}
+                          <select
+                            value={sectorIsOther ? otherLabel : careerForm.sector}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              if (value === otherLabel) {
+                                setSectorIsOther(true);
+                                setCareerForm((prev) => ({ ...prev, sector: "" }));
+                              } else {
+                                setSectorIsOther(false);
+                                setCareerForm((prev) => ({ ...prev, sector: value }));
+                              }
+                            }}
+                          >
+                            <option value="">{language === "en" ? "Select..." : "Choisir..."}</option>
+                            {sectorOptions.map((item) => (
+                              <option key={item} value={item}>{item}</option>
+                            ))}
+                          </select>
+                          {sectorIsOther ? (
+                            <input
+                              value={careerForm.sector}
+                              placeholder={language === "en" ? "Your sector..." : "Précisez votre secteur..."}
+                              onChange={(event) => setCareerForm((prev) => ({ ...prev, sector: event.target.value }))}
+                            />
+                          ) : null}
                         </label>
                       </div>
                       <div className="account-form-actions">
@@ -743,20 +827,52 @@ export function AccountDrawer({
                 <div className="account-row">
                   <span>{copy.activeDevices}</span>
                   <div className="device-list">
-                    {(user.sessions?.length ? user.sessions : [{ device: "Windows", browser: "Chrome", ipAddress: "127.0.0.1", lastSeenAt: new Date().toISOString() }]).map((session, index) => (
-                      <div className="device-info" key={session.id || index}>
-                        <span className="device-screen" />
-                        <div>
-                          <strong>
-                            {session.device || "Windows"} <em>{index === 0 ? (language === "en" ? "This device" : "Cet appareil") : ""}</em>
-                          </strong>
-                          <small>{session.browser || "Chrome"} · {session.ipAddress || "127.0.0.1"}</small>
-                          <small>{formatDate(session.lastSeenAt || session.createdAt)}</small>
-                        </div>
-                      </div>
-                    ))}
+                    {user.sessions?.length ? (
+                      user.sessions.map((deviceSession) => {
+                        const isCurrent = currentSessionId && deviceSession.id === currentSessionId;
+                        return (
+                          <div className="device-info" key={deviceSession.id}>
+                            <span className="device-screen" />
+                            <div>
+                              <strong>
+                                {deviceSession.device || "—"} {isCurrent ? <em>{language === "en" ? "This device" : "Cet appareil"}</em> : null}
+                              </strong>
+                              <small>{deviceSession.browser || "—"} · {deviceSession.ipAddress || "—"}</small>
+                              <small>{formatDate(deviceSession.lastSeenAt || deviceSession.createdAt)}</small>
+                            </div>
+                            {!isCurrent && onRevokeSession ? (
+                              <button
+                                type="button"
+                                className="device-revoke"
+                                onClick={() => onRevokeSession(deviceSession.id)}
+                              >
+                                {language === "en" ? "Disconnect" : "Déconnecter"}
+                              </button>
+                            ) : null}
+                          </div>
+                        );
+                      })
+                    ) : (
+                      <p className="muted">{language === "en" ? "No active session." : "Aucune session active."}</p>
+                    )}
                   </div>
                 </div>
+
+                {onExportData ? (
+                  <div className="account-row">
+                    <span>{language === "en" ? "Your data" : "Vos données"}</span>
+                    <div className="account-row-actions">
+                      <button type="button" className="account-link" onClick={onExportData}>
+                        {language === "en" ? "Download (JSON)" : "Télécharger (JSON)"}
+                      </button>
+                      {onExportSummary ? (
+                        <button type="button" className="account-link" onClick={onExportSummary}>
+                          {language === "en" ? "Readable summary (PDF)" : "Résumé lisible (PDF)"}
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : null}
 
                 <div className="account-row danger">
                   <span>{copy.danger}</span>

@@ -30,8 +30,10 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
           lastName: "Last name",
           lastNamePlaceholder: "e.g. Dupont",
           submit: "Find email (1 token)",
+          submitUnlimited: "Find email",
           searching: "Searching…",
-          noTokens: "You're out of tokens. Upgrade your plan to keep using Email Scout.",
+          noTokens: "You're out of tokens.",
+          noTokensCta: "Upgrade your plan",
           domainNoMxTitle: "Domain doesn't accept email",
           domainNoMx: "This domain doesn't appear to accept email — double-check the company name or domain.",
           bestMatch: "Most likely email",
@@ -55,8 +57,10 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
           lastName: "Nom",
           lastNamePlaceholder: "ex : Dupont",
           submit: "Trouver l'email (1 jeton)",
+          submitUnlimited: "Trouver l'email",
           searching: "Recherche…",
-          noTokens: "Vous n'avez plus de jetons. Passez à un plan supérieur pour continuer à utiliser Email Scout.",
+          noTokens: "Vous n'avez plus de jetons.",
+          noTokensCta: "Passer à un plan supérieur",
           domainNoMxTitle: "Domaine sans email",
           domainNoMx: "Ce domaine ne semble pas accepter d'emails — vérifiez le nom de l'entreprise ou le domaine.",
           bestMatch: "Email le plus probable",
@@ -76,7 +80,10 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
   const [result, setResult] = useState(null);
   const [copiedEmail, setCopiedEmail] = useState("");
 
-  const outOfTokens = tokensBalance < 999 && tokensBalance <= 0;
+  // 999 = solde "infini" (compte associé à un cabinet/école) : dans ce cas
+  // afficher "(1 jeton)" sur le bouton n'a pas de sens.
+  const hasUnlimitedTokens = tokensBalance >= 999;
+  const outOfTokens = !hasUnlimitedTokens && tokensBalance <= 0;
   const canSubmit = firstName.trim() && lastName.trim() && (companyName.trim() || domain.trim());
 
   async function handleSubmit(event) {
@@ -179,10 +186,15 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
           </div>
 
           {error ? <p className="field-error">{error}</p> : null}
-          {outOfTokens ? <p className="field-hint">{copy.noTokens}</p> : null}
+          {outOfTokens ? (
+            <p className="field-hint">
+              {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
+            </p>
+          ) : null}
 
           <button type="submit" className="btn-main ready" disabled={!canSubmit || isSearching}>
-            {isSearching ? <span className="btn-spinner" /> : null} {isSearching ? copy.searching : copy.submit}
+            {isSearching ? <span className="btn-spinner" /> : null}{" "}
+            {isSearching ? copy.searching : hasUnlimitedTokens ? copy.submitUnlimited : copy.submit}
           </button>
         </form>
 

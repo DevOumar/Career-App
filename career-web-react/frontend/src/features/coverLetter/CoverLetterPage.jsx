@@ -56,7 +56,11 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   const [conversationId, setConversationId] = useState(null);
 
   const hasContext = Boolean(candidate && offer && (offer.title || offer.skills?.length));
-  const outOfTokens = tokensBalance < 999 && tokensBalance <= 0;
+  // 999 = solde "infini" (compte associé à un cabinet/école) : dans ce cas
+  // afficher "(1 jeton)" sur le bouton n'a pas de sens, rien n'est décompté
+  // d'un pool personnel limité.
+  const hasUnlimitedTokens = tokensBalance >= 999;
+  const outOfTokens = !hasUnlimitedTokens && tokensBalance <= 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -288,11 +292,18 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
       {!letter ? (
         <div className="cover-letter-empty">
           <CoverLetterIllustration />
+          {outOfTokens ? (
+            <p className="field-hint">
+              {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
+            </p>
+          ) : null}
           <button type="button" className="btn-main ready" onClick={handleGenerate} disabled={isGenerating}>
             {isGenerating ? (
               <>
                 <span className="btn-spinner" /> {copy.generating}
               </>
+            ) : hasUnlimitedTokens ? (
+              copy.generateUnlimited
             ) : (
               copy.generate
             )}
@@ -313,7 +324,8 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
             ) : (
               <>
                 <button type="button" className="btn-ghost" onClick={handleGenerate} disabled={isGenerating}>
-                  {isGenerating ? <span className="btn-spinner" /> : null} {copy.regenerate}
+                  {isGenerating ? <span className="btn-spinner" /> : null}{" "}
+                  {hasUnlimitedTokens ? copy.regenerateUnlimited : copy.regenerate}
                 </button>
                 <button type="button" className="btn-ghost" onClick={startEditing}>
                   <UiIcon name="edit" /> {copy.edit}

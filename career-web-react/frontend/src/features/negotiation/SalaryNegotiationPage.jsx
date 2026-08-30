@@ -152,7 +152,10 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
   }
 
   const hasContext = Boolean(candidate && offer && (offer.title || offer.skills?.length));
-  const outOfTokens = tokensBalance < 999 && tokensBalance <= 0;
+  // 999 = solde "infini" (compte associé à un cabinet/école) : dans ce cas
+  // afficher "(1 jeton)" sur le bouton n'a pas de sens.
+  const hasUnlimitedTokens = tokensBalance >= 999;
+  const outOfTokens = !hasUnlimitedTokens && tokensBalance <= 0;
 
   const targetSalaryDisplay = targetSalary ? Number(targetSalary).toLocaleString(language === "en" ? "en-US" : "fr-FR") : "";
   const targetSalaryFormatted = targetSalary
@@ -327,11 +330,18 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
             </div>
           </label>
           {error ? <p className="field-error">{error}</p> : null}
+          {outOfTokens ? (
+            <p className="field-hint">
+              {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
+            </p>
+          ) : null}
           <button type="button" className="btn-main ready" onClick={handleStart} disabled={isStarting}>
             {isStarting ? (
               <>
                 <span className="btn-spinner" /> {copy.starting}
               </>
+            ) : hasUnlimitedTokens ? (
+              copy.startUnlimited
             ) : (
               copy.start
             )}

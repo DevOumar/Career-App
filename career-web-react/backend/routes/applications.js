@@ -408,4 +408,109 @@ app.delete("/api/applications/:id", async (req, res) => {
     return res.status(400).json({ error: error.message || "Suppression impossible." });
   }
 });
+
+// Notifications candidat : même principe que /api/admin/notifications (voir
+// routes/admin/overview.js) — calculées à la volée depuis de vraies tables,
+// jamais stockées ni "marquées comme lues" (pas de complexité read/unread
+// pour l'instant, cohérent avec la version admin).
+const MEANINGFUL_SECURITY_EVENT_TYPES = new Set([
+  "password_changed",
+  "password_reset_completed",
+  "login_locked",
+  "connected_account_linked",
+  "connected_account_removed"
+]);
+
+app.get("/api/notifications", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [securityRes, paymentRes, staleApplicationsRes, userRow] = await Promise.all([
+      db.query(
+        // Filtre les types "significatifs" directement en SQL (pas en JS
+        // après coup) : sinon un compte actif dont le login (login_google,
+        // login_email_code...) génère beaucoup de lignes peut évincer les
+        // vrais événements utiles hors des 10 lignes ramenées par LIMIT.
+        `SELECT id, event_type, metadata_json, created_at FROM account_security_events
+         WHERE user_id = $1 AND created_at >= $2 AND event_type = ANY($3)
+         ORDER BY created_at DESC LIMIT 10`,
+        [userId, sevenDaysAgo, [...MEANINGFUL_SECURITY_EVENT_TYPES]]
+      ),
+      db.query(
+        `SELECT id, amount_collected, currency, plan_id, created_at FROM transactions
+         WHERE user_id = $1 AND source = 'stripe' AND amount_collected > 0 AND created_at >= $2
+         ORDER BY created_at DESC LIMIT 10`,
+        [userId, sevenDaysAgo]
+      ),
+      db.query(
+        `SELECT id, title, company, created_at FROM job_applications
+         WHERE user_id = $1 AND status = 'to_apply' AND created_at < $2
+         ORDER BY created_at ASC LIMIT 5`,
+        [userId, sevenDaysAgo]
+      ),
+      getUserRowById(userId)
+    ]);
+
+    const items = [];
+
+    for (const row of securityRes.rows) {
+      if (!MEANINGFUL_SECURITY_EVENT_TYPES.has(row.event_type)) continue;
+      items.push({
+        id: `security-${row.id}`,
+        type: row.event_type,
+        createdAt: row.created_at,
+        data: parseJsonField(row.metadata_json, {})
+      });
+    }
+
+    for (const row of paymentRes.rows) {
+      items.push({
+        id: `payment-${row.id}`,
+        type: "payment_confirmed",
+        createdAt: row.created_at,
+        data: { amount: Number(row.amount_collected), currency: row.currency, planId: row.plan_id }
+      });
+    }
+
+    for (const row of staleApplicationsRes.rows) {
+      items.push({
+        id: `application-stale-${row.id}`,
+        type: "application_stale",
+        createdAt: row.created_at,
+        data: { title: row.title, company: row.company }
+      });
+    }
+
+    if (userRow) {
+      const subscription = parseJsonField(userRow.subscription_json, {});
+      const credits = Number(subscription.credits) || 0;
+      if (credits < 999) {
+        if (credits <= 0) {
+          items.push({ id: "balance-empty", type: "balance_empty", createdAt: null, data: {} });
+        } else if (credits <= 5) {
+          items.push({ id: "balance-low", type: "balance_low", createdAt: null, data: { credits } });
+        }
+      }
+
+      const profile = parseJsonField(userRow.profile_json, {});
+      if (!profile.targetRole || !profile.sector) {
+        items.push({ id: "profile-incomplete", type: "profile_incomplete", createdAt: null, data: {} });
+      }
+    }
+
+    items.sort((a, b) => {
+      if (!a.createdAt && !b.createdAt) return 0;
+      if (!a.createdAt) return -1;
+      if (!b.createdAt) return 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    return res.json({ items: items.slice(0, 30) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
 }

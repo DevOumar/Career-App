@@ -583,6 +583,61 @@ app.post("/api/account/connected-accounts/remove", async (req, res) => {
   }
 });
 
+// Export RGPD : toutes les données personnelles détenues sur ce compte, dans
+// un seul JSON téléchargeable. Couvre les mêmes tables que la suppression de
+// compte juste en dessous (garde les deux listes synchronisées si une
+// nouvelle table liée à un utilisateur est ajoutée un jour).
+app.get("/api/account/export", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+
+    const user = await getUserRowById(userId);
+    if (!user) {
+      return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+
+    const tables = [
+      "user_email_addresses",
+      "cvs",
+      "match_runs",
+      "negotiation_conversations",
+      "cover_letters",
+      "interview_conversations",
+      "job_applications",
+      "transactions",
+      "account_security_events",
+      "user_candidate_profiles",
+      "user_recruiter_profiles",
+      "user_org_profiles",
+      "user_accounts"
+    ];
+
+    const results = await Promise.all(
+      tables.map((table) =>
+        db.query(`SELECT * FROM ${table} WHERE user_id = $1`, [userId]).catch(() => ({ rows: [] }))
+      )
+    );
+
+    const data = { profile: user };
+    tables.forEach((table, index) => {
+      data[table] = results[index].rows;
+    });
+
+    // Jamais le hash/sel du mot de passe dans un export destiné à
+    // l'utilisateur (même le sien) — aucune valeur exploitable pour se
+    // faire passer pour lui ne doit sortir de la base par ce canal.
+    delete data.profile.password_hash;
+    delete data.profile.password_salt;
+    delete data.profile.google_id;
+
+    res.setHeader("Content-Disposition", `attachment; filename="career-cv-donnees-${userId}.json"`);
+    return res.json({ exportedAt: nowIso(), userId, data });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.delete("/api/account", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);

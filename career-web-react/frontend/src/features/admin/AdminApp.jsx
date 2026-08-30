@@ -162,6 +162,10 @@ function AdminApp({
   setSecurityForm,
   securitySaving,
   onSubmitPassword,
+  onRevokeSession,
+  currentSessionId,
+  onExportData,
+  onExportSummary,
   onDeleteAccount,
   onNavigateLegal
 }) {
@@ -674,6 +678,10 @@ function AdminApp({
           setSecurityForm={setSecurityForm}
           securitySaving={securitySaving}
           onSubmitPassword={onSubmitPassword}
+          onRevokeSession={onRevokeSession}
+          currentSessionId={currentSessionId}
+          onExportData={onExportData}
+          onExportSummary={onExportSummary}
           onDeleteAccount={onDeleteAccount}
         />
       ) : null}

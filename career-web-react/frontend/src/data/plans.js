@@ -49,11 +49,12 @@ export const PLANS = [
     credits: 30,
     seats: null,
     grantsPremium: true,
+    unlocksInterviews: true,
     highlighted: false,
     badge: null,
     features: {
-      fr: ["30 jetons d'analyse", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
-      en: ["30 analysis tokens", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
+      fr: ["30 jetons d'analyse (6x plus qu'Essentiel)", "Simulateur d'entretiens", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
+      en: ["30 analysis tokens (6x more than Essentiel)", "Interview simulator", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
     }
   },
   {
@@ -70,24 +71,31 @@ export const PLANS = [
     credits: 130,
     seats: null,
     grantsPremium: true,
+    // Élan et Trajectoire Pro débloquent tous les deux le simulateur
+    // d'entretiens (consommé en jetons dans les deux cas, aucun des deux
+    // n'est réellement "illimité") — seul Essentiel (gratuit) en est exclu.
+    unlocksInterviews: true,
     highlighted: true,
     badge: { fr: "Recommandé", en: "Recommended" },
+    // Tout est décompté en jetons (130 ici, contre 30 pour Élan) : on évite
+    // "illimité" qui serait trompeur pour un pack fini, et on met en avant
+    // le volume + les vrais avantages exclusifs (réseautage, support).
     features: {
       fr: [
-        "130 jetons d'analyse",
-        "Simulateur d'entretiens illimité",
-        "Lettre de motivation IA illimitée",
-        "Simulateur de négociation salariale illimité",
-        "Email Scout illimité (recherche d'email pro)",
+        "130 jetons d'analyse (4x plus qu'Élan)",
+        "Simulateur d'entretiens",
+        "Lettre de motivation IA",
+        "Simulateur de négociation salariale",
+        "Email Scout (recherche d'email pro)",
         "Suggestions de réseautage avancées",
         "Support prioritaire"
       ],
       en: [
-        "130 analysis tokens",
-        "Unlimited interview simulator",
-        "Unlimited AI cover letter",
-        "Unlimited salary negotiation simulator",
-        "Unlimited Email Scout (pro email finder)",
+        "130 analysis tokens (4x more than Élan)",
+        "Interview simulator",
+        "AI cover letter",
+        "Salary negotiation simulator",
+        "Email Scout (pro email finder)",
         "Advanced networking suggestions",
         "Priority support"
       ]
@@ -106,6 +114,9 @@ export const PLANS = [
     credits: 999,
     seats: 3,
     grantsPremium: true,
+    // Jetons illimités (999) : tous les modules IA doivent être disponibles,
+    // Entretiens y compris, sans restriction supplémentaire.
+    unlocksInterviews: true,
     highlighted: false,
     badge: null,
     features: {
@@ -126,6 +137,7 @@ export const PLANS = [
     credits: 999,
     seats: 10,
     grantsPremium: true,
+    unlocksInterviews: true,
     highlighted: true,
     badge: { fr: "Recommandé", en: "Recommended" },
     features: {
@@ -147,6 +159,9 @@ export const PLANS = [
     credits: 999,
     seats: 30,
     grantsPremium: true,
+    // Active explicitement le plan Trajectoire Pro pour chaque étudiant
+    // (voir tagline) : mêmes avantages, dont le simulateur d'entretiens.
+    unlocksInterviews: true,
     highlighted: false,
     badge: null,
     features: {

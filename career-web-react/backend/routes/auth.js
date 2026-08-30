@@ -100,6 +100,7 @@ export function registerAuthRoutes(app) {
     createPasswordRecord,
     verifyPassword,
     createSixDigitCode,
+    hashSessionToken,
     addMinutes,
     escapeHtml,
     buildVerificationEmail,
@@ -407,6 +408,12 @@ app.post("/api/auth/google", async (req, res) => {
     if (!credential) {
       return res.status(400).json({ error: "Jeton Google manquant." });
     }
+    // "login" : bouton Google de l'écran de connexion — ne doit jamais créer
+    // de compte silencieusement. "signup" (défaut, comportement historique) :
+    // bouton Google de l'écran d'inscription — crée le compte s'il n'existe
+    // pas encore, ou connecte directement s'il existe déjà (Google reste un
+    // moyen d'auth valide même si le compte a été créé par email/mdp).
+    const intent = coerceString(req.body?.intent) === "login" ? "login" : "signup";
 
     const ticket = await googleOAuthClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
@@ -426,6 +433,13 @@ app.post("/api/auth/google", async (req, res) => {
       if (user) {
         await db.query("UPDATE users SET google_id = $1 WHERE id = $2", [googleId, user.id]);
       }
+    }
+
+    if (!user && intent === "login") {
+      return res.status(404).json({
+        error: "Aucun compte Career CV n'est associé à ce compte Google. Inscrivez-vous d'abord.",
+        code: "NO_ACCOUNT_GOOGLE"
+      });
     }
 
     if (!user) {
@@ -562,6 +576,102 @@ app.post("/api/auth/verify-code", async (req, res) => {
   }
 });
 
+// Demande de réinitialisation : réutilise la même infrastructure de code à
+// 6 chiffres que le login/signup (table email_verification_codes, purpose
+// dédié "reset"), pour ne pas dupliquer la logique d'envoi/expiration.
+// Ne révèle jamais si l'identifiant correspond à un compte existant (même
+// réponse générique dans les deux cas) pour ne pas permettre d'énumérer les
+// comptes enregistrés via ce formulaire.
+app.post("/api/auth/forgot-password", async (req, res) => {
+  try {
+    const identifier = coerceString(req.body?.identifier || req.body?.email);
+    if (!identifier) {
+      return res.status(400).json({ error: "Identifiant requis." });
+    }
+
+    const genericResponse = { ok: true, resendAfterSeconds: 30 };
+    const user = await getUserRowByIdentifier(identifier);
+    if (!user) {
+      // Compte inexistant : on répond quand même "ok" (pas d'énumération),
+      // simplement sans envoyer d'email.
+      return res.json(genericResponse);
+    }
+
+    const loginEmail = identifier.includes("@") ? normalizeEmail(identifier) : user.email;
+    const verification = await createEmailVerificationCode(user, "reset", loginEmail);
+    await logSecurityEvent(req, user.id, "password_reset_requested", { email: loginEmail });
+    return res.json({ ...genericResponse, email: verification.email, expiresAt: verification.expiresAt });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const identifier = coerceString(req.body?.identifier || req.body?.email);
+    const code = coerceString(req.body?.code).replace(/\D/g, "");
+    const newPassword = String(req.body?.newPassword || "");
+
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: "Le nouveau mot de passe doit contenir au moins 8 caractères." });
+    }
+
+    const user = await getUserRowByIdentifier(identifier);
+    const loginEmail = identifier.includes("@") ? normalizeEmail(identifier) : user?.email;
+    if (!user || code.length !== 6) {
+      return res.status(401).json({ error: "Code invalide." });
+    }
+
+    const { rows } = await db.query(
+      `SELECT * FROM email_verification_codes
+       WHERE user_id = $1 AND email = $2 AND purpose = 'reset' AND consumed_at = ''
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [user.id, loginEmail]
+    );
+    const verification = rows[0];
+
+    if (!verification) {
+      return res.status(401).json({ error: "Demande de réinitialisation introuvable." });
+    }
+    if (new Date(verification.expires_at).getTime() < Date.now()) {
+      return res.status(401).json({ error: "Code expiré. Demandez un nouveau code." });
+    }
+    if (Number(verification.attempts || 0) >= 5) {
+      return res.status(429).json({ error: "Trop de tentatives. Demandez un nouveau code." });
+    }
+
+    const valid = verifyPassword(code, verification.code_salt, verification.code_hash);
+    if (!valid) {
+      await db.query("UPDATE email_verification_codes SET attempts = attempts + 1 WHERE id = $1", [verification.id]);
+      return res.status(401).json({ error: "Code invalide." });
+    }
+
+    await db.query("UPDATE email_verification_codes SET consumed_at = $1 WHERE id = $2", [nowIso(), verification.id]);
+
+    const next = createPasswordRecord(newPassword);
+    await db.query(
+      // On lève aussi le verrouillage éventuel (5 tentatives échouées) :
+      // prouver la possession de l'email est une preuve d'identité au moins
+      // aussi forte qu'un mot de passe correct.
+      "UPDATE users SET password_hash = $1, password_salt = $2, failed_login_attempts = 0, locked_until = '', updated_at = $3 WHERE id = $4",
+      [next.hash, next.salt, nowIso(), user.id]
+    );
+
+    // Un mot de passe réinitialisé invalide toutes les sessions actives
+    // (y compris celle d'un éventuel attaquant qui aurait eu l'ancien mot de
+    // passe) — l'utilisateur devra se reconnecter partout.
+    await db.query("DELETE FROM sessions WHERE user_id = $1", [user.id]);
+
+    await logSecurityEvent(req, user.id, "password_reset_completed", { email: loginEmail });
+
+    const token = await createSessionForRequest(req, user.id);
+    return res.json({ token, user: await getPublicUserById(user.id) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.post("/api/auth/password", async (req, res) => {
   try {
     const authHeader = String(req.headers.authorization || "");
@@ -643,7 +753,38 @@ app.get("/api/auth/session", async (req, res) => {
     ensureUserCanAuthenticate(user);
 
     const premium = await computePremiumAccess(user);
-    return res.json({ user: await getPublicUserById(user.id), premium });
+    // Permet au front de savoir laquelle des sessions listées dans
+    // user.sessions correspond à l'appareil actuel (voir Compte > Sécurité),
+    // sans jamais lui exposer le token brut lui-même.
+    return res.json({ user: await getPublicUserById(user.id), premium, currentSessionId: hashSessionToken(token) });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Révoque une session précise (déconnecte un appareil listé dans Compte >
+// Sécurité) sans manipuler le token brut : le front n'envoie que
+// hashSessionToken(token) (voir toPublicUser), jamais le token lui-même —
+// on retrouve la vraie session en re-hashant chaque token de l'utilisateur
+// côté serveur jusqu'à trouver la correspondance.
+app.delete("/api/auth/sessions/:sessionId", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId || req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const sessionId = coerceString(req.params.sessionId);
+    if (!sessionId) {
+      return res.status(400).json({ error: "sessionId requis." });
+    }
+
+    const { rows } = await db.query("SELECT token FROM sessions WHERE user_id = $1", [userId]);
+    const match = rows.find((row) => hashSessionToken(row.token) === sessionId);
+    if (!match) {
+      return res.status(404).json({ error: "Session introuvable." });
+    }
+
+    await db.query("DELETE FROM sessions WHERE token = $1", [match.token]);
+    await logSecurityEvent(req, userId, "session_revoked", {});
+    return res.json({ ok: true });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
   }

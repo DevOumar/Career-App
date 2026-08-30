@@ -5,7 +5,23 @@ export const LANGUAGE_OPTIONS = [
   { id: "en", label: "EN", flagClass: "uk" }
 ];
 
-export function LanguageSwitch({ language, setLanguage, compact = false }) {
+export function LanguageSwitch({ language, setLanguage, compact = false, variant = "buttons" }) {
+  if (variant === "dropdown") {
+    const current = LANGUAGE_OPTIONS.find((item) => item.id === language) || LANGUAGE_OPTIONS[0];
+    return (
+      <label className="language-switch-dropdown" aria-label="Choix de la langue">
+        <span className={`flag ${current.flagClass}`} aria-hidden="true" />
+        <select value={language} onChange={(event) => setLanguage(event.target.value)}>
+          {LANGUAGE_OPTIONS.map((item) => (
+            <option key={item.id} value={item.id}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+      </label>
+    );
+  }
+
   return (
     <div className={`language-switch ${compact ? "compact" : ""}`} aria-label="Choix de la langue">
       {LANGUAGE_OPTIONS.map((item) => (

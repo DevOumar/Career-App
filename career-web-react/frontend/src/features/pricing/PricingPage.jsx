@@ -2,6 +2,7 @@ import React from "react";
 // Module Tarifs : grille publique (pré-connexion) et grille connectée avec
 // activation de plan, jetons, codes de licence.
 import { useState, useEffect } from "react";
+import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { CURRENCY_OPTIONS, getCurrencyOption, formatAmountInCurrency, formatPlanPrice } from "../../lib/format.js";
 import { InfoPage } from "../landing/LandingPage.jsx";
@@ -97,19 +98,37 @@ function allowedPricingSegmentsForRole(roleType) {
   return ["candidate"];
 }
 
+const HISTORY_PAGE_SIZE = 10;
+
 function BillingHistoryTab({ userId, language, currency }) {
   const copy = PRICING_COPY[language] || PRICING_COPY.fr;
   const [transactions, setTransactions] = useState([]);
+  const [total, setTotal] = useState(0);
   const [status, setStatus] = useState("loading");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [planFilter, setPlanFilter] = useState("");
+  const [page, setPage] = useState(1);
+
+  // Tout changement de filtre repart à la page 1 (sinon on pourrait se
+  // retrouver sur une page vide qui n'existe plus pour le nouveau filtre).
+  useEffect(() => {
+    setPage(1);
+  }, [statusFilter, planFilter]);
 
   useEffect(() => {
     if (!userId) return;
     let cancelled = false;
     setStatus("loading");
-    listBillingTransactions(userId)
+    listBillingTransactions(userId, {
+      status: statusFilter,
+      planId: planFilter,
+      page,
+      pageSize: HISTORY_PAGE_SIZE
+    })
       .then((data) => {
         if (cancelled) return;
         setTransactions(data.transactions || []);
+        setTotal(data.total || 0);
         setStatus("ready");
       })
       .catch(() => {
@@ -118,7 +137,10 @@ function BillingHistoryTab({ userId, language, currency }) {
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [userId, statusFilter, planFilter, page]);
+
+  const totalPages = Math.max(1, Math.ceil(total / HISTORY_PAGE_SIZE));
+  const availablePlans = PLANS.filter((plan) => plan.grantsPremium || plan.credits);
 
   const sourceLabel = (source) => {
     if (source === "stripe") return copy.historySourceStripe;
@@ -132,49 +154,90 @@ function BillingHistoryTab({ userId, language, currency }) {
     return copy.historyStatusFree;
   };
 
-  if (status === "loading") {
-    return <p className="muted">{copy.historyLoading}</p>;
-  }
-  if (status === "error") {
-    return <p className="form-error">{copy.historyError}</p>;
-  }
-  if (!transactions.length) {
-    return <p className="muted">{copy.historyEmpty}</p>;
-  }
-
   return (
-    <div className="billing-history-table-wrap">
-      <table className="billing-history-table">
-        <thead>
-          <tr>
-            <th>{copy.historyColDate}</th>
-            <th>{copy.historyColPlan}</th>
-            <th>{copy.historyColAmount}</th>
-            <th>{copy.historyColSource}</th>
-            <th>{copy.historyColStatus}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {transactions.map((txn) => (
-            <tr key={txn.id}>
-              <td>{new Date(txn.createdAt).toLocaleDateString(language === "en" ? "en-GB" : "fr-FR")}</td>
-              <td>
-                {txn.planName}
-                {txn.billingCycle ? (
-                  <span className="muted"> · {txn.billingCycle === "annual" ? copy.historyCycleAnnual : copy.historyCycleMonthly}</span>
-                ) : null}
-              </td>
-              <td>{formatAmountInCurrency(txn.amountCollected, currency)}</td>
-              <td>{sourceLabel(txn.source)}</td>
-              <td>
-                <span className={`billing-status-pill ${txn.refunded ? "refunded" : txn.amountCollected > 0 ? "paid" : "free"}`}>
-                  {statusLabel(txn)}
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <div className="billing-history">
+      <div className="billing-history-filters">
+        <label className="billing-history-filter">
+          <span>{copy.historyFilterStatusLabel}</span>
+          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="">{copy.historyFilterStatusAll}</option>
+            <option value="paid">{copy.historyStatusPaid}</option>
+            <option value="free">{copy.historyStatusFree}</option>
+            <option value="refunded">{copy.historyStatusRefunded}</option>
+          </select>
+        </label>
+        <label className="billing-history-filter">
+          <span>{copy.historyFilterPlanLabel}</span>
+          <select value={planFilter} onChange={(event) => setPlanFilter(event.target.value)}>
+            <option value="">{copy.historyFilterPlanAll}</option>
+            {availablePlans.map((plan) => (
+              <option key={plan.id} value={plan.id}>
+                {plan.name[language] || plan.name.fr}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {status === "loading" ? (
+        <p className="muted">{copy.historyLoading}</p>
+      ) : status === "error" ? (
+        <p className="form-error">{copy.historyError}</p>
+      ) : !transactions.length ? (
+        <p className="muted">{total === 0 && !statusFilter && !planFilter ? copy.historyEmpty : copy.historyNoResults}</p>
+      ) : (
+        <>
+        <div className="billing-history-table-wrap">
+          <table className="billing-history-table">
+            <thead>
+              <tr>
+                <th>{copy.historyColDate}</th>
+                <th>{copy.historyColPlan}</th>
+                <th>{copy.historyColAmount}</th>
+                <th>{copy.historyColSource}</th>
+                <th>{copy.historyColStatus}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {transactions.map((txn) => (
+                <tr key={txn.id}>
+                  <td>{new Date(txn.createdAt).toLocaleDateString(language === "en" ? "en-GB" : "fr-FR")}</td>
+                  <td>
+                    {txn.planName}
+                    {txn.billingCycle ? (
+                      <span className="muted"> · {txn.billingCycle === "annual" ? copy.historyCycleAnnual : copy.historyCycleMonthly}</span>
+                    ) : null}
+                  </td>
+                  <td>{formatAmountInCurrency(txn.amountCollected, currency)}</td>
+                  <td>{sourceLabel(txn.source)}</td>
+                  <td>
+                    <span className={`billing-status-pill ${txn.refunded ? "refunded" : txn.amountCollected > 0 ? "paid" : "free"}`}>
+                      {statusLabel(txn)}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {totalPages > 1 ? (
+          <div className="billing-history-pagination">
+            <button type="button" disabled={page <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>
+              {copy.historyPagePrev}
+            </button>
+            <span className="muted">{copy.historyPageInfo.replace("{page}", page).replace("{totalPages}", totalPages)}</span>
+            <button
+              type="button"
+              disabled={page >= totalPages}
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+            >
+              {copy.historyPageNext}
+            </button>
+          </div>
+        ) : null}
+        </>
+      )}
     </div>
   );
 }
@@ -206,6 +269,51 @@ function PricingPage({
     }
   }, [allowedSegments, segment]);
 
+  function fillTemplate(template, values) {
+    return Object.entries(values).reduce((text, [key, value]) => text.replaceAll(`{${key}}`, String(value)), template);
+  }
+
+  // Une fois un plan payant actif, revenir au plan gratuit effacerait les
+  // jetons déjà payés (côté backend, applyPlanToUser refuse cette action) :
+  // on explique pourquoi au lieu de laisser l'utilisateur cliquer dans le
+  // vide. Passer à un AUTRE plan payant (upgrade) reste possible, mais on
+  // prévient d'abord que les jetons restants seront conservés et additionnés.
+  async function handlePlanClick(plan) {
+    const isPremiumAlready = subscription.plan === "premium";
+    if (!plan.grantsPremium && isPremiumAlready) {
+      await Swal.fire({
+        icon: "info",
+        title: copy.downgradeBlockedTitle,
+        text: copy.downgradeBlockedText,
+        confirmButtonText: copy.downgradeBlockedOk
+      });
+      return;
+    }
+
+    if (plan.grantsPremium && isPremiumAlready) {
+      const planName = plan.name[language] || plan.name.fr;
+      const result = await Swal.fire({
+        icon: "question",
+        title: fillTemplate(copy.upgradeConfirmTitle, { plan: planName }),
+        text: fillTemplate(copy.upgradeConfirmText, {
+          credits: currentBalance,
+          plan: planName,
+          planCredits: plan.credits
+        }),
+        showCancelButton: true,
+        confirmButtonText: copy.upgradeConfirmOk,
+        cancelButtonText: copy.upgradeConfirmCancel
+      });
+      if (!result.isConfirmed) return;
+    }
+
+    if (stripeEnabled && plan.grantsPremium) {
+      onStripeCheckout(plan.id, billingCycle, plan.id === "school_license" ? studentSeats : 1);
+    } else {
+      onActivatePlan(plan.id, billingCycle);
+    }
+  }
+
   const subscription = user?.subscription || {};
   const currentBalance = Number(subscription.credits || 0);
   // Un admin a pu modifier un tarif depuis Tarifs (admin) — l'affichage
@@ -234,6 +342,32 @@ function PricingPage({
           </span>
         </div>
       </header>
+
+      {currentBalance >= 999 ? (
+        <div className="pricing-balance-banner success">
+          <UiIcon name="check" />
+          <div>
+            <strong>{copy.balanceUnlimitedTitle}</strong>
+            <p>{copy.balanceUnlimitedText}</p>
+          </div>
+        </div>
+      ) : currentBalance <= 0 ? (
+        <div className="pricing-balance-banner critical">
+          <UiIcon name="alert" />
+          <div>
+            <strong>{copy.balanceEmptyTitle}</strong>
+            <p>{copy.balanceEmptyText}</p>
+          </div>
+        </div>
+      ) : currentBalance <= 5 ? (
+        <div className="pricing-balance-banner warning">
+          <UiIcon name="alert" />
+          <div>
+            <strong>{copy.balanceLowTitle}</strong>
+            <p>{copy.balanceLowText}</p>
+          </div>
+        </div>
+      ) : null}
 
       <div className="pricing-main-tabs">
         <button
@@ -295,6 +429,17 @@ function PricingPage({
           const price = formatPlanPrice(plan, billingCycle, language, copy, currency);
           const isDefaultFreePlan = !subscription.planId && plan.monthlyPrice === 0 && plan.annualPrice === 0;
           const isCurrentPlan = subscription.planId === plan.id || isDefaultFreePlan;
+          // Un plan payant est déjà actif : revenir à Essentiel (gratuit)
+          // effacerait les jetons payés, ce n'est pas une action valide ici
+          // (voir applyPlanToUser côté backend) — le bouton reste grisé
+          // plutôt que de laisser cliquer pour afficher une erreur.
+          const isBlockedDowngrade = !plan.grantsPremium && !isCurrentPlan && subscription.plan === "premium";
+          // Solde "infini" (999) : le compte est déjà couvert par une
+          // licence école/cabinet distribuée par un établissement. Acheter
+          // un pack de jetons personnel par-dessus n'a aucun sens (les
+          // jetons ne manquent jamais) — on grise tout achat candidat et on
+          // explique pourquoi plutôt que de laisser payer pour rien.
+          const isAlreadyUnlimited = !isCurrentPlan && currentBalance >= 999;
           return (
             <article key={plan.id} className={`pricing-card ${plan.highlighted ? "recommended" : ""}`}>
               {plan.badge ? <span className="pricing-badge">{plan.badge[language] || plan.badge.fr}</span> : null}
@@ -344,15 +489,11 @@ function PricingPage({
               <button
                 type="button"
                 className={`btn-main ${plan.highlighted ? "ready" : ""}`}
-                disabled={isCurrentPlan || Boolean(pendingPlanAction)}
-                onClick={() =>
-                  stripeEnabled && plan.grantsPremium
-                    ? onStripeCheckout(plan.id, billingCycle, plan.id === "school_license" ? studentSeats : 1)
-                    : onActivatePlan(plan.id, billingCycle)
-                }
+                disabled={isCurrentPlan || isBlockedDowngrade || isAlreadyUnlimited || Boolean(pendingPlanAction)}
+                onClick={() => handlePlanClick(plan)}
               >
                 {pendingPlanAction === plan.id ? <span className="btn-spinner" /> : null}{" "}
-                {isCurrentPlan ? copy.currentPlan : copy.activate}
+                {isCurrentPlan ? copy.currentPlan : isAlreadyUnlimited ? copy.alreadyUnlimited : copy.activate}
               </button>
             </article>
           );

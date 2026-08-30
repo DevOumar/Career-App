@@ -2,7 +2,6 @@ import React from "react";
 // Module Pages légales : confidentialité, CGU, mentions (structure commune
 // LegalDocPage).
 import { useState, useEffect } from "react";
-import { UiIcon } from "../../components/UiIcon.jsx";
 import { LanguageSwitch } from "../../components/LanguageSwitch.jsx";
 import { ConnectedFooter } from "../../App.jsx";
 
@@ -62,10 +61,7 @@ function LegalDocPage({
     <div className="landing-shell legal-shell">
       <header className="landing-nav">
         <div className="landing-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <UiIcon name="matchmark" />
-          </span>
-          <strong>Career CV</strong>
+          <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
         </div>
         <div className="landing-actions">
           <LanguageSwitch language={language} setLanguage={setLanguage} />

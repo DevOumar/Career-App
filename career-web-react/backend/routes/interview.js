@@ -74,8 +74,31 @@ export function registerInterviewRoutes(app) {
     nowIso,
     coerceString,
     getUserRowById,
+    getEffectivePlanById,
     parseJsonField
   } = app.locals.ctx;
+
+  // Le simulateur d'entretiens n'est inclus que dans le plan Trajectoire Pro
+  // (voir frontend/src/data/plans.js : unlocksInterviews). Le front bloque
+  // déjà l'accès visuellement, mais rien n'empêchait un appel direct à
+  // l'API (curl/devtools) de le contourner — cette vérification est le vrai
+  // verrou. Retourne true si l'accès est autorisé (et a déjà répondu à la
+  // requête avec une erreur sinon).
+  async function requireInterviewAccess(req, res, userId) {
+    if (!requireMatchingSession(req, res, userId)) return false;
+    const user = await getUserRowById(userId);
+    if (!user) {
+      res.status(404).json({ error: "Utilisateur introuvable." });
+      return false;
+    }
+    const subscription = parseJsonField(user.subscription_json, {});
+    const plan = await getEffectivePlanById(subscription.planId);
+    if (!plan?.unlocksInterviews) {
+      res.status(403).json({ error: "Le simulateur d'entretiens est réservé au plan Trajectoire Pro." });
+      return false;
+    }
+    return true;
+  }
 
   async function callLlmMessages(messages) {
     const apiKey = GROQ_API_KEY || OPENAI_API_KEY || XAI_API_KEY;
@@ -144,6 +167,8 @@ export function registerInterviewRoutes(app) {
   // Démarrer la simulation
   app.post("/api/interview/start", async (req, res) => {
     try {
+      const userId = coerceString(req.body?.userId);
+      if (!(await requireInterviewAccess(req, res, userId))) return;
       const { type_entretien = "RH", domaine = "générique", offre = "" } = req.body || {};
       const chunks = retrieveChunks("présentation motivation parcours", type_entretien, domaine);
       const context = formatContext(chunks);
@@ -181,6 +206,8 @@ export function registerInterviewRoutes(app) {
   // Envoyer un message candidat
   app.post("/api/interview/message", async (req, res) => {
     try {
+      const userId = coerceString(req.body?.userId);
+      if (!(await requireInterviewAccess(req, res, userId))) return;
       const {
         message = "",
         history = [],
@@ -245,6 +272,8 @@ export function registerInterviewRoutes(app) {
   // Message Audio (Whisper transcription + Turn)
   app.post("/api/interview/audio-message", express.raw({ type: "*/*", limit: "15mb" }), async (req, res) => {
     try {
+      const userId = coerceString(req.query?.userId);
+      if (!(await requireInterviewAccess(req, res, userId))) return;
       const audioBuffer = req.body;
       let transcribedText = "";
 

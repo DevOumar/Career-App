@@ -253,11 +253,54 @@ app.get("/api/billing/transactions", async (req, res) => {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
 
+    // Filtres : statut (paid / free / refunded), plan, et période (dates
+    // ISO). Tous optionnels — sans filtre, on retourne tout l'historique
+    // paginé par date décroissante.
+    const statusFilter = coerceString(req.query?.status); // "paid" | "free" | "refunded"
+    const planFilter = coerceString(req.query?.planId);
+    const fromDate = coerceString(req.query?.from);
+    const toDate = coerceString(req.query?.to);
+    const page = Math.max(1, Math.round(Number(req.query?.page) || 1));
+    const pageSize = Math.min(50, Math.max(1, Math.round(Number(req.query?.pageSize) || 10)));
+
+    const conditions = ["user_id = $1"];
+    const params = [userId];
+
+    if (planFilter) {
+      params.push(planFilter);
+      conditions.push(`plan_id = $${params.length}`);
+    }
+    if (fromDate) {
+      params.push(fromDate);
+      conditions.push(`created_at >= $${params.length}`);
+    }
+    if (toDate) {
+      params.push(toDate);
+      conditions.push(`created_at <= $${params.length}`);
+    }
+    if (statusFilter === "refunded") {
+      conditions.push("refunded = 1");
+    } else if (statusFilter === "paid") {
+      conditions.push("refunded = 0 AND amount_collected > 0");
+    } else if (statusFilter === "free") {
+      conditions.push("refunded = 0 AND amount_collected = 0");
+    }
+
+    const whereClause = conditions.join(" AND ");
+    const { rows: countRows } = await db.query(
+      `SELECT COUNT(*)::int AS total FROM transactions WHERE ${whereClause}`,
+      params
+    );
+    const total = countRows[0]?.total || 0;
+
+    params.push(pageSize, (page - 1) * pageSize);
     const { rows } = await db.query(
       `SELECT id, plan_id, billing_cycle, listed_amount, amount_collected, currency, source,
               license_code, refunded, refunded_at, created_at
-       FROM transactions WHERE user_id = $1 ORDER BY created_at DESC`,
-      [userId]
+       FROM transactions WHERE ${whereClause}
+       ORDER BY created_at DESC
+       LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
     );
     const transactions = rows.map((row) => {
       const plan = PLANS.find((item) => item.id === row.plan_id) || null;
@@ -276,7 +319,7 @@ app.get("/api/billing/transactions", async (req, res) => {
         createdAt: row.created_at
       };
     });
-    return res.json({ transactions });
+    return res.json({ transactions, total, page, pageSize });
   } catch (error) {
     console.error("Erreur lecture historique de paiement:", error);
     return res.status(500).json({ error: "Impossible de charger l'historique de paiement." });
@@ -440,6 +483,9 @@ app.post("/api/plans/activate", async (req, res) => {
     const premium = await computePremiumAccess(updatedUser);
     return res.json({ user: await getPublicUserById(userId), premium, licenseCode });
   } catch (error) {
+    if (error.code === "DOWNGRADE_BLOCKED") {
+      return res.status(409).json({ error: error.message });
+    }
     return res.status(500).json({ error: error.message || "Erreur serveur." });
   }
 });

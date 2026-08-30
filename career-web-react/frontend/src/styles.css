@@ -271,6 +271,32 @@ select:focus-visible {
   padding: 0.3rem 0.46rem;
 }
 
+.language-switch-dropdown {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: 999px;
+  background: #f5f3ee;
+  cursor: pointer;
+  margin-bottom: 0;
+}
+
+.language-switch-dropdown select {
+  border: none;
+  background: transparent;
+  font-size: 0.72rem;
+  font-weight: 750;
+  color: #6f6c74;
+  cursor: pointer;
+  padding: 0;
+}
+
+.language-switch-dropdown select:focus {
+  outline: none;
+}
+
 .flag {
   width: 1rem;
   height: 0.7rem;
@@ -1601,6 +1627,18 @@ select:focus {
   color: #6f6c74;
   font-size: 0.82rem;
   line-height: 1.4;
+}
+
+.link-button {
+  border: none;
+  background: transparent;
+  padding: 0;
+  margin: 0;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
 .feature-page-header {
@@ -5517,6 +5555,17 @@ input[aria-invalid="true"] {
   color: #26242a;
 }
 
+.forgot-password-link {
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+  margin-top: 0.4rem;
+  display: inline-block;
+}
+
 .login-style .auth-card-modal label {
   margin-bottom: 1.35rem;
 }
@@ -5655,6 +5704,30 @@ input[aria-invalid="true"] {
   gap: 0.52rem;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
+}
+
+/* Topbar candidat : fond clair (contrairement à l'admin/école, foncé) — le
+   bouton cloche générique (.topbar-icon-btn) est pensé pour un fond sombre,
+   on le réhabille ici pour rester lisible sur blanc. */
+.app-shell .topbar-icon-btn {
+  width: auto;
+  height: auto;
+  padding: 0.4rem;
+  background: #fff;
+  border: 1px solid var(--line);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+
+.app-shell .topbar-icon-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: #fff;
+}
+
+.app-shell .topbar-icon-btn svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .topbar-tokens {
@@ -6161,6 +6234,12 @@ input[aria-invalid="true"] {
 
 .account-row:last-child {
   border-bottom: 0;
+}
+
+.account-row-actions {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
 }
 
 .account-row.popover-open {
@@ -6703,6 +6782,29 @@ input[aria-invalid="true"] {
   color: #48464d;
 }
 
+.device-info > div {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.device-revoke {
+  border: 1px solid var(--line);
+  background: #fff;
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #cf1322;
+  cursor: pointer;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.device-revoke:hover {
+  border-color: #cf1322;
+  background: #fff1f0;
+}
+
 .device-screen {
   width: 2.05rem;
   height: 1.35rem;
@@ -7106,6 +7208,52 @@ input[aria-invalid="true"] {
   color: var(--primary);
 }
 
+.pricing-balance-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border-radius: 14px;
+  padding: 0.9rem 1.1rem;
+  margin: 0 0 1rem;
+}
+
+.pricing-balance-banner svg {
+  width: 1.2rem;
+  height: 1.2rem;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.pricing-balance-banner strong {
+  display: block;
+  font-size: 0.92rem;
+  margin-bottom: 0.15rem;
+}
+
+.pricing-balance-banner p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-2);
+}
+
+.pricing-balance-banner.critical {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #dc2626;
+}
+
+.pricing-balance-banner.warning {
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  color: #b45309;
+}
+
+.pricing-balance-banner.success {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #16a34a;
+}
+
 .pricing-main-tabs {
   display: flex;
   justify-content: center;
@@ -7128,6 +7276,55 @@ input[aria-invalid="true"] {
 .pricing-main-tab.active {
   color: var(--primary);
   border-bottom-color: var(--primary);
+}
+
+.billing-history-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.billing-history-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+
+.billing-history-filter select {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  background: var(--surface);
+  color: var(--text-1);
+  font-size: 0.88rem;
+  min-width: 180px;
+}
+
+.billing-history-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.billing-history-pagination button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 999px;
+  padding: 0.45rem 1.1rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.billing-history-pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 .billing-history-table-wrap {
@@ -10432,6 +10629,19 @@ input[aria-invalid="true"] {
   font-size: 0.72rem;
 }
 
+.topbar-notif-mark-read {
+  border: none;
+  background: transparent;
+  color: var(--primary);
+  font-weight: 700;
+  font-size: 0.75rem;
+  cursor: pointer;
+  padding: 0.5rem 1.05rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+
 .topbar-notif-list {
   overflow-y: auto;
   flex: 1 1 auto;
@@ -10443,6 +10653,20 @@ input[aria-invalid="true"] {
   gap: 0.65rem;
   padding: 0.75rem 1.05rem;
   border-bottom: 1px solid var(--line);
+  position: relative;
+}
+
+.topbar-notif-row.unread {
+  background: rgba(250, 140, 22, 0.06);
+}
+
+.topbar-notif-dot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 999px;
+  background: var(--primary);
+  flex-shrink: 0;
+  margin-top: 0.3rem;
 }
 
 .topbar-notif-row:last-child {

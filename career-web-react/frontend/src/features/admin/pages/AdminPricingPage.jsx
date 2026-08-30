@@ -307,7 +307,7 @@ export default function AdminPricingPage({ user, language, currency = "EUR" }) {
                       </div>
                       <div className="admin-pricing-features-title">{copy.features}</div>
                       <ul className="admin-pricing-feature-list">
-                        {(plan.features[language] || plan.features.fr).slice(0, 4).map((feature) => (
+                        {(plan.features[language] || plan.features.fr).map((feature) => (
                           <li key={feature}>{feature}</li>
                         ))}
                       </ul>

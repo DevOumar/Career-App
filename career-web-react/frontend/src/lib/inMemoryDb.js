@@ -113,7 +113,12 @@ async function request(path, options = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(data.error || "Erreur serveur.");
+    const error = new Error(data.error || "Erreur serveur.");
+    // Certaines routes renvoient un code machine-readable (ex:
+    // NO_ACCOUNT_GOOGLE) pour permettre à l'appelant de réagir différemment
+    // du simple affichage du message (proposer un bouton, changer d'écran...).
+    if (data.code) error.code = data.code;
+    throw error;
   }
 
   return data;
@@ -123,6 +128,13 @@ async function request(path, options = {}) {
 // qu'un simple <a href> peut suivre, sans passer par fetch/blob.
 export async function getApiBase() {
   return resolveApiBase();
+}
+
+// Exposé pour /api/interview/audio-message : upload binaire brut (le corps
+// n'est pas du JSON), donc request() ne convient pas telle quelle — mais on
+// veut quand même le même token de session que le reste de l'app.
+export function getSessionToken() {
+  return getStoredSessionToken();
 }
 
 export async function registerUser(payload) {
@@ -150,10 +162,29 @@ export async function verifyLoginCode({ email, identifier, code, purpose }) {
   });
 }
 
-export async function loginWithGoogle(credential) {
+export async function requestPasswordReset({ identifier }) {
+  return request("/auth/forgot-password", {
+    method: "POST",
+    body: { identifier }
+  });
+}
+
+export async function resetPassword({ identifier, code, newPassword }) {
+  return request("/auth/reset-password", {
+    method: "POST",
+    body: { identifier, code, newPassword }
+  });
+}
+
+// intent "login" : ne crée jamais de compte — si aucun compte Google
+// n'existe déjà, le backend renvoie une erreur avec code NO_ACCOUNT_GOOGLE
+// plutôt que d'en créer un silencieusement. intent "signup" garde le
+// comportement historique (crée le compte s'il n'existe pas encore, ou
+// connecte directement s'il existe déjà).
+export async function loginWithGoogle(credential, intent = "signup") {
   return request("/auth/google", {
     method: "POST",
-    body: { credential }
+    body: { credential, intent }
   });
 }
 
@@ -164,6 +195,16 @@ export async function getUserFromSession(token) {
   } catch (_error) {
     return null;
   }
+}
+
+export async function exportAccountData(userId) {
+  return request(`/account/export?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function revokeSession({ userId, sessionId }) {
+  return request(`/auth/sessions/${encodeURIComponent(sessionId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
 }
 
 export async function logoutUser(token) {
@@ -277,8 +318,17 @@ export async function confirmStripeCheckoutSession({ userId, sessionId }) {
   });
 }
 
-export async function listBillingTransactions(userId) {
-  return request(`/billing/transactions?userId=${encodeURIComponent(userId)}`);
+export async function listBillingTransactions(userId, filters = {}) {
+  const params = new URLSearchParams({ userId });
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== "") params.set(key, value);
+  });
+  return request(`/billing/transactions?${params.toString()}`);
+}
+
+export async function getNotifications(userId) {
+  const data = await request(`/notifications?userId=${encodeURIComponent(userId)}`);
+  return data.items;
 }
 
 export async function getHealth() {
@@ -484,6 +534,25 @@ export async function deleteInterviewConversation({ userId, conversationId }) {
   return request(`/interview/conversations/${encodeURIComponent(conversationId)}?userId=${encodeURIComponent(userId)}`, {
     method: "DELETE"
   });
+}
+
+// userId est requis ici (contrairement à un simple appel fetch relatif) :
+// le backend vérifie que le plan de cet utilisateur donne bien droit au
+// simulateur d'entretiens avant de démarrer une session.
+export async function startInterviewSession({ userId, type_entretien, domaine, offre }) {
+  const data = await request("/interview/start", {
+    method: "POST",
+    body: { userId, type_entretien, domaine, offre }
+  });
+  return { message: data.message, history: data.history || [] };
+}
+
+export async function sendInterviewMessage({ userId, text, history = [], type_entretien, domaine, offre }) {
+  const data = await request("/interview/message", {
+    method: "POST",
+    body: { userId, message: text, history, type_entretien, domaine, offre }
+  });
+  return { message: data.message, history: data.history || history };
 }
 
 export async function listCoverLetters(userId) {

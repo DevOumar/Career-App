@@ -6,42 +6,27 @@ import {
   listInterviewConversations,
   saveInterviewConversation,
   updateInterviewConversation,
-  deleteInterviewConversation
+  deleteInterviewConversation,
+  startInterviewSession,
+  sendInterviewMessage,
+  getApiBase,
+  getSessionToken
 } from "../../lib/inMemoryDb.js";
 
-// Client API du module Entretiens : appelle directement le backend JS
-// (backend/routes/interview.js, stateless — l'historique de conversation
-// est renvoyé à chaque appel et doit être repassé au tour suivant), en
-// suivant le même schéma que le reste du module (fetch relatif vers
-// /api/interview/*, sans dépendance externe). Pas de service Python à
-// lancer en parallèle.
-async function startInterviewSession({ type_entretien, domaine, offre }) {
-  const response = await fetch("/api/interview/start", {
+// L'upload audio envoie un corps binaire brut (pas du JSON), donc il ne
+// passe pas par le client request() générique — mais il doit quand même
+// porter le même token de session (le backend vérifie l'accès Pro avant de
+// transcrire) et userId pour l'identifier.
+async function sendInterviewAudioMessage(audioBlob, { userId, type_entretien, domaine } = {}) {
+  const apiBase = await getApiBase();
+  const token = getSessionToken();
+  const params = new URLSearchParams({ userId: userId || "", type_entretien: type_entretien || "RH", domaine: domaine || "générique" });
+  const response = await fetch(`${apiBase}/interview/audio-message?${params.toString()}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ type_entretien, domaine, offre })
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Impossible de démarrer la session.");
-  return { message: data.message, history: data.history || [] };
-}
-
-async function sendInterviewMessage(text, { history = [], type_entretien, domaine, offre } = {}) {
-  const response = await fetch("/api/interview/message", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message: text, history, type_entretien, domaine, offre })
-  });
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Erreur lors de l'envoi du message.");
-  return { message: data.message, history: data.history || history };
-}
-
-async function sendInterviewAudioMessage(audioBlob, { type_entretien, domaine } = {}) {
-  const params = new URLSearchParams({ type_entretien: type_entretien || "RH", domaine: domaine || "générique" });
-  const response = await fetch(`/api/interview/audio-message?${params.toString()}`, {
-    method: "POST",
-    headers: { "Content-Type": audioBlob.type || "audio/webm" },
+    headers: {
+      "Content-Type": audioBlob.type || "audio/webm",
+      ...(token ? { Authorization: `Bearer ${token}` } : {})
+    },
     body: audioBlob
   });
   const data = await response.json().catch(() => ({}));
@@ -108,7 +93,9 @@ function InterviewAssistantIllustration() {
 }
 
 function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) {
-  const isFreePlan = !getPlanById(subscription?.planId)?.grantsPremium;
+  // Élan et Trajectoire Pro débloquent le simulateur d'entretiens (voir
+  // data/plans.js) — seul Essentiel (gratuit) en est exclu.
+  const isFreePlan = !getPlanById(subscription?.planId)?.unlocksInterviews;
 
   // Setup form states
   const [typeEntretien, setTypeEntretien] = useState("rh");
@@ -312,6 +299,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
 
     try {
       const res = await startInterviewSession({
+        userId,
         type_entretien: typeEntretien,
         domaine: domaine.trim(),
         offre: offre.trim(),
@@ -362,7 +350,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
     setStatusText("Le recruteur analyse votre réponse...");
 
     try {
-      const res = await sendInterviewMessage(text, {
+      const res = await sendInterviewMessage({
+        userId,
+        text,
         history: conversationHistoryRef.current,
         type_entretien: typeEntretien,
         domaine: domaine.trim(),
@@ -427,6 +417,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
 
           try {
             const res = await sendInterviewAudioMessage(audioBlob, {
+              userId,
               type_entretien: typeEntretien,
               domaine: domaine.trim(),
             });
@@ -488,6 +479,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
 
           try {
             const res = await sendInterviewAudioMessage(audioBlob, {
+              userId,
               type_entretien: typeEntretien,
               domaine: domaine.trim(),
             });
@@ -551,7 +543,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
     setMessages(withEndMsg);
 
     try {
-      const res = await sendInterviewMessage(END_INTERVIEW_MESSAGE, {
+      const res = await sendInterviewMessage({
+        userId,
+        text: END_INTERVIEW_MESSAGE,
         history: conversationHistoryRef.current,
         type_entretien: typeEntretien,
         domaine: domaine.trim(),
@@ -672,12 +666,12 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
       <section className="interview-locked">
         <div className="interview-locked-copy">
           <span className="interview-locked-badge">
-            <UiIcon name="chart" /> Trajectoire Pro
+            <UiIcon name="chart" /> Élan / Trajectoire Pro
           </span>
           <h2>Préparez vos entretiens avec l'IA RAG</h2>
           <p>
             Le simulateur d'entretien IA (feedback en direct, entretiens RH & techniques,
-            transcription vocale Whisper, bilan détaillé) est inclus dans le plan Pro.
+            transcription vocale Whisper, bilan détaillé) est inclus dans les plans Élan et Trajectoire Pro.
           </p>
           <ul className="interview-locked-features">
             <li>

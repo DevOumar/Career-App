@@ -41,6 +41,11 @@ import {
   consumeTokens,
   createStripeCheckoutSession,
   confirmStripeCheckoutSession,
+  requestPasswordReset,
+  resetPassword,
+  getNotifications,
+  revokeSession,
+  exportAccountData,
   deleteUserAccount,
   extractCvFile,
   findEmail,
@@ -689,6 +694,90 @@ export function ratingLabel(score, language = "fr") {
 }
 
 
+// Date + heure (contrairement à formatDate, partagé ailleurs et qui ne
+// montre que la date) : utile ici pour distinguer plusieurs notifications
+// du même jour dans un flux qui se rafraîchit toutes les 60s.
+function formatDateTime(value) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+// Traduit chaque type de notification candidat en texte affichable. Chaque
+// type correspond à un événement réel calculé côté serveur (voir
+// GET /api/notifications, backend/routes/applications.js) — sécurité du
+// compte, paiement encaissé, solde de jetons bas, candidature laissée en
+// attente, profil incomplet. Rien de fabriqué côté front.
+function candidateNotificationText(item, language) {
+  switch (item.type) {
+    case "password_changed":
+      return {
+        icon: "shield",
+        title: language === "en" ? "Password changed" : "Mot de passe modifié",
+        detail: language === "en" ? "Your password was changed." : "Votre mot de passe a été changé."
+      };
+    case "password_reset_completed":
+      return {
+        icon: "shield",
+        title: language === "en" ? "Password reset" : "Mot de passe réinitialisé",
+        detail: language === "en" ? "Your password was reset via email code." : "Votre mot de passe a été réinitialisé via un code email."
+      };
+    case "login_locked":
+      return {
+        icon: "alert",
+        title: language === "en" ? "Account temporarily locked" : "Compte temporairement verrouillé",
+        detail: language === "en" ? "Too many failed login attempts." : "Trop de tentatives de connexion échouées."
+      };
+    case "connected_account_linked":
+      return {
+        icon: "shield",
+        title: language === "en" ? "Google account linked" : "Compte Google lié",
+        detail: language === "en" ? "You can now sign in with Google." : "Vous pouvez désormais vous connecter avec Google."
+      };
+    case "connected_account_removed":
+      return {
+        icon: "shield",
+        title: language === "en" ? "Google account unlinked" : "Compte Google délié",
+        detail: language === "en" ? "Google sign-in was removed from your account." : "La connexion Google a été retirée de votre compte."
+      };
+    case "payment_confirmed": {
+      const planName = getPlanById(item.data?.planId)?.name?.[language] || getPlanById(item.data?.planId)?.name?.fr || item.data?.planId;
+      return {
+        icon: "pricetag",
+        title: language === "en" ? "Payment confirmed" : "Paiement confirmé",
+        detail: `${formatAmountInCurrency(item.data?.amount, item.data?.currency || "EUR")} · ${planName}`
+      };
+    }
+    case "balance_empty":
+      return {
+        icon: "alert",
+        title: language === "en" ? "Token balance empty" : "Solde de jetons épuisé",
+        detail: language === "en" ? "Top up to keep using the AI modules." : "Rechargez pour continuer à utiliser les modules IA."
+      };
+    case "balance_low":
+      return {
+        icon: "alert",
+        title: language === "en" ? "Token balance running low" : "Solde de jetons bas",
+        detail: language === "en" ? `${item.data?.credits} token(s) left.` : `Il reste ${item.data?.credits} jeton(s).`
+      };
+    case "application_stale":
+      return {
+        icon: "briefcase",
+        title: language === "en" ? "Application waiting" : "Candidature en attente",
+        detail: [item.data?.title, item.data?.company].filter(Boolean).join(" · ") || (language === "en" ? "Still marked as 'to apply'." : "Toujours marquée « à postuler ».")
+      };
+    case "profile_incomplete":
+      return {
+        icon: "profile",
+        title: language === "en" ? "Profile incomplete" : "Profil incomplet",
+        detail: language === "en" ? "Complete your profile to unlock more relevant features." : "Complétez votre profil pour des fonctionnalités plus pertinentes."
+      };
+    default:
+      return { icon: "bell", title: item.type, detail: "" };
+  }
+}
+
 function mergeProfileFromCv(currentProfile, parsedCv) {
   return {
     ...currentProfile,
@@ -778,9 +867,74 @@ export default function App() {
 
   const userMenuRef = useRef(null);
 
+  const [notifications, setNotifications] = useState([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  // Notifications recalculées à la volée côté serveur (voir GET
+  // /api/notifications) : "lu" n'existe nulle part en base, on le garde
+  // simplement en local par compte pour retenir quels ids l'utilisateur a
+  // déjà vus. Un item redevient "non lu" tout seul s'il change réellement
+  // (nouvel id, ex: nouveau paiement).
+  const [readNotificationIds, setReadNotificationIds] = useState(new Set());
+  const notifRef = useRef(null);
+
+  const unreadNotificationCount = notifications.filter((item) => !readNotificationIds.has(item.id)).length;
+
   const analysisUnlocked = Boolean(latestMatch);
   const user = session?.user;
   const [satisfactionEligible, setSatisfactionEligible] = useState(false);
+
+  useEffect(() => {
+    function handleClickOutsideNotif(event) {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutsideNotif);
+    return () => document.removeEventListener("mousedown", handleClickOutsideNotif);
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setReadNotificationIds(new Set());
+      return;
+    }
+    try {
+      const stored = JSON.parse(localStorage.getItem(`career_app_read_notifications_${user.id}`) || "[]");
+      setReadNotificationIds(new Set(Array.isArray(stored) ? stored : []));
+    } catch (_error) {
+      setReadNotificationIds(new Set());
+    }
+  }, [user?.id]);
+
+  function markAllNotificationsRead() {
+    if (!user?.id) return;
+    const nextIds = new Set([...readNotificationIds, ...notifications.map((item) => item.id)]);
+    setReadNotificationIds(nextIds);
+    try {
+      localStorage.setItem(`career_app_read_notifications_${user.id}`, JSON.stringify([...nextIds]));
+    } catch (_error) {
+      // Stockage indisponible (navigation privée...) : l'état reste correct
+      // en mémoire pour cette session, juste pas persisté au rechargement.
+    }
+  }
+
+  useEffect(() => {
+    if (!user?.id) return undefined;
+    let cancelled = false;
+    function load() {
+      getNotifications(user.id)
+        .then((items) => {
+          if (!cancelled) setNotifications(items || []);
+        })
+        .catch(() => {});
+    }
+    load();
+    const interval = setInterval(load, 60000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return undefined;
@@ -813,15 +967,17 @@ export default function App() {
     user?.subscription?.credits ?? getPlanById("candidate_discovery")?.credits ?? 0;
   const tokensDisplay = tokensBalance >= 999 ? "∞" : tokensBalance;
 
+  // Seuls targetRole et sector sont réellement demandés à l'utilisateur
+  // (quiz de bienvenue juste après l'inscription) — location, skills et
+  // experienceYears ne sont jamais sollicités nulle part, donc les compter
+  // ici pénaliserait injustement quasi tout le monde pour des champs que
+  // personne ne lui a proposé de remplir.
   const profileCompleteness = useMemo(() => {
     if (!user) return 0;
     const profile = user.profile || {};
     let score = 0;
-    if (profile.targetRole) score += 20;
-    if (profile.location) score += 20;
-    if (profile.sector) score += 20;
-    if ((profile.skills || []).length >= 5) score += 20;
-    if ((profile.experienceYears || 0) >= 1) score += 20;
+    if (profile.targetRole) score += 50;
+    if (profile.sector) score += 50;
     return score;
   }, [user]);
 
@@ -1028,15 +1184,40 @@ export default function App() {
     }
   }
 
-  async function handleGoogleLogin(credential) {
+  async function handleGoogleLogin(credential, intent = "signup") {
     try {
       clearMessages();
-      const result = await loginWithGoogle(credential);
+      const result = await loginWithGoogle(credential, intent);
       setToken(result.token);
       setSessionLoading(true);
       await syncSession(result.token);
       setActivePage("home");
       rememberLastAuthMethod("google");
+    } catch (error) {
+      setAuthError(getFriendlyErrorMessage(error, language));
+      throw error;
+    }
+  }
+
+  async function handleForgotPassword({ identifier }) {
+    try {
+      clearMessages();
+      return await requestPasswordReset({ identifier });
+    } catch (error) {
+      setAuthError(getFriendlyErrorMessage(error, language));
+      throw error;
+    }
+  }
+
+  async function handleResetPassword({ identifier, code, newPassword }) {
+    try {
+      clearMessages();
+      const result = await resetPassword({ identifier, code, newPassword });
+      setToken(result.token);
+      setSessionLoading(true);
+      await syncSession(result.token);
+      setActivePage("home");
+      rememberLastAuthMethod("password");
     } catch (error) {
       setAuthError(getFriendlyErrorMessage(error, language));
       throw error;
@@ -1604,6 +1785,130 @@ export default function App() {
     }
   }
 
+  async function handleExportAccountData() {
+    if (!user) return;
+    try {
+      clearMessages();
+      const result = await exportAccountData(user.id);
+      const blob = new Blob([JSON.stringify(result, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `career-cv-donnees-${user.id}.json`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      setProcessingError(getFriendlyErrorMessage(error, language));
+    }
+  }
+
+  // Résumé humainement lisible du même export RGPD (le JSON complet reste
+  // le format de référence, celui-ci est juste une vue de confort) — même
+  // principe que l'export PDF de la Lettre IA : impression navigateur, pas
+  // de librairie PDF supplémentaire.
+  async function handleExportSummary() {
+    if (!user) return;
+    try {
+      clearMessages();
+      const result = await exportAccountData(user.id);
+      const d = result.data;
+      const isEn = language === "en";
+      const esc = (value) => String(value ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+      const planName = getPlanById(d.profile.subscription_json ? JSON.parse(d.profile.subscription_json).planId : "")?.name?.[language];
+
+      const paymentRows = (d.transactions || [])
+        .map(
+          (t) =>
+            `<tr><td>${esc(formatDateTime(t.created_at))}</td><td>${esc(getPlanById(t.plan_id)?.name?.[language] || t.plan_id)}</td><td>${esc(formatAmountInCurrency(Number(t.amount_collected), t.currency))}</td><td>${esc(t.source)}</td></tr>`
+        )
+        .join("");
+
+      const securityRows = (d.account_security_events || [])
+        .slice(0, 15)
+        .map((e) => `<tr><td>${esc(formatDateTime(e.created_at))}</td><td>${esc(e.event_type)}</td></tr>`)
+        .join("");
+
+      const html = `<!doctype html>
+<html lang="${language}">
+<head>
+<meta charset="utf-8" />
+<title>${isEn ? "My Career CV data" : "Mes données Career CV"}</title>
+<style>
+  body { font-family: Arial, Helvetica, sans-serif; color: #101828; padding: 2rem; max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 1.4rem; margin-bottom: 0.2rem; }
+  h2 { font-size: 1.05rem; margin-top: 2rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.3rem; }
+  table { width: 100%; border-collapse: collapse; margin-top: 0.6rem; font-size: 0.85rem; }
+  th, td { text-align: left; padding: 0.4rem 0.5rem; border-bottom: 1px solid #eee; }
+  .muted { color: #667085; font-size: 0.85rem; }
+  .row { display: flex; justify-content: space-between; padding: 0.3rem 0; border-bottom: 1px solid #f2f2f2; }
+</style>
+</head>
+<body>
+  <h1>${isEn ? "My Career CV data" : "Mes données Career CV"}</h1>
+  <p class="muted">${isEn ? "Exported on" : "Exporté le"} ${esc(formatDateTime(result.exportedAt))}</p>
+
+  <h2>${isEn ? "Profile" : "Profil"}</h2>
+  <div class="row"><span>${isEn ? "Name" : "Nom"}</span><strong>${esc(d.profile.first_name)} ${esc(d.profile.last_name)}</strong></div>
+  <div class="row"><span>Email</span><strong>${esc(d.profile.email)}</strong></div>
+  <div class="row"><span>${isEn ? "Username" : "Nom d'utilisateur"}</span><strong>${esc(d.profile.username)}</strong></div>
+  <div class="row"><span>${isEn ? "Account created" : "Compte créé le"}</span><strong>${esc(formatDateTime(d.profile.created_at))}</strong></div>
+  <div class="row"><span>${isEn ? "Plan" : "Plan"}</span><strong>${esc(planName || "—")}</strong></div>
+
+  <h2>${isEn ? "Payment history" : "Historique de paiement"}</h2>
+  ${
+    paymentRows
+      ? `<table><thead><tr><th>${isEn ? "Date" : "Date"}</th><th>${isEn ? "Plan" : "Plan"}</th><th>${isEn ? "Amount" : "Montant"}</th><th>${isEn ? "Source" : "Moyen"}</th></tr></thead><tbody>${paymentRows}</tbody></table>`
+      : `<p class="muted">${isEn ? "No payment recorded." : "Aucun paiement enregistré."}</p>`
+  }
+
+  <h2>${isEn ? "Recent account security events" : "Événements de sécurité récents"}</h2>
+  ${
+    securityRows
+      ? `<table><thead><tr><th>${isEn ? "Date" : "Date"}</th><th>${isEn ? "Event" : "Événement"}</th></tr></thead><tbody>${securityRows}</tbody></table>`
+      : `<p class="muted">${isEn ? "No event recorded." : "Aucun événement enregistré."}</p>`
+  }
+
+  <h2>${isEn ? "Content" : "Contenu"}</h2>
+  <div class="row"><span>${isEn ? "Saved CVs" : "CV enregistrés"}</span><strong>${(d.cvs || []).length}</strong></div>
+  <div class="row"><span>${isEn ? "Cover letters" : "Lettres de motivation"}</span><strong>${(d.cover_letters || []).length}</strong></div>
+  <div class="row"><span>${isEn ? "Negotiation sessions" : "Sessions de négociation"}</span><strong>${(d.negotiation_conversations || []).length}</strong></div>
+  <div class="row"><span>${isEn ? "Interview sessions" : "Sessions d'entretien"}</span><strong>${(d.interview_conversations || []).length}</strong></div>
+  <div class="row"><span>${isEn ? "Job applications tracked" : "Candidatures suivies"}</span><strong>${(d.job_applications || []).length}</strong></div>
+
+  <p class="muted" style="margin-top:2rem;">
+    ${isEn
+      ? "This is a summary for readability. The complete machine-readable export (JSON) remains the reference document."
+      : "Ceci est un résumé pour la lisibilité. L'export complet exploitable (JSON) reste le document de référence."}
+  </p>
+</body>
+</html>`;
+
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) return;
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => printWindow.print(), 300);
+    } catch (error) {
+      setProcessingError(getFriendlyErrorMessage(error, language));
+    }
+  }
+
+  async function handleRevokeSession(sessionId) {
+    if (!user) return;
+    try {
+      clearMessages();
+      await revokeSession({ userId: user.id, sessionId });
+      const updated = await getUserFromSession(token);
+      if (updated) setSession(updated);
+      setPageMessage(language === "en" ? "Device disconnected." : "Appareil déconnecté.");
+    } catch (error) {
+      setProcessingError(getFriendlyErrorMessage(error, language));
+    }
+  }
+
   async function submitPasswordChange(event) {
     event.preventDefault();
     if (!user) return;
@@ -1669,6 +1974,8 @@ export default function App() {
         onSignup={handleSignup}
         onVerifySignupCode={handleVerifySignupCode}
         onResendSignupCode={handleResendSignupCode}
+        onForgotPassword={handleForgotPassword}
+        onResetPassword={handleResetPassword}
         onGoogleLogin={handleGoogleLogin}
         onClearError={() => setAuthError("")}
         error={authError}
@@ -1731,6 +2038,10 @@ export default function App() {
         setSecurityForm={setSecurityForm}
         securitySaving={securitySaving}
         onSubmitPassword={submitPasswordChange}
+        onRevokeSession={handleRevokeSession}
+        currentSessionId={session?.currentSessionId}
+        onExportData={handleExportAccountData}
+        onExportSummary={handleExportSummary}
         onDeleteAccount={handleDeleteAccount}
         onNavigateLegal={setLegalPage}
       />
@@ -1766,6 +2077,10 @@ export default function App() {
         setSecurityForm={setSecurityForm}
         securitySaving={securitySaving}
         onSubmitPassword={submitPasswordChange}
+        onRevokeSession={handleRevokeSession}
+        currentSessionId={session?.currentSessionId}
+        onExportData={handleExportAccountData}
+        onExportSummary={handleExportSummary}
         onDeleteAccount={handleDeleteAccount}
         onNavigateLegal={setLegalPage}
       />
@@ -1800,7 +2115,66 @@ export default function App() {
         </nav>
 
         <div className="topbar-user" ref={userMenuRef}>
-          <LanguageSwitch language={language} setLanguage={setLanguage} compact />
+          <div className="topbar-notif" ref={notifRef}>
+            <button
+              type="button"
+              className="topbar-icon-btn"
+              title={language === "en" ? "Notifications" : "Notifications"}
+              onClick={() => setNotifOpen((prev) => !prev)}
+            >
+              <UiIcon name="bell" />
+              {unreadNotificationCount ? (
+                <span className="topbar-notif-badge">{unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}</span>
+              ) : null}
+            </button>
+            {notifOpen ? (
+              <div className="topbar-notif-panel">
+                <div className="topbar-notif-panel-head">
+                  <strong>{language === "en" ? "Notifications" : "Notifications"}</strong>
+                  <span className="muted">
+                    {notifications.length
+                      ? `${notifications.length} ${language === "en" ? "item(s)" : "élément(s)"}`
+                      : language === "en"
+                      ? "Nothing to report"
+                      : "Rien à signaler"}
+                  </span>
+                </div>
+                {unreadNotificationCount ? (
+                  <button type="button" className="topbar-notif-mark-read" onClick={markAllNotificationsRead}>
+                    {language === "en" ? "Mark all as read" : "Marquer tout comme lu"}
+                  </button>
+                ) : null}
+                {notifications.length ? (
+                  <div className="topbar-notif-list">
+                    {notifications.map((item) => {
+                      const text = candidateNotificationText(item, language);
+                      const isUnread = !readNotificationIds.has(item.id);
+                      return (
+                        <div key={item.id} className={`topbar-notif-row ${isUnread ? "unread" : ""}`}>
+                          <span className="topbar-notif-icon">
+                            <UiIcon name={text.icon} />
+                          </span>
+                          <div>
+                            <strong>{text.title}</strong>
+                            <span className="muted" title={text.detail}>{text.detail}</span>
+                            {item.createdAt ? <span className="topbar-notif-time">{formatDateTime(item.createdAt)}</span> : null}
+                          </div>
+                          {isUnread ? <span className="topbar-notif-dot" aria-hidden="true" /> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="muted topbar-notif-empty">
+                    {language === "en"
+                      ? "Payments, low token balance, account security and stale applications will show up here."
+                      : "Paiements, solde de jetons bas, sécurité du compte et candidatures en attente apparaîtront ici."}
+                  </p>
+                )}
+              </div>
+            ) : null}
+          </div>
+          <LanguageSwitch language={language} setLanguage={setLanguage} variant="dropdown" />
           <button type="button" className="topbar-tokens" onClick={() => goTo("tarifs")} title={language === "en" ? "Tokens balance" : "Solde de jetons"}>
             <UiIcon name="pricetag" />
             <span>{tokensDisplay}</span>
@@ -2034,6 +2408,9 @@ export default function App() {
           setActivePanel={setAccountPanel}
           onClose={() => setAccountDrawerOpen(false)}
           onSaveAccount={handleAccountSave}
+          onSaveProfile={handleProfileSave}
+          roleOptions={(APP_COPY[language]?.roleQuiz || APP_COPY.fr.roleQuiz).roles}
+          sectorOptions={(APP_COPY[language]?.roleQuiz || APP_COPY.fr.roleQuiz).sectors}
           onAvatarUpload={handleAvatarUpload}
           avatarUploading={avatarUploading}
           onRequestSecondaryEmail={handleSecondaryEmailRequest}
@@ -2046,6 +2423,10 @@ export default function App() {
           setSecurityForm={setSecurityForm}
           securitySaving={securitySaving}
           onSubmitPassword={submitPasswordChange}
+          onRevokeSession={handleRevokeSession}
+          currentSessionId={session?.currentSessionId}
+          onExportData={handleExportAccountData}
+        onExportSummary={handleExportSummary}
           onDeleteAccount={handleDeleteAccount}
         />
       ) : null}
@@ -2377,6 +2758,8 @@ function AuthScreen({
   onSignup,
   onVerifySignupCode,
   onResendSignupCode,
+  onForgotPassword,
+  onResetPassword,
   onGoogleLogin,
   onClearError,
   error,
@@ -2397,6 +2780,55 @@ function AuthScreen({
   const [verificationEmail, setVerificationEmail] = useState("");
   const [resendSeconds, setResendSeconds] = useState(0);
 
+  // mode === "forgot" : réinitialisation de mot de passe, en 2 étapes
+  // (identifiant -> code reçu par email + nouveau mot de passe). Séparé du
+  // reste de la state machine login/signup pour ne pas complexifier leur
+  // logique déjà dense.
+  const [forgotStep, setForgotStep] = useState("identifier");
+  const [forgotIdentifier, setForgotIdentifier] = useState("");
+  const [forgotCode, setForgotCode] = useState(["", "", "", "", "", ""]);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [forgotResendSeconds, setForgotResendSeconds] = useState(0);
+
+  // Le champ accepte email OU nom d'utilisateur : si ça ressemble à une
+  // tentative d'email (contient un "@"), on exige un format valide ; sinon
+  // on ne demande qu'un identifiant non vide (nom d'utilisateur).
+  const EMAIL_FORMAT_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const forgotIdentifierTrimmed = forgotIdentifier.trim();
+  const isForgotIdentifierValid = forgotIdentifierTrimmed.includes("@")
+    ? EMAIL_FORMAT_REGEX.test(forgotIdentifierTrimmed)
+    : forgotIdentifierTrimmed.length > 0;
+
+  function startForgotPassword() {
+    onClearError();
+    setForgotIdentifier(loginForm.identifier || "");
+    setForgotStep("identifier");
+    setForgotCode(["", "", "", "", "", ""]);
+    setNewPassword("");
+    setConfirmNewPassword("");
+    setMode("forgot");
+  }
+
+  function updateForgotCodeDigit(index, rawValue) {
+    const value = rawValue.replace(/\D/g, "").slice(-1);
+    setForgotCode((prev) => {
+      const next = [...prev];
+      next[index] = value;
+      return next;
+    });
+    if (value && index < 5) {
+      document.querySelector(`[data-forgot-code-index="${index + 1}"]`)?.focus();
+    }
+  }
+
+  useEffect(() => {
+    if (forgotResendSeconds <= 0) return undefined;
+    const timer = setTimeout(() => setForgotResendSeconds((value) => Math.max(0, value - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [forgotResendSeconds]);
+
   const [loginForm, setLoginForm] = useState({
     identifier: "",
     password: ""
@@ -2416,7 +2848,18 @@ function AuthScreen({
   async function handleGoogleCredential(credential) {
     setGoogleProcessing(true);
     try {
-      await onGoogleLogin(credential);
+      // Depuis l'écran de connexion, on ne veut jamais créer de compte
+      // silencieusement : intent "login" fait échouer proprement si aucun
+      // compte Google n'existe (voir onGoogleLogin / NO_ACCOUNT_GOOGLE),
+      // plutôt que d'inscrire l'utilisateur sans qu'il l'ait demandé.
+      await onGoogleLogin(credential, mode === "signup" ? "signup" : "login");
+    } catch (error) {
+      if (error.code === "NO_ACCOUNT_GOOGLE") {
+        // L'erreur générique est déjà affichée par onGoogleLogin ; on
+        // bascule en plus directement vers l'inscription pour lui éviter un
+        // clic de plus, le compte Google servira à pré-remplir le formulaire.
+        setMode("signup");
+      }
     } finally {
       setGoogleProcessing(false);
     }
@@ -2480,6 +2923,52 @@ function AuthScreen({
 
   async function submit(event) {
     event.preventDefault();
+    if (mode === "forgot") {
+      if (forgotStep === "identifier") {
+        if (!isForgotIdentifierValid) return;
+        setIsSubmitting(true);
+        try {
+          const result = await onForgotPassword({ identifier: forgotIdentifier });
+          setForgotResendSeconds(result.resendAfterSeconds || 30);
+          setForgotCode(["", "", "", "", "", ""]);
+          setForgotStep("code");
+        } catch (_error) {
+          // Error already surfaced via the inline auth error state.
+        } finally {
+          setIsSubmitting(false);
+        }
+        return;
+      }
+      if (forgotStep === "code") {
+        // Le code n'est vérifié qu'à la toute fin (avec le nouveau mot de
+        // passe, en un seul appel atomique côté backend) : on avance juste
+        // à l'étape suivante ici, sans appel réseau.
+        const code = forgotCode.join("");
+        if (code.length !== 6) return;
+        setForgotStep("newPassword");
+        return;
+      }
+      // forgotStep === "newPassword"
+      const code = forgotCode.join("");
+      if (newPassword.length < 8) {
+        alert(language === "en" ? "The password must contain at least 8 characters." : "Le mot de passe doit contenir au moins 8 caractères.");
+        return;
+      }
+      if (newPassword !== confirmNewPassword) {
+        alert(language === "en" ? "Passwords do not match." : "Les mots de passe ne correspondent pas.");
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        await onResetPassword({ identifier: forgotIdentifier, code, newPassword });
+      } catch (_error) {
+        // Error already surfaced via the inline auth error state.
+      } finally {
+        setIsSubmitting(false);
+      }
+      return;
+    }
+
     if (mode === "login") {
       if (loginStep === "identifier") {
         if (!loginForm.identifier.trim()) return;
@@ -2576,6 +3065,17 @@ function AuthScreen({
     }
   }
 
+  async function resendForgotCode() {
+    if (forgotResendSeconds > 0 || !forgotIdentifier.trim()) return;
+    try {
+      const result = await onForgotPassword({ identifier: forgotIdentifier });
+      setForgotResendSeconds(result.resendAfterSeconds || 30);
+      setForgotCode(["", "", "", "", "", ""]);
+    } catch (_error) {
+      // Error already surfaced via the inline auth error state.
+    }
+  }
+
   function updateCodeDigit(index, value) {
     const digit = value.replace(/\D/g, "").slice(-1);
     setLoginCode((current) => {
@@ -2643,7 +3143,19 @@ function AuthScreen({
 
             <div className="login-modal-head">
               <h2>
-                {mode === "signup"
+                {mode === "forgot"
+                  ? forgotStep === "identifier"
+                    ? language === "en"
+                      ? "Reset your password"
+                      : "Réinitialiser le mot de passe"
+                    : forgotStep === "code"
+                      ? language === "en"
+                        ? "Check your inbox"
+                        : "Vérifiez votre messagerie"
+                      : language === "en"
+                        ? "Choose a new password"
+                        : "Choisissez un nouveau mot de passe"
+                  : mode === "signup"
                   ? signupPhase === "code"
                     ? language === "en"
                       ? "Check your inbox"
@@ -2660,14 +3172,34 @@ function AuthScreen({
                       : copy.password}
               </h2>
               <p>
-                {mode === "signup" && signupPhase === "code"
+                {mode === "forgot"
+                  ? forgotStep === "identifier"
+                    ? language === "en"
+                      ? "Enter your email or username, we'll send you a reset code."
+                      : "Indiquez votre e-mail ou nom d'utilisateur, on vous envoie un code de réinitialisation."
+                    : forgotStep === "code"
+                      ? language === "en"
+                        ? "Enter the 6-digit code we sent you"
+                        : "Saisissez le code à 6 chiffres reçu par email"
+                      : language === "en"
+                        ? "Almost done, pick a new password"
+                        : "Encore une étape : choisissez votre nouveau mot de passe"
+                  : mode === "signup" && signupPhase === "code"
                   ? language === "en"
                     ? "Welcome to Career CV"
                     : "Bienvenue sur Career CV"
                   : language === "en"
                     ? "to continue to Career CV"
                     : "pour continuer vers Career CV"}
-                {(loginStep === "code" && mode === "login") || (signupPhase === "code" && mode === "signup") ? (
+                {(mode === "forgot" && forgotStep !== "identifier") ? (
+                  <>
+                    <br />
+                    <strong>{forgotIdentifier}</strong>
+                    <button type="button" onClick={() => setForgotStep("identifier")} aria-label="Modifier l'adresse">
+                      ?
+                    </button>
+                  </>
+                ) : (loginStep === "code" && mode === "login") || (signupPhase === "code" && mode === "signup") ? (
                   <>
                     <br />
                     <strong>{verificationEmail}</strong>
@@ -2682,7 +3214,87 @@ function AuthScreen({
             </div>
 
       <form className="auth-card auth-card-modal" onSubmit={submit}>
-        {mode === "login" ? (
+        {mode === "forgot" ? (
+          <>
+            {forgotStep === "identifier" ? (
+              <label>
+                {language === "en" ? "Email or username" : "Adresse e-mail ou nom d'utilisateur"}
+                <input
+                  value={forgotIdentifier}
+                  onChange={(event) => setForgotIdentifier(event.target.value)}
+                  placeholder={language === "en" ? "Username or email address" : "Nom d'utilisateur ou adresse e-mail"}
+                  autoFocus
+                  required
+                />
+              </label>
+            ) : forgotStep === "code" ? (
+              <div className="code-verification-block">
+                <div className="code-input-row" aria-label="Code de vérification">
+                  {forgotCode.map((digit, index) => (
+                    <input
+                      key={index}
+                      data-forgot-code-index={index}
+                      value={digit}
+                      onChange={(event) => updateForgotCodeDigit(index, event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Backspace" && !forgotCode[index] && index > 0) {
+                          document.querySelector(`[data-forgot-code-index="${index - 1}"]`)?.focus();
+                        }
+                      }}
+                      inputMode="numeric"
+                      maxLength={1}
+                      autoFocus={index === 0}
+                    />
+                  ))}
+                </div>
+                <button className="resend-code-btn" type="button" onClick={resendForgotCode} disabled={forgotResendSeconds > 0}>
+                  {forgotResendSeconds > 0
+                    ? language === "en"
+                      ? `Resend code (${forgotResendSeconds})`
+                      : `Renvoyer le code (${forgotResendSeconds})`
+                    : language === "en"
+                      ? "Resend code"
+                      : "Renvoyer le code"}
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className="auth-identity-chip">
+                  <span>{language === "en" ? "Code verified" : "Code saisi"}</span>
+                  <button type="button" onClick={() => setForgotStep("code")}>
+                    {language === "en" ? "Change" : "Modifier"}
+                  </button>
+                </div>
+                <label>
+                  {language === "en" ? "New password" : "Nouveau mot de passe"}
+                  <div className="password-field">
+                    <input
+                      type={showNewPassword ? "text" : "password"}
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      minLength={8}
+                      autoFocus
+                      required
+                    />
+                    <button type="button" className="password-toggle" onClick={() => setShowNewPassword((prev) => !prev)} aria-label="Afficher/masquer le mot de passe">
+                      <UiIcon name="eye" />
+                    </button>
+                  </div>
+                </label>
+                <label>
+                  {language === "en" ? "Confirm new password" : "Confirmer le nouveau mot de passe"}
+                  <input
+                    type={showNewPassword ? "text" : "password"}
+                    value={confirmNewPassword}
+                    onChange={(event) => setConfirmNewPassword(event.target.value)}
+                    minLength={8}
+                    required
+                  />
+                </label>
+              </>
+            )}
+          </>
+        ) : mode === "login" ? (
           <>
             {loginStep === "identifier" ? (
               <>
@@ -2917,9 +3529,27 @@ function AuthScreen({
         <div className="auth-helper">{helper}</div>
 
         <div className="auth-actions">
-          <button className="btn-main" type="submit" disabled={isSubmitting}>
+          <button
+            className="btn-main"
+            type="submit"
+            disabled={
+              isSubmitting ||
+              (mode === "forgot" && forgotStep === "identifier" && !isForgotIdentifierValid) ||
+              (mode === "forgot" && forgotStep === "code" && forgotCode.join("").length !== 6)
+            }
+          >
             {isSubmitting ? <span className="btn-spinner" /> : null}{" "}
-            {mode === "login"
+            {mode === "forgot"
+              ? forgotStep === "identifier"
+                ? language === "en"
+                  ? "Send reset code"
+                  : "Envoyer le code"
+                : forgotStep === "code"
+                  ? copy.continue
+                  : language === "en"
+                    ? "Reset password"
+                    : "Réinitialiser le mot de passe"
+              : mode === "login"
               ? loginStep === "identifier" || loginStep === "code"
                 ? copy.continue
                 : copy.connect
@@ -2933,11 +3563,19 @@ function AuthScreen({
       </form>
             <div className="login-modal-footer">
               <p>
-                {mode === "login" ? (
+                {mode === "forgot" ? (
+                  <button type="button" onClick={() => { setMode("login"); onClearError(); }}>
+                    {language === "en" ? "Back to login" : "Retour à la connexion"}
+                  </button>
+                ) : mode === "login" ? (
                   <>
                     {language === "en" ? "No account yet?" : "Vous n'avez pas encore de compte ?"}{" "}
                     <button type="button" onClick={() => switchMode("signup")}>
                       {copy.signup}
+                    </button>
+                    <br />
+                    <button type="button" className="forgot-password-link" onClick={startForgotPassword}>
+                      {language === "en" ? "Forgot password?" : "Mot de passe oublié ?"}
                     </button>
                   </>
                 ) : (

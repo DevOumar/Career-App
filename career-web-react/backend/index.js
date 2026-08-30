@@ -354,12 +354,26 @@ app.use(express.json({ limit: "10mb" }));
 // routes/auth.js) : ceci protège contre le bourrinage massif/distribué
 // (spam d'inscriptions, énumération d'emails), le verrouillage par compte
 // protège un compte ciblé précis.
+// GET /api/auth/session (vérification de session, appelée à chaque
+// chargement de page) et /api/auth/logout ne doivent pas consommer le même
+// quota que les tentatives de connexion/inscription réelles : sinon une
+// simple navigation normale dans l'app peut épuiser la limite sans qu'aucune
+// vraie tentative n'ait eu lieu.
+const AUTH_RATE_LIMIT_EXEMPT_PATHS = new Set(["/session", "/logout"]);
+// La suite de tests (backend/tests/api.test.mjs) enchaîne volontairement
+// beaucoup d'appels /api/auth/* en rafale sur 127.0.0.1 (inscriptions,
+// tentatives de connexion pour tester le verrouillage...) — sans ce garde-fou
+// elle se ferait bloquer par ce même rate-limiter, pour des raisons sans
+// rapport avec ce qu'elle teste réellement. Jamais actif en dehors des tests
+// (il faut positionner la variable d'env explicitement).
+const authRateLimitDisabledForTests = process.env.DISABLE_AUTH_RATE_LIMIT === "1";
 const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Trop de tentatives. Réessayez dans quelques minutes." }
+  message: { error: "Trop de tentatives. Réessayez dans quelques minutes." },
+  skip: (req) => authRateLimitDisabledForTests || AUTH_RATE_LIMIT_EXEMPT_PATHS.has(req.path)
 });
 app.use("/api/auth", authRateLimiter);
 
@@ -905,6 +919,16 @@ function verifyPassword(password, salt, expectedHash) {
   );
 }
 
+// Dérive un identifiant stable mais non réutilisable à partir d'un token de
+// session — jamais le token brut lui-même côté client (voir toPublicUser).
+// Un hash simple suffit : l'objectif n'est pas la sécurité cryptographique
+// du token (déjà un random.UUID, largement assez fort) mais juste éviter
+// d'exposer une valeur qui permettrait de rejouer la session si interceptée
+// ailleurs (logs, extension navigateur compromise, etc.).
+function hashSessionToken(token) {
+  return crypto.createHash("sha256").update(String(token)).digest("hex").slice(0, 16);
+}
+
 function createSixDigitCode() {
   return String(crypto.randomInt(0, 1_000_000)).padStart(6, "0");
 }
@@ -927,14 +951,19 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
   const safeEmail = escapeHtml(email);
   const safeCode = escapeHtml(code);
   const isSignup = purpose === "signup";
+  const isReset = purpose === "reset";
 
   const subject = isSignup
     ? `Bienvenue sur Career CV - votre code de vérification : ${safeCode}`
+    : isReset
+    ? `${safeCode} est votre code de réinitialisation Career CV`
     : `${safeCode} est votre code de vérification Career CV`;
 
-  const introTitle = isSignup ? "Bienvenue sur Career CV !" : "Vérifiez votre messagerie";
+  const introTitle = isSignup ? "Bienvenue sur Career CV !" : isReset ? "Réinitialisez votre mot de passe" : "Vérifiez votre messagerie";
   const introText = isSignup
     ? `Merci de rejoindre Career CV, ${safeName}. Confirmez votre adresse <strong>${safeEmail}</strong> avec le code ci-dessous pour activer votre compte et commencer à optimiser vos candidatures.`
+    : isReset
+    ? `Utilisez le code ci-dessous pour choisir un nouveau mot de passe pour le compte associé à <strong>${safeEmail}</strong>. Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet email : votre mot de passe actuel reste inchangé.`
     : `Utilisez le code ci-dessous pour continuer vers Career CV avec l'adresse <strong>${safeEmail}</strong>.`;
 
   const text = [
@@ -942,6 +971,8 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
     "",
     isSignup
       ? `Merci de rejoindre Career CV. Votre code de vérification est : ${code}`
+      : isReset
+      ? `Votre code de réinitialisation de mot de passe Career CV est : ${code}`
       : `Votre code de vérification Career CV est : ${code}`,
     "",
     "Ce code expire dans 10 minutes.",
@@ -955,7 +986,7 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>${isSignup ? "Bienvenue sur Career CV" : "Code de vérification Career CV"}</title>
+    <title>${isSignup ? "Bienvenue sur Career CV" : isReset ? "Réinitialisation de mot de passe" : "Code de vérification Career CV"}</title>
   </head>
   <body style="margin:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#101828;">
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb;padding:32px 12px;">
@@ -3285,7 +3316,12 @@ function toPublicUser(userRow, relations) {
       updatedAt: row.updated_at
     })),
     sessions: (relations.sessions || []).map((row) => ({
-      id: row.token,
+      // Jamais le vrai token de session ici : cet objet part côté client
+      // (affiché dans Compte > Sécurité). Un id dérivé (hash) permet de
+      // cibler une session précise pour la révoquer (DELETE
+      // /api/auth/sessions/:sessionId) sans jamais exposer une valeur
+      // réutilisable pour usurper la session.
+      id: hashSessionToken(row.token),
       device: getDeviceName(row.user_agent || ""),
       browser: getBrowserName(row.user_agent || ""),
       ipAddress: row.ip_address || "",
@@ -3719,10 +3755,32 @@ async function claimStripeEventOnce(eventId) {
 }
 
 async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeIds = null, source = "instant") {
+  const { rows: userRows } = await db.query("SELECT subscription_json FROM users WHERE id = $1", [userId]);
+  const currentSubscription = parseJsonField(userRows[0]?.subscription_json, {});
+  const wasPremium = currentSubscription.plan === "premium";
+  const currentCredits = Number(currentSubscription.credits) || 0;
+
+  // Un plan gratuit ne doit jamais pouvoir "écraser" un plan payant déjà
+  // actif (ça effacerait des jetons réellement payés). Une fois premium, on
+  // ne peut qu'upgrader vers un autre plan payant, jamais redescendre au
+  // plan gratuit depuis cette route.
+  if (!plan.grantsPremium && wasPremium) {
+    const error = new Error(
+      "Un plan payant est déjà actif sur ce compte : impossible de revenir au plan gratuit depuis cette action."
+    );
+    error.code = "DOWNGRADE_BLOCKED";
+    throw error;
+  }
+
   const cycle = billingCycle === "annual" ? "annual" : plan.monthlyPrice == null ? "annual" : "monthly";
   const startedAt = nowIso();
   const renewalDays = cycle === "annual" ? 365 : 30;
   const renewalAt = new Date(Date.now() + renewalDays * 24 * 60 * 60 * 1000).toISOString();
+  // Achat d'un plan payant : les jetons restants du plan précédent
+  // s'additionnent au nouveau pack plutôt que d'être perdus (upgrade, pas
+  // remplacement). Un plan gratuit part toujours de son solde propre (il
+  // n'est atteignable ici que pour un compte qui n'était pas encore premium).
+  const nextCredits = plan.grantsPremium ? currentCredits + Number(plan.credits || 0) : Number(plan.credits || 0);
 
   await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [
     JSON.stringify({
@@ -3730,7 +3788,7 @@ async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeId
       status: "active",
       planId: plan.id,
       billingCycle: cycle,
-      credits: plan.credits,
+      credits: nextCredits,
       licenseCode: licenseCode || null,
       startedAt,
       renewalAt,
@@ -4352,6 +4410,7 @@ app.locals.ctx = {
   createPasswordRecord,
   verifyPassword,
   createSixDigitCode,
+  hashSessionToken,
   addMinutes,
   escapeHtml,
   buildVerificationEmail,
