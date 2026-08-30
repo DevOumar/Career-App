@@ -7927,6 +7927,31 @@ input[aria-invalid="true"] {
   opacity: 0.7;
 }
 
+.interview-setup-error {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  border-radius: 12px;
+  background: rgba(239, 68, 68, 0.08);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #b91c1c;
+  font-size: 0.85rem;
+  margin-bottom: 1.2rem;
+}
+
+.interview-setup-error svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  flex: 0 0 auto;
+}
+
+.interview-call-avatar-icon {
+  width: 2.4rem;
+  height: 2.4rem;
+  color: #fff;
+}
+
 @media (max-width: 640px) {
   .setup-card {
     padding: 1.3rem;

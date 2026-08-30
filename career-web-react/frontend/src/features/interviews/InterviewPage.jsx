@@ -417,7 +417,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
 
         mr.start();
         setIsRecordingCall(true);
-        setCallStatus("🔴 Enregistrement vocal en cours... Parle à voix haute !");
+        setCallStatus("Enregistrement vocal en cours… parlez à voix haute.");
       } catch (err) {
         setCallStatus("Erreur micro : Accès refusé ou microphone non disponible.");
       }
@@ -577,138 +577,89 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
   // --- SETUP SCREEN ---
   if (!inSession) {
     return (
-      <section className="interview-page card" style={{ maxWidth: "860px", margin: "1.5rem auto", padding: "2rem" }}>
-        <div style={{ marginBottom: "1.5rem", textAlign: "center" }}>
-          <h2 style={{ fontSize: "1.6rem", fontWeight: "700", marginBottom: "0.4rem" }}>
-            🎯 Simulateur d'Entretien IA (RAG Groq & Speech)
-          </h2>
-          <p style={{ color: "var(--text-2, #64748b)", fontSize: "0.95rem" }}>
-            Configurez votre session pour commencer la simulation avec le recruteur virtuel.
-          </p>
-        </div>
-
-        {errorMsg && (
-          <div
-            style={{
-              padding: "0.8rem 1rem",
-              background: "#fee2e2",
-              border: "1px solid #fca5a5",
-              color: "#991b1b",
-              borderRadius: "10px",
-              marginBottom: "1.2rem",
-              fontSize: "0.9rem",
-            }}
-          >
-            ⚠️ {errorMsg}
-          </div>
-        )}
-
-        <div style={{ display: "grid", gap: "1.2rem" }}>
-          <div>
-            <label style={{ fontWeight: "600", display: "block", marginBottom: "0.4rem" }}>
-              Type d'entretien :
-            </label>
-            <select
-              value={typeEntretien}
-              onChange={(e) => setTypeEntretien(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                borderRadius: "10px",
-                border: "1px solid var(--line, #cbd5e1)",
-                background: "var(--surface, #fff)",
-                fontSize: "0.95rem",
-              }}
-            >
-              <option value="rh">Entretien RH (Soft Skills, Parcours & Culture Fit)</option>
-              <option value="technique">Entretien Technique (Compétences dures & Problem Solving)</option>
-              <option value="direction">Entretien Direction (Management & Vision)</option>
-            </select>
+      <section className="interview-page">
+        <div className="card setup-card">
+          <div className="setup-header">
+            <div className="setup-header-icon">
+              <UiIcon name="matchmark" />
+            </div>
+            <div>
+              <h3>Simulateur d'entretien IA</h3>
+              <p>Configurez votre session pour commencer la simulation avec le recruteur virtuel.</p>
+            </div>
           </div>
 
-          <div>
-            <label style={{ fontWeight: "600", display: "block", marginBottom: "0.4rem" }}>
-              Domaine / Poste ciblé :
-            </label>
-            <input
-              type="text"
-              placeholder="Ex: Développeur Fullstack React / Python, Chef de Projet Digital..."
-              value={domaine}
-              onChange={(e) => setDomaine(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                borderRadius: "10px",
-                border: "1px solid var(--line, #cbd5e1)",
-                background: "var(--surface, #fff)",
-                fontSize: "0.95rem",
-              }}
-            />
-          </div>
+          {errorMsg && (
+            <div className="interview-setup-error">
+              <UiIcon name="alert" />
+              <span>{errorMsg}</span>
+            </div>
+          )}
 
-          <div>
-            <label style={{ fontWeight: "600", display: "block", marginBottom: "0.4rem" }}>
-              Offre d'emploi (Optionnel - collez le texte de l'annonce) :
-            </label>
-            <textarea
-              rows={4}
-              placeholder="Collez ici le descriptif du poste pour ancrer l'entretien dans un rôle précis..."
-              value={offre}
-              onChange={(e) => setOffre(e.target.value)}
-              style={{
-                width: "100%",
-                padding: "0.75rem",
-                borderRadius: "10px",
-                border: "1px solid var(--line, #cbd5e1)",
-                background: "var(--surface, #fff)",
-                fontSize: "0.95rem",
-                fontFamily: "inherit",
-              }}
-            />
-          </div>
+          <div className="setup-form">
+            <div className="form-group">
+              <label>Type d'entretien</label>
+              <div className="interview-type-group">
+                {[
+                  { id: "rh", icon: "profile", label: "RH / Soft Skills" },
+                  { id: "technique", icon: "settings", label: "Technique / Métier" },
+                  { id: "direction", icon: "briefcase", label: "Direction / Vision" }
+                ].map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`interview-type-option ${typeEntretien === t.id ? "active" : ""}`}
+                    onClick={() => setTypeEntretien(t.id)}
+                  >
+                    <UiIcon name={t.icon} />
+                    <span>{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
 
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: "1rem",
-              marginTop: "1rem",
-            }}
-          >
-            <button
-              type="button"
-              className="btn-main"
-              onClick={() => handleStartSession("chat")}
-              disabled={loading}
-              style={{
-                padding: "0.85rem",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "0.5rem",
-                fontSize: "1rem",
-              }}
-            >
-              💬 Démarrer par Écrit (Chat)
-            </button>
+            <div className="form-group">
+              <label htmlFor="interview-domaine">Domaine / poste ciblé <span className="muted">(optionnel)</span></label>
+              <input
+                id="interview-domaine"
+                type="text"
+                placeholder="Ex : Développeur Fullstack React, Chef de projet digital…"
+                value={domaine}
+                onChange={(e) => setDomaine(e.target.value)}
+              />
+            </div>
 
-            <button
-              type="button"
-              className="btn-main"
-              onClick={() => handleStartSession("call")}
-              disabled={loading}
-              style={{
-                padding: "0.85rem",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                gap: "0.5rem",
-                fontSize: "1rem",
-                background: "linear-gradient(135deg, #10b981, #059669)",
-              }}
-            >
-              📞 Démarrer en Appel (Vocal)
-            </button>
+            <div className="form-group">
+              <label htmlFor="interview-offre">Offre d'emploi visée <span className="muted">(optionnel)</span></label>
+              <textarea
+                id="interview-offre"
+                rows={4}
+                placeholder="Collez ici le descriptif du poste pour ancrer l'entretien dans un rôle précis…"
+                value={offre}
+                onChange={(e) => setOffre(e.target.value)}
+              />
+            </div>
+
+            <div className="setup-actions">
+              <button
+                type="button"
+                className="btn-main"
+                onClick={() => handleStartSession("chat")}
+                disabled={loading}
+              >
+                <UiIcon name="chat" />
+                Démarrer l'entretien écrit
+              </button>
+              <button
+                type="button"
+                className="btn-secondary"
+                onClick={() => handleStartSession("call")}
+                disabled={loading}
+              >
+                <UiIcon name="phone" />
+                Démarrer l'appel vocal
+              </button>
+            </div>
           </div>
 
           {loading && (
@@ -824,7 +775,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
               transition: "all 0.3s ease",
             }}
           >
-            <span style={{ fontSize: "2.5rem" }}>{isRecordingCall ? "🎙️" : "👔"}</span>
+            <UiIcon name={isRecordingCall ? "chat" : "profile"} className="interview-call-avatar-icon" />
           </div>
 
           <p style={{ fontSize: "1.1rem", fontWeight: "600", color: "#e2e8f0", maxWidth: "500px" }}>
@@ -871,7 +822,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs }) {
                 boxShadow: "0 4px 14px rgba(0,0,0,0.25)",
               }}
             >
-              {isRecordingCall ? "⏹️ Stop / Envoyer" : "🎤 Parler au micro"}
+              {isRecordingCall ? "Arrêter et envoyer" : "Parler au micro"}
             </button>
 
             <button
