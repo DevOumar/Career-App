@@ -133,12 +133,9 @@ function LandingPage({
   return (
     <div className="landing-shell">
       <header className="landing-nav">
-        <div className="landing-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <UiIcon name="matchmark" />
-          </span>
-          <strong>Career CV</strong>
-        </div>
+        <button type="button" className="landing-brand brand-link" onClick={() => window.location.reload()}>
+          <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
+        </button>
         <div className="landing-actions">
           <LanguageSwitch language={language} setLanguage={setLanguage} />
           <button className="landing-link" type="button" onClick={onLoginClick}>
@@ -355,12 +352,9 @@ function LandingPage({
 
       <footer className="landing-footer">
         <div>
-          <div className="landing-brand footer-brand">
-            <span className="brand-mark" aria-hidden="true">
-              <UiIcon name="matchmark" />
-            </span>
-            <strong>Career CV</strong>
-          </div>
+          <button type="button" className="landing-brand footer-brand brand-link" onClick={() => window.location.reload()}>
+            <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
+          </button>
           <p>{copy.footerText}</p>
         </div>
         <FooterColumn
@@ -479,12 +473,9 @@ function InfoPage({
   return (
     <div className="landing-shell legal-shell">
       <header className="landing-nav">
-        <div className="landing-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <UiIcon name="matchmark" />
-          </span>
-          <strong>Career CV</strong>
-        </div>
+        <button type="button" className="landing-brand brand-link" onClick={() => window.location.reload()}>
+          <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
+        </button>
         <div className="landing-actions">
           <LanguageSwitch language={language} setLanguage={setLanguage} />
           <button className="landing-link" type="button" onClick={onLoginClick}>

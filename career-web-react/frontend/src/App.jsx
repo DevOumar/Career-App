@@ -1738,9 +1738,9 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <div className="brand">
+        <button type="button" className="brand brand-link" onClick={() => goTo("home")}>
           <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
-        </div>
+        </button>
 
         <nav className="topnav">
           {NAV_ITEMS.map((item) => {
@@ -2187,10 +2187,7 @@ export function ConnectedFooter({
     <footer className="connected-footer">
       <div>
         <div className="landing-brand footer-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <UiIcon name="matchmark" />
-          </span>
-          <strong>Career CV</strong>
+          <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
         </div>
         <p>{copy.footerText}</p>
       </div>

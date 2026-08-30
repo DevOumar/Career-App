@@ -235,7 +235,10 @@ function SchoolApp({
             <span />
             <span />
           </button>
-          <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" /> <span className="admin-badge school-badge">École</span>
+          <button type="button" className="brand-link" onClick={() => setTab("dashboard")}>
+            <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
+          </button>{" "}
+          <span className="admin-badge school-badge">École</span>
         </div>
 
         <div className="topbar-search-box" ref={searchBoxRef}>
