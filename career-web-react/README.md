@@ -45,9 +45,10 @@ Voir [ARCHITECTURE.md](ARCHITECTURE.md) pour la convention `features/<module>/` 
 - Historique des CV importés.
 
 **Modules IA (jetons)**
-- Simulateur d'entretiens (réservé au plan Trajectoire Pro).
-- Lettre de motivation générée par IA (plusieurs tons et modèles visuels, éditable avant export).
-- Simulateur de négociation salariale (chat avec un recruteur IA + conseils de coaching, bilan de fin de session).
+- Simulateur d'entretiens (réservé au plan Trajectoire Pro) : chat texte ou appel vocal (synthèse vocale + transcription Whisper), bilan structuré en fin de session, historique des entretiens sauvegardés et reprenables.
+- Lettre de motivation générée par IA (plusieurs tons et modèles visuels, éditable avant export), historique des lettres générées.
+- Simulateur de négociation salariale (chat avec un recruteur IA + conseils de coaching, bilan de fin de session), historique des négociations.
+- Email Scout : retrouve l'email professionnel probable d'un contact à partir d'un nom et d'une entreprise (test de formats + vérification du domaine).
 
 **Tarifs & paiement**
 - Plans Candidat/Étudiant, Cabinet de recrutement, École, avec système de jetons.

@@ -11,6 +11,7 @@ Le projet est une architecture **frontend/backend séparée** : une interface Re
 `-- career-web-react/          # Toute l'application
     |-- frontend/              # Interface React (Vite)
     |   |-- index.html
+    |   |-- public/            # Assets statiques servis tels quels (logo, favicon)
     |   `-- src/
     |       |-- App.jsx        # Coquille de l'app (session, nav, routage entre modules)
     |       |-- main.jsx       # Point d'entrée React
