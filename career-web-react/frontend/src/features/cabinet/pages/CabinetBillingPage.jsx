@@ -9,7 +9,7 @@ export default function CabinetBillingPage({ user, language, currency }) {
       : { title: "Facturation", subtitle: "Historique des paiements pour la licence de votre cabinet." };
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">

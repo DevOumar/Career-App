@@ -6,6 +6,7 @@ import { AvatarCircle } from "../../../components/AvatarCircle.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDate } from "../../../lib/format.js";
 import { getCabinetRecruiters, removeCabinetRecruiter } from "../../../lib/inMemoryDb.js";
+import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
 
 export default function CabinetRecruitersPage({ user, language }) {
   const copy =
@@ -20,7 +21,8 @@ export default function CabinetRecruitersPage({ user, language }) {
           removeConfirmText: "This frees up a seat on your license.",
           removeConfirmBtn: "Remove",
           cancel: "Cancel",
-          empty: "No recruiter linked to your license yet."
+          empty: "No recruiter linked to your license yet.",
+          emptyHint: "Invite a recruiter to get your team started."
         }
       : {
           title: "Recruteurs",
@@ -32,7 +34,8 @@ export default function CabinetRecruitersPage({ user, language }) {
           removeConfirmText: "Cela libère un siège sur votre licence.",
           removeConfirmBtn: "Retirer",
           cancel: "Annuler",
-          empty: "Aucun recruteur rattaché à votre licence pour l'instant."
+          empty: "Aucun recruteur rattaché à votre licence pour l'instant.",
+          emptyHint: "Invitez un recruteur pour démarrer votre équipe."
         };
 
   const [items, setItems] = useState(null);
@@ -64,7 +67,7 @@ export default function CabinetRecruitersPage({ user, language }) {
   }
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">
@@ -111,7 +114,7 @@ export default function CabinetRecruitersPage({ user, language }) {
           ))}
         </div>
       ) : items ? (
-        <p className="muted">{copy.empty}</p>
+        <CabinetEmptyState icon="profile" title={copy.empty} hint={copy.emptyHint} />
       ) : null}
     </section>
   );

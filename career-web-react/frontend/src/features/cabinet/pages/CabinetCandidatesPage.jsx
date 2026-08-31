@@ -5,6 +5,7 @@ import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { createCabinetCandidate, updateCabinetCandidate, deleteCabinetCandidate, getCabinetCandidates, extractCabinetCandidateCv } from "../../../lib/inMemoryDb.js";
 import { fileToBase64 } from "../../../lib/cvService.js";
+import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
 
 const STATUSES = ["sourced", "contacted", "interviewing", "placed", "rejected"];
 
@@ -19,6 +20,7 @@ export default function CabinetCandidatesPage({ user, language }) {
           statusLabels: { sourced: "Sourced", contacted: "Contacted", interviewing: "Interviewing", placed: "Placed", rejected: "Rejected" },
           add: "Add a candidate",
           empty: "No candidate added yet.",
+          emptyHint: "Add your first candidate manually, or import a CV to prefill the form with AI.",
           edit: "Edit",
           delete: "Delete",
           deleteConfirmTitle: "Delete this candidate?",
@@ -48,6 +50,7 @@ export default function CabinetCandidatesPage({ user, language }) {
           statusLabels: { sourced: "Sourcé", contacted: "Contacté", interviewing: "En entretien", placed: "Placé", rejected: "Écarté" },
           add: "Ajouter un candidat",
           empty: "Aucun candidat ajouté pour l'instant.",
+          emptyHint: "Ajoutez votre premier candidat à la main, ou importez un CV pour préremplir la fiche par IA.",
           edit: "Modifier",
           delete: "Supprimer",
           deleteConfirmTitle: "Supprimer ce candidat ?",
@@ -104,7 +107,7 @@ export default function CabinetCandidatesPage({ user, language }) {
   }
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">
@@ -169,7 +172,7 @@ export default function CabinetCandidatesPage({ user, language }) {
           ))}
         </div>
       ) : data ? (
-        <p className="muted">{copy.empty}</p>
+        <CabinetEmptyState icon="network" title={copy.empty} hint={copy.emptyHint} />
       ) : null}
 
       {formOpen ? (

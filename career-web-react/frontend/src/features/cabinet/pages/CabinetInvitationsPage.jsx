@@ -4,6 +4,7 @@ import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDate } from "../../../lib/format.js";
 import { getCabinetInvitations, sendCabinetInvitation, sendCabinetInvitationsBulk } from "../../../lib/inMemoryDb.js";
+import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
 
 export default function CabinetInvitationsPage({ user, language }) {
   const copy =
@@ -20,6 +21,7 @@ export default function CabinetInvitationsPage({ user, language }) {
           statusPending: "Pending",
           statusRedeemed: "Accepted",
           empty: "No invitation sent yet.",
+          emptyHint: "Invite your first recruiter above.",
           bulkTitle: "Bulk import (CSV)",
           bulkHint: "One email per line, or a CSV with an email column.",
           bulkPlaceholder: "jane.doe@firm.com\njohn.smith@firm.com\n…",
@@ -39,6 +41,7 @@ export default function CabinetInvitationsPage({ user, language }) {
           statusPending: "En attente",
           statusRedeemed: "Acceptée",
           empty: "Aucune invitation envoyée pour l'instant.",
+          emptyHint: "Invitez votre premier recruteur ci-dessus.",
           bulkTitle: "Import en masse (CSV)",
           bulkHint: "Un email par ligne, ou un CSV avec une colonne email.",
           bulkPlaceholder: "jean.dupont@cabinet.fr\nmarie.martin@cabinet.fr\n…",
@@ -111,7 +114,7 @@ export default function CabinetInvitationsPage({ user, language }) {
   const bulkEmailCount = extractEmails(bulkText).length;
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">
@@ -170,7 +173,7 @@ export default function CabinetInvitationsPage({ user, language }) {
           ))}
         </div>
       ) : (
-        <p className="muted">{copy.empty}</p>
+        <CabinetEmptyState icon="mail" title={copy.empty} hint={copy.emptyHint} />
       )}
     </section>
   );

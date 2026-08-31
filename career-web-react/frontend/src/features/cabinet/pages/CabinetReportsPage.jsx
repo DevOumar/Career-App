@@ -5,6 +5,7 @@ import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDate } from "../../../lib/format.js";
 import { getCabinetReports, generateCabinetReport } from "../../../lib/inMemoryDb.js";
+import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
 
 export default function CabinetReportsPage({ user, language }) {
   const copy =
@@ -15,6 +16,7 @@ export default function CabinetReportsPage({ user, language }) {
           missionLabel: "Mission",
           generate: "Generate report",
           empty: "No report generated yet.",
+          emptyHint: "Pick a mission above and generate its first shortlist.",
           viewPrint: "View / Print",
           candidate: "Candidate",
           stage: "Stage",
@@ -26,6 +28,7 @@ export default function CabinetReportsPage({ user, language }) {
           missionLabel: "Mission",
           generate: "Générer le rapport",
           empty: "Aucun rapport généré pour le moment.",
+          emptyHint: "Choisissez une mission ci-dessus et générez sa première shortlist.",
           viewPrint: "Consulter / Imprimer",
           candidate: "Candidat",
           stage: "Étape",
@@ -83,7 +86,7 @@ export default function CabinetReportsPage({ user, language }) {
   }
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">
@@ -131,7 +134,7 @@ export default function CabinetReportsPage({ user, language }) {
           ))}
         </div>
       ) : (
-        <p className="muted">{copy.empty}</p>
+        <CabinetEmptyState icon="file" title={copy.empty} hint={copy.emptyHint} />
       )}
     </section>
   );

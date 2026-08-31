@@ -11,6 +11,7 @@ import {
   updateCabinetMissionCandidate,
   getCabinetCandidates
 } from "../../../lib/inMemoryDb.js";
+import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
 
 const STATUSES = ["open", "in_progress", "closed"];
 const STAGES = ["sourced", "contacted", "interviewing", "placed", "rejected"];
@@ -25,6 +26,7 @@ export default function CabinetMissionsPage({ user, language }) {
           stageLabels: { sourced: "Sourced", contacted: "Contacted", interviewing: "Interviewing", placed: "Placed", rejected: "Rejected" },
           add: "New mission",
           empty: "No mission created yet.",
+          emptyHint: "Create your first client mission to start assigning candidates.",
           candidatesCount: (n) => `${n} candidate(s)`,
           formTitle: "Mission",
           missionTitle: "Position title",
@@ -47,6 +49,7 @@ export default function CabinetMissionsPage({ user, language }) {
           stageLabels: { sourced: "Sourcé", contacted: "Contacté", interviewing: "En entretien", placed: "Placé", rejected: "Écarté" },
           add: "Nouvelle mission",
           empty: "Aucune mission créée pour le moment.",
+          emptyHint: "Créez votre première mission client pour commencer à y affecter des candidats.",
           candidatesCount: (n) => `${n} candidat(s)`,
           formTitle: "Mission",
           missionTitle: "Titre du poste",
@@ -117,7 +120,7 @@ export default function CabinetMissionsPage({ user, language }) {
   }
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">
@@ -203,7 +206,7 @@ export default function CabinetMissionsPage({ user, language }) {
           })}
         </div>
       ) : items ? (
-        <p className="muted">{copy.empty}</p>
+        <CabinetEmptyState icon="briefcase" title={copy.empty} hint={copy.emptyHint} />
       ) : null}
 
       {formOpen ? (

@@ -100,7 +100,22 @@ export default function CabinetApp({
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState("account");
   const [openGroup, setOpenGroup] = useState("");
+  const [dropdownPos, setDropdownPos] = useState(null);
   const navRef = useRef(null);
+
+  // .topnav a un overflow-x: auto (défilement horizontal sur petit écran),
+  // ce qui force aussi le clipping vertical de tout enfant en position
+  // absolute qui en dépasse — le sous-menu était donc invisible. En
+  // position: fixed calculée depuis le bouton, il échappe à ce clipping.
+  function toggleGroup(id, event) {
+    if (openGroup === id) {
+      setOpenGroup("");
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setDropdownPos({ top: rect.bottom + 8, left: rect.left + rect.width / 2 });
+    setOpenGroup(id);
+  }
   const [notifications, setNotifications] = useState([]);
   const [notifOpen, setNotifOpen] = useState(false);
   const [readNotificationIds, setReadNotificationIds] = useState(new Set());
@@ -239,7 +254,7 @@ export default function CabinetApp({
                 <button
                   type="button"
                   className={`nav-btn ${isChildActive ? "active" : ""}`}
-                  onClick={() => setOpenGroup((prev) => (prev === item.id ? "" : item.id))}
+                  onClick={(event) => toggleGroup(item.id, event)}
                 >
                   <span className="nav-btn-icon">
                     <UiIcon name={item.icon} />
@@ -247,8 +262,8 @@ export default function CabinetApp({
                   <span className="nav-btn-label">{copy[item.id]}</span>
                   <UiIcon name="chevron" className={`nav-btn-caret ${isOpen ? "open" : ""}`} />
                 </button>
-                {isOpen ? (
-                  <div className="nav-btn-dropdown">
+                {isOpen && dropdownPos ? (
+                  <div className="nav-btn-dropdown" style={{ top: dropdownPos.top, left: dropdownPos.left }}>
                     {item.children.map((child) => (
                       <button
                         key={child.id}

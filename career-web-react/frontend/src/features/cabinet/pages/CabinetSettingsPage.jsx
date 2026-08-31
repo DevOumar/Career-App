@@ -65,7 +65,7 @@ export default function CabinetSettingsPage({ user, language }) {
   if (!form) return <div className="extracting-state"><div className="loader-ring" /></div>;
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">

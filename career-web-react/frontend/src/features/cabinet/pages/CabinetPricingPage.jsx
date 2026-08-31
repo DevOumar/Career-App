@@ -22,7 +22,7 @@ export default function CabinetPricingPage({ user, language, currency = "EUR" })
   const agencyPlans = PLANS.filter((plan) => plan.segment === "agency");
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">

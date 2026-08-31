@@ -5,6 +5,7 @@ import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDate } from "../../../lib/format.js";
 import { getCabinetAnnouncements, sendCabinetAnnouncement } from "../../../lib/inMemoryDb.js";
+import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
 
 export default function CabinetAnnouncementsPage({ user, language }) {
   const copy =
@@ -17,6 +18,7 @@ export default function CabinetAnnouncementsPage({ user, language }) {
           send: "Send announcement",
           sending: "Sending…",
           empty: "No announcement sent yet.",
+          emptyHint: "Send your first announcement to your team above.",
           recipients: (n) => `${n} recipient(s)`
         }
       : {
@@ -27,6 +29,7 @@ export default function CabinetAnnouncementsPage({ user, language }) {
           send: "Envoyer l'annonce",
           sending: "Envoi…",
           empty: "Aucune annonce envoyée pour l'instant.",
+          emptyHint: "Envoyez votre première annonce à votre équipe ci-dessus.",
           recipients: (n) => `${n} destinataire(s)`
         };
 
@@ -63,7 +66,7 @@ export default function CabinetAnnouncementsPage({ user, language }) {
   }
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">
@@ -102,7 +105,7 @@ export default function CabinetAnnouncementsPage({ user, language }) {
           ))}
         </div>
       ) : (
-        <p className="muted">{copy.empty}</p>
+        <CabinetEmptyState icon="chat" title={copy.empty} hint={copy.emptyHint} />
       )}
     </section>
   );

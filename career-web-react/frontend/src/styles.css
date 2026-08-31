@@ -1421,9 +1421,7 @@ select:focus-visible {
 }
 
 .nav-btn-dropdown {
-  position: absolute;
-  top: calc(100% + 0.5rem);
-  left: 50%;
+  position: fixed;
   transform: translateX(-50%);
   display: flex;
   flex-direction: column;
@@ -1434,7 +1432,7 @@ select:focus-visible {
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-md, 0 10px 30px rgba(12, 12, 16, 0.12));
-  z-index: 40;
+  z-index: 400;
 }
 
 .nav-btn-dropdown button {
@@ -2098,6 +2096,65 @@ input[aria-invalid="true"] {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
+}
+
+/* .cv-history-page (partagée avec l'historique CV candidat) n'a par
+   elle-même aucun espacement entre enfants — la page CV s'en sort car elle
+   n'a que 2 enfants (.history-head + .history-list, qui a son propre
+   margin-top). Les pages Cabinet empilent bien plus de blocs (en-tête,
+   stats, actions, grille de panneaux, formulaires) : on leur ajoute donc
+   une classe dédiée avec un espacement systématique, sans toucher au
+   comportement de la page CV candidat. */
+.cabinet-page > * + * {
+  margin-top: 1.4rem;
+}
+
+.cabinet-home-grid {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)) !important;
+}
+
+/* Cartes de stats sobres : fond blanc, un seul accent de marque (pas de
+   feux tricolores rouge/vert/orange qui n'ont aucun sens sémantique pour
+   des métriques neutres comme "sièges" ou "missions"). */
+.cabinet-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.4rem;
+}
+
+.cabinet-stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 1.1rem 1.25rem;
+}
+
+.cabinet-stat-icon {
+  width: 2.3rem;
+  height: 2.3rem;
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-md);
+  background: var(--bg-accent);
+  color: var(--primary);
+  margin-bottom: 0.4rem;
+}
+
+.cabinet-stat-icon svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
+.cabinet-stat-card strong {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.15;
 }
 
 .cabinet-kpi-value {

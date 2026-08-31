@@ -4,6 +4,7 @@ import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDate } from "../../../lib/format.js";
 import { getCabinetOverview } from "../../../lib/inMemoryDb.js";
+import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
 
 export default function CabinetHomePage({ user, language, onGoTo }) {
   const copy =
@@ -18,8 +19,10 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
           openMissions: "Open missions",
           alerts: "Alerts",
           noAlerts: "Nothing to report.",
+          noAlertsHint: "You'll be notified here about seats, missions and new team members.",
           recentCandidates: "Recently added candidates",
           empty: "No candidate added yet.",
+          emptyHint: "Add your first candidate, or import one straight from a CV.",
           addedOn: "Added on",
           goCandidates: "Add a candidate",
           goMissions: "Create a mission",
@@ -35,8 +38,10 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
           openMissions: "Missions ouvertes",
           alerts: "Alertes",
           noAlerts: "Rien à signaler.",
+          noAlertsHint: "Vous serez alerté ici pour les sièges, les missions et les nouveaux membres.",
           recentCandidates: "Derniers candidats ajoutés",
           empty: "Aucun candidat ajouté pour l'instant.",
+          emptyHint: "Ajoutez votre premier candidat, ou importez-le directement depuis un CV.",
           addedOn: "Ajouté le",
           goCandidates: "Ajouter un candidat",
           goMissions: "Créer une mission",
@@ -56,7 +61,7 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
   if (!data) return <div className="extracting-state"><div className="loader-ring" /></div>;
 
   return (
-    <section className="cv-history-page">
+    <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
         <div className="feature-page-header">
           <span className="feature-page-header-icon">
@@ -69,65 +74,27 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
         </div>
       </div>
 
-      <div className="section-grid">
-        <div className="card block">
-          <strong className="cabinet-kpi-value">{data.recruiterCount}</strong>
+      <div className="cabinet-stat-grid">
+        <div className="cabinet-stat-card">
+          <span className="cabinet-stat-icon"><UiIcon name="profile" /></span>
+          <strong>{data.recruiterCount}</strong>
           <span className="muted">{copy.recruiters}</span>
         </div>
-        <div className="card block">
-          <strong className="cabinet-kpi-value">{data.seatsUsed}/{data.seatsTotal}</strong>
+        <div className="cabinet-stat-card">
+          <span className="cabinet-stat-icon"><UiIcon name="save" /></span>
+          <strong>{data.seatsUsed}/{data.seatsTotal}</strong>
           <span className="muted">{copy.seats}</span>
         </div>
-        <div className="card block">
-          <strong className="cabinet-kpi-value">{data.candidateCount}</strong>
+        <div className="cabinet-stat-card">
+          <span className="cabinet-stat-icon"><UiIcon name="network" /></span>
+          <strong>{data.candidateCount}</strong>
           <span className="muted">{copy.candidates}</span>
         </div>
-        <div className="card block">
-          <strong className="cabinet-kpi-value">{data.openMissionCount}/{data.missionCount}</strong>
+        <div className="cabinet-stat-card">
+          <span className="cabinet-stat-icon"><UiIcon name="briefcase" /></span>
+          <strong>{data.openMissionCount}/{data.missionCount}</strong>
           <span className="muted">{copy.openMissions}</span>
         </div>
-      </div>
-
-      <div className="card block">
-        <h3>{copy.alerts}</h3>
-        {data.alerts?.length ? (
-          <ul className="cabinet-alert-list">
-            {data.alerts.map((alert) => (
-              <li key={alert.type}>
-                <strong>{alert.title}</strong>
-                <span className="muted">{alert.body}</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="muted">{copy.noAlerts}</p>
-        )}
-      </div>
-
-      <div className="card block">
-        <h3>{copy.recentCandidates}</h3>
-        {data.recentCandidates?.length ? (
-          <div className="history-list">
-            {data.recentCandidates.map((item) => (
-              <article className="history-card" key={item.id}>
-                <div className="history-card-top">
-                  <div className="history-card-main">
-                    <span className="history-card-icon">
-                      <UiIcon name="profile" />
-                    </span>
-                    <div>
-                      <h3>{item.firstName} {item.lastName}</h3>
-                      <p>{copy.addedOn} {formatDate(item.createdAt)}</p>
-                    </div>
-                  </div>
-                  <span className="tag">{item.status}</span>
-                </div>
-              </article>
-            ))}
-          </div>
-        ) : (
-          <p className="muted">{copy.empty}</p>
-        )}
       </div>
 
       <div className="cabinet-quick-actions">
@@ -140,6 +107,50 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
         <button type="button" className="btn-secondary" onClick={() => onGoTo("invitations")}>
           <UiIcon name="mail" /> {copy.goInvitations}
         </button>
+      </div>
+
+      <div className="admin-panel-grid cabinet-home-grid">
+        <div className="card block">
+          <h3>{copy.alerts}</h3>
+          {data.alerts?.length ? (
+            <ul className="cabinet-alert-list">
+              {data.alerts.map((alert) => (
+                <li key={alert.type}>
+                  <strong>{alert.title}</strong>
+                  <span className="muted">{alert.body}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <CabinetEmptyState icon="shield" title={copy.noAlerts} hint={copy.noAlertsHint} />
+          )}
+        </div>
+
+        <div className="card block">
+          <h3>{copy.recentCandidates}</h3>
+          {data.recentCandidates?.length ? (
+            <div className="history-list">
+              {data.recentCandidates.map((item) => (
+                <article className="history-card" key={item.id}>
+                  <div className="history-card-top">
+                    <div className="history-card-main">
+                      <span className="history-card-icon">
+                        <UiIcon name="profile" />
+                      </span>
+                      <div>
+                        <h3>{item.firstName} {item.lastName}</h3>
+                        <p>{copy.addedOn} {formatDate(item.createdAt)}</p>
+                      </div>
+                    </div>
+                    <span className="tag">{item.status}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <CabinetEmptyState icon="network" title={copy.empty} hint={copy.emptyHint} />
+          )}
+        </div>
       </div>
     </section>
   );
