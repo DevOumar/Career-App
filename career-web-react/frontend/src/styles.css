@@ -2107,7 +2107,10 @@ input[aria-invalid="true"] {
    une classe dédiée avec un espacement systématique, sans toucher au
    comportement de la page CV candidat. */
 .cabinet-page > * + * {
-  margin-top: 1.4rem;
+  /* Le halo d'ombre des cartes (box-shadow blur 30px) faisait paraître les
+     sections collées avec un écart de 1.4rem — augmenté pour que l'ombre
+     de la carte du dessus ne morde plus sur celle du dessous. */
+  margin-top: 2.2rem;
 }
 
 .cabinet-page {
