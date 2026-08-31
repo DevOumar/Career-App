@@ -19,17 +19,23 @@ Usage :
 
 from __future__ import annotations
 
-import os
-os.environ["OPENBLAS_NUM_THREADS"] = "1"
-os.environ["MKL_NUM_THREADS"] = "1"
-os.environ["OMP_NUM_THREADS"] = "1"
-os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
-os.environ["NUMEXPR_NUM_THREADS"] = "1"
-
 import json
 import mimetypes
+import os
+import sys
+import warnings
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+
+os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+os.environ["TRANSFORMERS_VERBOSITY"] = "error"
+os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN_WARNING"] = "1"
+warnings.filterwarnings("ignore")
+
+# Fix sys.path so src imports work reliably
+BASE_DIR = Path(__file__).resolve().parents[2]
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
 from src.generation.interview import KICKOFF_MESSAGE, run_turn
 from src.generation.transcribe import transcribe_audio
@@ -87,6 +93,10 @@ class Handler(BaseHTTPRequestHandler):
             else:
                 self.send_error(404)
         except Exception as exc:  # garde-fou : ne jamais planter le serveur
+            import traceback, sys
+            traceback.print_exc()
+            sys.stderr.flush()
+            sys.stdout.flush()
             self._send_json({"error": str(exc)}, status=500)
 
     def _handle_start(self) -> None:
@@ -156,6 +166,14 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
+    # Pre-chargement du modèle d'embedding au démarrage pour des réponses instantanées
+    try:
+        from src.indexing.embed import get_embedding_model
+        get_embedding_model()
+        print("[RAG] Modèle d'embedding pré-chargé.")
+    except Exception as exc:
+        print(f"[RAG Warning] Pré-chargement du modèle: {exc}")
+
     server = ThreadingHTTPServer((HOST, PORT), Handler)
     print(f"Plateforme de test disponible sur http://{HOST}:{PORT}")
     server.serve_forever()
