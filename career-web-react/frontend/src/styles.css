@@ -1368,6 +1368,7 @@ select:focus-visible {
   align-items: center;
   gap: 0.32rem;
   font-weight: 600;
+  user-select: none;
 }
 
 .nav-btn-icon {
