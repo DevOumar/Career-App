@@ -196,6 +196,7 @@ export function registerAdminUsersRoutes(app) {
     getUserRowById,
     getEffectivePlanById,
     requireAdmin,
+    requireAdminModule,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -249,7 +250,7 @@ app.get("/api/admin/users", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "accounts");
 
     const search = coerceString(req.query?.search).toLowerCase();
     const roleType = coerceString(req.query?.roleType);
@@ -316,7 +317,7 @@ app.get("/api/admin/org-accounts", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "accounts");
 
     const roleType = coerceString(req.query?.roleType);
     if (roleType !== "school" && roleType !== "recruiter_firm") {
@@ -391,7 +392,7 @@ app.post("/api/admin/users", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "accounts");
 
     requireFields(req.body, ["firstName", "lastName", "email", "password", "accountType"]);
     const firstName = coerceString(req.body.firstName);
@@ -498,7 +499,7 @@ app.post("/api/admin/users/update", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "accounts");
 
     const targetUserId = coerceString(req.body?.userId);
     const target = await getUserRowById(targetUserId);
@@ -559,7 +560,7 @@ app.post("/api/admin/users/status", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "accounts");
 
     const targetUserId = coerceString(req.body?.userId);
     const status = coerceString(req.body?.status) === "suspended" ? "suspended" : "active";
@@ -589,7 +590,7 @@ app.post("/api/admin/users/delete", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "accounts");
 
     const targetUserId = coerceString(req.body?.userId);
     const confirmation = coerceString(req.body?.confirmation);

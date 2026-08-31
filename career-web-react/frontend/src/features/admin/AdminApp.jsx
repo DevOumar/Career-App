@@ -83,6 +83,7 @@ import {
 import AdminDashboardPage from "./pages/AdminDashboardPage.jsx";
 import AdminPricingPage from "./pages/AdminPricingPage.jsx";
 import AdminAccountsPage from "./pages/AdminAccountsPage.jsx";
+import AdminSchoolsPage from "./pages/AdminSchoolsPage.jsx";
 import AdminCvsPage from "./pages/AdminCvsPage.jsx";
 import AdminMatchesPage from "./pages/AdminMatchesPage.jsx";
 import AdminQualityPage from "./pages/AdminQualityPage.jsx";
@@ -98,6 +99,7 @@ import AdminAnnouncementsPage from "./pages/AdminAnnouncementsPage.jsx";
 export const ADMIN_MODULE_DEFS = [
   { id: "dashboard", icon: "chart" },
   { id: "accounts", icon: "profile" },
+  { id: "schools", icon: "network" },
   { id: "adminCvs", icon: "save" },
   { id: "adminMatches", icon: "matchmark" },
   { id: "quality", icon: "shield" },
@@ -121,6 +123,7 @@ export function getAllowedAdminModules(user) {
 export const ADMIN_MODULE_LABELS = {
   dashboard: { fr: "Dashboard", en: "Dashboard" },
   accounts: { fr: "Gestion de compte", en: "Account management" },
+  schools: { fr: "Écoles", en: "Schools" },
   adminCvs: { fr: "CV importés", en: "Uploaded CVs" },
   adminMatches: { fr: "Offres analysées", en: "Analyzed jobs" },
   quality: { fr: "Qualité extraction", en: "Extraction quality" },
@@ -375,6 +378,7 @@ function AdminApp({
     if (tab === "accounts" && allowedModules.includes("accounts")) {
       return <AdminAccountsPage user={user} language={language} currency={currency} initialSearch={accountsSearch} />;
     }
+    if (tab === "schools" && allowedModules.includes("schools")) return <AdminSchoolsPage user={user} language={language} />;
     if (tab === "adminCvs" && allowedModules.includes("adminCvs")) return <AdminCvsPage user={user} language={language} />;
     if (tab === "adminMatches" && allowedModules.includes("adminMatches")) return <AdminMatchesPage user={user} language={language} />;
     if (tab === "quality" && allowedModules.includes("quality")) return <AdminQualityPage user={user} language={language} />;

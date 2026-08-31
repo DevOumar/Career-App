@@ -654,6 +654,16 @@ export async function getAdminFinance(adminUserId, { source = "", search = "" } 
   return request(`/admin/finance?${params.toString()}`);
 }
 
+export async function getAdminSchools(adminUserId, language = "fr") {
+  const params = new URLSearchParams({ adminUserId, language });
+  return request(`/admin/schools?${params.toString()}`);
+}
+
+export async function getAdminSchoolAnnouncements(adminUserId) {
+  const data = await request(`/admin/school-announcements?adminUserId=${encodeURIComponent(adminUserId)}`);
+  return data.items;
+}
+
 export async function updateAdminUser(payload) {
   return request("/admin/users/update", {
     method: "POST",

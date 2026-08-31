@@ -196,6 +196,7 @@ export function registerAdminPlansRoutes(app) {
     getUserRowById,
     getEffectivePlanById,
     requireAdmin,
+    requireAdminModule,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -249,7 +250,7 @@ app.get("/api/admin/plans", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "pricing");
 
     const { rows } = await db.query("SELECT * FROM plan_overrides");
     const overrideByPlan = Object.fromEntries(rows.map((row) => [row.plan_id, row]));
@@ -281,7 +282,7 @@ app.put("/api/admin/plans/:id", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "pricing");
 
     const planId = coerceString(req.params.id);
     const plan = getPlanById(planId);
@@ -382,7 +383,7 @@ app.post("/api/admin/plans/:id/reset", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "pricing");
     const planId = coerceString(req.params.id);
     await db.query("DELETE FROM plan_overrides WHERE plan_id = $1", [planId]);
     await logSecurityEvent(req, adminUserId, "admin_plan_price_reset", { planId });

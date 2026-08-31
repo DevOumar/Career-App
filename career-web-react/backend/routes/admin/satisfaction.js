@@ -196,6 +196,7 @@ export function registerAdminSatisfactionRoutes(app) {
     getUserRowById,
     getEffectivePlanById,
     requireAdmin,
+    requireAdminModule,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -249,7 +250,7 @@ app.get("/api/admin/satisfaction", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "satisfaction");
 
     const { rows } = await db.query(
       `SELECT s.id, s.user_id, s.score, s.comment, s.created_at, u.first_name, u.last_name, u.email

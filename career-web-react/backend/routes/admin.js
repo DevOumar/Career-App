@@ -14,6 +14,7 @@ import { registerAdminAiRoutes } from "./admin/ai.js";
 import { registerAdminCvsAndMatchingRoutes } from "./admin/cvsAndMatching.js";
 import { registerAdminFinanceRoutes } from "./admin/finance.js";
 import { registerAdminSatisfactionRoutes } from "./admin/satisfaction.js";
+import { registerAdminSchoolsRoutes } from "./admin/schools.js";
 
 export function registerAdminRoutes(app) {
   registerAdminOverviewRoutes(app);
@@ -28,4 +29,5 @@ export function registerAdminRoutes(app) {
   registerAdminCvsAndMatchingRoutes(app);
   registerAdminFinanceRoutes(app);
   registerAdminSatisfactionRoutes(app);
+  registerAdminSchoolsRoutes(app);
 }

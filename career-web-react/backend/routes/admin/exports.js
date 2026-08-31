@@ -196,6 +196,7 @@ export function registerAdminExportRoutes(app) {
     getUserRowById,
     getEffectivePlanById,
     requireAdmin,
+    requireAdminModule,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -249,7 +250,7 @@ app.get("/api/admin/export/accounts", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "accounts");
 
     const { rows } = await db.query(
       "SELECT id, first_name, last_name, email, role_type, subscription_json, created_at FROM users ORDER BY created_at DESC"
@@ -282,7 +283,7 @@ app.get("/api/admin/export/transactions", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "finance");
 
     const { rows } = await db.query(
       `SELECT t.id, t.plan_id, t.billing_cycle, t.listed_amount, t.amount_collected, t.currency, t.source, t.created_at,
@@ -319,7 +320,7 @@ app.get("/api/admin/export/license-codes", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "licenses");
 
     const { rows } = await db.query(
       `SELECT lc.code, lc.plan_id, lc.seats_total, lc.seats_used, lc.revoked, lc.created_at,

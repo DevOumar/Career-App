@@ -1,6 +1,6 @@
 // Sous-groupe de routes extrait de backend/routes/admin.js
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
-export function registerAdminSettingsRoutes(app) {
+export function registerAdminSchoolsRoutes(app) {
   const {
     requireMatchingSession,
     cors,
@@ -246,43 +246,100 @@ export function registerAdminSettingsRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
-app.get("/api/admin/settings", async (req, res) => {
+// Vue plateforme des établissements — inexistante jusqu'ici : l'Admin ne
+// pouvait piloter les écoles qu'une par une via Comptes/Licences. Agrège les
+// mêmes calculs que buildSchoolMetrics (déjà utilisés côté École pour son
+// propre dashboard), une fois par établissement.
+app.get("/api/admin/schools", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdminModule(adminUserId, "settings");
+    await requireAdminModule(adminUserId, "schools");
+
+    const { rows: schoolRows } = await db.query(
+      "SELECT id, first_name, last_name, email, created_at FROM users WHERE role_type = 'school' ORDER BY created_at DESC"
+    );
+    const { rows: orgProfileRows } = schoolRows.length
+      ? await db.query("SELECT user_id, organization_name FROM user_org_profiles WHERE user_id = ANY($1)", [
+          schoolRows.map((row) => row.id)
+        ])
+      : { rows: [] };
+    const orgNameByUser = Object.fromEntries(orgProfileRows.map((row) => [row.user_id, row.organization_name]));
+
+    const items = [];
+    let totalSeats = 0;
+    let totalSeatsUsed = 0;
+    let totalStudents = 0;
+
+    for (const school of schoolRows) {
+      const metrics = await buildSchoolMetrics(school.id);
+      const alerts = buildSchoolAlerts(metrics, coerceString(req.query?.language || "fr"));
+      totalSeats += metrics.seatsTotal;
+      totalSeatsUsed += metrics.seatsUsed;
+      totalStudents += metrics.students.length;
+      items.push({
+        id: school.id,
+        name: orgNameByUser[school.id] || `${school.first_name} ${school.last_name}`.trim(),
+        email: school.email,
+        createdAt: school.created_at,
+        seatsTotal: metrics.seatsTotal,
+        seatsUsed: metrics.seatsUsed,
+        studentCount: metrics.students.length,
+        activationRate: metrics.activationRate,
+        avgScore: metrics.avgScore,
+        alertCount: alerts.length
+      });
+    }
+
+    // Écoles les plus proches de la saturation en premier — c'est
+    // l'information la plus actionnable pour l'Admin (relancer une école
+    // pour qu'elle augmente son tarif/sièges avant qu'elle bloque ses
+    // propres étudiants).
+    items.sort((a, b) => {
+      const remainingA = a.seatsTotal ? (a.seatsTotal - a.seatsUsed) / a.seatsTotal : 1;
+      const remainingB = b.seatsTotal ? (b.seatsTotal - b.seatsUsed) / b.seatsTotal : 1;
+      return remainingA - remainingB;
+    });
 
     return res.json({
-      googleSignInEnabled: getPlatformSettingBool("google_signin_enabled"),
-      googleConfigured: Boolean(googleOAuthClient),
-      stripeEnabled: getPlatformSettingBool("stripe_enabled"),
-      stripeConfigured: Boolean(stripe)
+      items,
+      totalSchools: schoolRows.length,
+      totalSeats,
+      totalSeatsUsed,
+      totalStudents
     });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
-app.post("/api/admin/settings", async (req, res) => {
+// Vue modération : toutes les annonces envoyées par toutes les écoles, tous
+// établissements confondus — permet à l'Admin de repérer un usage abusif
+// (spam, contenu inapproprié) sans avoir à se connecter établissement par
+// établissement.
+app.get("/api/admin/school-announcements", async (req, res) => {
   try {
-    const adminUserId = coerceString(req.body?.adminUserId);
+    const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdminModule(adminUserId, "settings");
+    await requireAdminModule(adminUserId, "schools");
 
-    const key = coerceString(req.body?.key);
-    const value = Boolean(req.body?.value);
-    if (!Object.prototype.hasOwnProperty.call(PLATFORM_SETTING_DEFAULTS, key)) {
-      return res.status(400).json({ error: "Paramètre inconnu." });
-    }
-
-    await setPlatformSetting(key, value ? "true" : "false");
-    await logSecurityEvent(req, adminUserId, "admin_setting_changed", { key, value });
-
+    const { rows } = await db.query(
+      `SELECT sa.id, sa.subject, sa.message, sa.recipient_count, sa.failed_count, sa.created_at, u.first_name AS school_name, u.email AS school_email
+       FROM school_announcements sa
+       JOIN users u ON u.id = sa.school_user_id
+       ORDER BY sa.created_at DESC LIMIT 100`
+    );
     return res.json({
-      googleSignInEnabled: getPlatformSettingBool("google_signin_enabled"),
-      googleConfigured: Boolean(googleOAuthClient),
-      stripeEnabled: getPlatformSettingBool("stripe_enabled"),
-      stripeConfigured: Boolean(stripe)
+      items: rows.map((row) => ({
+        id: row.id,
+        subject: row.subject,
+        message: row.message,
+        recipientCount: row.recipient_count,
+        failedCount: row.failed_count,
+        createdAt: row.created_at,
+        schoolName: row.school_name,
+        schoolEmail: row.school_email
+      }))
     });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });

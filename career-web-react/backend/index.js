@@ -66,6 +66,10 @@ const RECRUITER_TYPES = new Set(["recruiter_firm", "recruiter_internal"]);
 const ADMIN_MODULE_IDS = new Set([
   "dashboard",
   "accounts",
+  "adminCvs",
+  "adminMatches",
+  "quality",
+  "aiMonitoring",
   "finance",
   "activity",
   "licenses",
@@ -73,7 +77,8 @@ const ADMIN_MODULE_IDS = new Set([
   "settings",
   "announcements",
   "pricing",
-  "satisfaction"
+  "satisfaction",
+  "schools"
 ]);
 
 function sanitizeAdminModules(input) {
@@ -3188,6 +3193,24 @@ async function requireAdmin(adminUserId) {
   return admin;
 }
 
+// Étend requireAdmin() avec la vérification du module : un compte admin dont
+// admin_modules_json est restreint (sous-admin) ne peut appeler l'API que
+// pour les modules qu'il a explicitement. Miroir serveur de
+// getAllowedAdminModules() côté frontend (qui, elle, ne fait QUE cacher les
+// onglets du menu — sans ce contrôle ici, un sous-admin restreint pouvait
+// appeler n'importe quelle route admin directement, en contournant l'UI).
+// Liste vide = accès complet (admin "full", comportement historique inchangé).
+async function requireAdminModule(adminUserId, moduleId) {
+  const admin = await requireAdmin(adminUserId);
+  const modules = sanitizeAdminModules(parseJsonField(admin.admin_modules_json, []));
+  if (modules.length && !modules.includes(moduleId)) {
+    const error = new Error("Ce module n'est pas autorisé pour votre compte administrateur.");
+    error.statusCode = 403;
+    throw error;
+  }
+  return admin;
+}
+
 const PLATFORM_SETTING_DEFAULTS = {
   google_signin_enabled: "true",
   stripe_enabled: "true"
@@ -4649,6 +4672,7 @@ app.locals.ctx = {
   getUserRowById,
   getEffectivePlanById,
   requireAdmin,
+  requireAdminModule,
   PLATFORM_SETTING_DEFAULTS,
   platformSettingsCache,
   loadPlatformSettings,

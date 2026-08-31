@@ -196,6 +196,7 @@ export function registerAdminLicensesRoutes(app) {
     getUserRowById,
     getEffectivePlanById,
     requireAdmin,
+    requireAdminModule,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -249,7 +250,7 @@ app.get("/api/admin/license-codes", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "licenses");
 
     const search = coerceString(req.query?.search).toLowerCase();
 
@@ -298,7 +299,7 @@ app.post("/api/admin/license-codes/revoke", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "licenses");
 
     const code = coerceString(req.body?.code).toUpperCase();
     const { rows } = await db.query("SELECT * FROM license_codes WHERE code = $1", [code]);
@@ -319,7 +320,7 @@ app.post("/api/admin/license-codes/restore", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "licenses");
 
     const code = coerceString(req.body?.code).toUpperCase();
     const { rows } = await db.query("SELECT * FROM license_codes WHERE code = $1", [code]);

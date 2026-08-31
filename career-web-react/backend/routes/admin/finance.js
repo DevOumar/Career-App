@@ -196,6 +196,7 @@ export function registerAdminFinanceRoutes(app) {
     getUserRowById,
     getEffectivePlanById,
     requireAdmin,
+    requireAdminModule,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -249,7 +250,7 @@ app.get("/api/admin/finance", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "finance");
 
     const source = coerceString(req.query?.source);
     const search = coerceString(req.query?.search).toLowerCase();
@@ -306,9 +307,18 @@ app.get("/api/admin/finance", async (req, res) => {
 
     const revenueByPlan = {};
     const countBySource = {};
+    // Segment (candidat / agence / école) dérivé du plan_id via getPlanById —
+    // même mapping que le reste de l'app, pour que "combien l'école nous
+    // rapporte" se lise directement ici sans croiser les tables à la main.
+    const revenueBySegment = { candidate: 0, agency: 0, school: 0, other: 0 };
     for (const row of txnRows) {
       revenueByPlan[row.plan_id] = (revenueByPlan[row.plan_id] || 0) + Number(row.amount_collected);
       countBySource[row.source] = (countBySource[row.source] || 0) + 1;
+      const segment = getPlanById(row.plan_id)?.segment || "other";
+      revenueBySegment[segment] = (revenueBySegment[segment] || 0) + Number(row.amount_collected);
+    }
+    for (const key of Object.keys(revenueBySegment)) {
+      revenueBySegment[key] = Math.round(revenueBySegment[key] * 100) / 100;
     }
 
     const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
@@ -337,6 +347,7 @@ app.get("/api/admin/finance", async (req, res) => {
       totalRevenueCollected: Math.round(totalRevenueCollected * 100) / 100,
       totalListedValue: Math.round(totalListedValue * 100) / 100,
       revenueByPlan,
+      revenueBySegment,
       countBySource,
       revenueTrend
     });
@@ -349,7 +360,7 @@ app.post("/api/admin/transactions/:id/refund", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "finance");
 
     if (!stripe) {
       return res.status(503).json({ error: "Paiement Stripe non configuré côté serveur." });

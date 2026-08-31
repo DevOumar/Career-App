@@ -196,6 +196,7 @@ export function registerAdminAnnouncementsRoutes(app) {
     getUserRowById,
     getEffectivePlanById,
     requireAdmin,
+    requireAdminModule,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -249,7 +250,7 @@ app.get("/api/admin/announcements/audience-count", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "announcements");
 
     const audience = coerceString(req.query?.audience);
     const recipients = await resolveAnnouncementAudience(audience);
@@ -263,7 +264,7 @@ app.get("/api/admin/announcements", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "announcements");
 
     const { rows } = await db.query("SELECT * FROM announcements ORDER BY created_at DESC LIMIT 100");
     return res.json({
@@ -286,7 +287,7 @@ app.post("/api/admin/announcements/send", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "announcements");
 
     const subject = coerceString(req.body?.subject);
     const message = coerceString(req.body?.message);

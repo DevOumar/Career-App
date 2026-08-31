@@ -196,6 +196,7 @@ export function registerAdminCvsAndMatchingRoutes(app) {
     getUserRowById,
     getEffectivePlanById,
     requireAdmin,
+    requireAdminModule,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -249,7 +250,7 @@ app.get("/api/admin/cvs", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "adminCvs");
 
     const search = coerceString(req.query?.search).toLowerCase();
     const statusFilter = coerceString(req.query?.status);
@@ -302,7 +303,7 @@ app.post("/api/admin/cvs/:id/reanalyze", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "adminCvs");
     const cvId = coerceString(req.params.id);
     const { rows } = await db.query("SELECT source_text FROM cvs WHERE id = $1 LIMIT 1", [cvId]);
     if (!rows[0]) return res.status(404).json({ error: "CV introuvable." });
@@ -319,7 +320,7 @@ app.delete("/api/admin/cvs/:id", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "adminCvs");
     const cvId = coerceString(req.params.id);
     await db.query("DELETE FROM cvs WHERE id = $1", [cvId]);
     await logSecurityEvent(req, adminUserId, "admin_cv_deleted", { cvId });
@@ -333,7 +334,7 @@ app.get("/api/admin/matches", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "adminMatches");
     const search = coerceString(req.query?.search).toLowerCase();
     const { rows: runRows } = await db.query("SELECT id, user_id, created_at, payload_json FROM match_runs ORDER BY created_at DESC LIMIT 500");
     const userIds = [...new Set(runRows.map((row) => row.user_id))];
@@ -387,7 +388,7 @@ app.get("/api/admin/quality", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
     if (!requireMatchingSession(req, res, adminUserId)) return;
-    await requireAdmin(adminUserId);
+    await requireAdminModule(adminUserId, "quality");
     const search = coerceString(req.query?.search).toLowerCase();
     const { rows: cvRows } = await db.query("SELECT id, user_id, created_at, file_name, parsed_json FROM cvs ORDER BY created_at DESC LIMIT 500");
     const userIds = [...new Set(cvRows.map((row) => row.user_id))];

@@ -94,6 +94,11 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
           trend: "Real revenue collected — last 8 weeks",
           bySource: "Transactions by source",
           byPlan: "Revenue collected by plan",
+          bySegment: "Revenue by segment",
+          segmentCandidate: "Candidate / Student",
+          segmentAgency: "Recruitment firm",
+          segmentSchool: "School / Institution",
+          segmentOther: "Other",
           search: "Search by user, email or plan…",
           colDate: "Date",
           colUser: "User",
@@ -123,6 +128,11 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
           trend: "Revenu réel encaissé — 8 dernières semaines",
           bySource: "Transactions par source",
           byPlan: "Revenu encaissé par plan",
+          bySegment: "Revenu par segment",
+          segmentCandidate: "Candidat / Étudiant",
+          segmentAgency: "Cabinet de recrutement",
+          segmentSchool: "École / Établissement",
+          segmentOther: "Autre",
           search: "Rechercher par utilisateur, email ou plan…",
           colDate: "Date",
           colUser: "Utilisateur",
@@ -222,6 +232,13 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
   const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
   const planEntries = Object.entries(data.revenueByPlan || {}).filter(([, amount]) => amount > 0);
   const sourceEntries = Object.entries(data.countBySource || {});
+  const segmentLabels = {
+    candidate: copy.segmentCandidate,
+    agency: copy.segmentAgency,
+    school: copy.segmentSchool,
+    other: copy.segmentOther
+  };
+  const segmentEntries = Object.entries(data.revenueBySegment || {}).filter(([, amount]) => amount > 0);
 
   return (
     <section className="admin-finance">
@@ -280,6 +297,21 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
               planEntries.map(([planId, amount]) => (
                 <li key={planId}>
                   <span>{getPlanById(planId)?.name?.[language] || getPlanById(planId)?.name?.fr || planId}</span>
+                  <strong>{formatEur(amount, currency)}</strong>
+                </li>
+              ))
+            ) : (
+              <li className="muted">{copy.empty}</li>
+            )}
+          </ul>
+        </div>
+        <div className="admin-panel">
+          <h3>{copy.bySegment}</h3>
+          <ul className="admin-stat-list">
+            {segmentEntries.length ? (
+              segmentEntries.map(([segmentId, amount]) => (
+                <li key={segmentId}>
+                  <span>{segmentLabels[segmentId] || segmentId}</span>
                   <strong>{formatEur(amount, currency)}</strong>
                 </li>
               ))
