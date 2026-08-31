@@ -63,6 +63,7 @@ export function registerAuthRoutes(app) {
     MAIL_FROM,
     MAIL_FROM_ADDRESS,
     AUTH_EMAIL_TO,
+    AUTH_SKIP_SIGNUP_OTP,
     DATABASE_URL,
     GOOGLE_CLIENT_ID,
     googleOAuthClient,
@@ -332,6 +333,16 @@ app.post("/api/auth/register", async (req, res) => {
     );
 
     const publicUser = await getPublicUserById(id);
+
+    // Bascule temporaire (démo/soutenance) : on saute l'envoi du code OTP et
+    // on connecte directement, comme un login classique — voir
+    // AUTH_SKIP_SIGNUP_OTP dans index.js pour la remettre à false ensuite.
+    if (AUTH_SKIP_SIGNUP_OTP) {
+      const token = await createSessionForRequest(req, id);
+      await logSecurityEvent(req, id, "login_password", { method: "signup_no_otp" });
+      return res.status(201).json({ user: publicUser, token });
+    }
+
     const verification = await createEmailVerificationCode({ id, email, first_name: firstName }, "signup", email);
 
     return res.status(201).json({
