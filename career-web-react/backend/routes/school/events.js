@@ -1,14 +1,11 @@
-// Routes cv — extrait automatiquement de backend/index.js (voir
-// ARCHITECTURE.md). Toutes les dépendances (db, helpers, constantes) sont
-// lues depuis app.locals.ctx, rempli une fois dans index.js après
-// l'initialisation complète (DB ouverte, helpers définis).
-export function registerCvRoutes(app) {
+// Sous-groupe de routes extrait de backend/routes/school.js
+// (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
+export function registerSchoolEventsRoutes(app) {
   const {
     requireMatchingSession,
     cors,
     crypto,
     express,
-    aiActionRateLimiter,
     fs,
     fsPromises,
     dns,
@@ -248,183 +245,69 @@ export function registerCvRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
-app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
+app.get("/api/school/events", async (req, res) => {
   try {
-    const fileName = coerceString(req.body?.fileName || "cv.txt");
-    const mimeType = coerceString(req.body?.mimeType);
-    const sourceText = await extractTextFromUpload({
-      fileName,
-      mimeType,
-      base64: req.body?.base64
-    });
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    await requireSchoolOwner(userId);
 
-    if (sourceText.length < 20) {
-      return res.status(422).json({
-        error: "Impossible d'extraire assez de texte depuis ce fichier. Essaie un PDF texte ou un DOCX plus lisible."
-      });
-    }
-
-    let parsed = null;
-    let extractionProvider = "local";
-    try {
-      parsed = await extractCvWithAi(sourceText);
-      if (parsed) extractionProvider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
-    } catch (aiError) {
-      parsed = null;
-      console.warn(`Extraction IA indisponible: ${aiError.message}`);
-    }
-
-    const finalParsed = postProcessCvExtraction(sourceText, parsed);
-
+    const { rows } = await db.query(
+      "SELECT * FROM school_events WHERE school_user_id = $1 ORDER BY event_date ASC LIMIT 200",
+      [userId]
+    );
     return res.json({
-      fileName,
-      sourceText,
-      characterCount: sourceText.length,
-      parsed: finalParsed,
-      extractionProvider
+      items: rows.map((row) => ({
+        id: row.id,
+        title: row.title,
+        description: row.description,
+        eventDate: row.event_date,
+        createdAt: row.created_at
+      }))
     });
   } catch (error) {
-    return res.status(400).json({ error: error.message || "Extraction du CV impossible." });
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
-app.post("/api/jobs/extract", aiActionRateLimiter, async (req, res) => {
-  try {
-    const text = cleanExtractedText(req.body?.text);
-    if (text.length < 50) {
-      return res.status(422).json({ error: "Colle une description de poste plus complète avant de lancer l'extraction." });
-    }
-
-    let parsed = null;
-    let extractionProvider = "local";
-    try {
-      parsed = await extractJobWithAi(text);
-      if (parsed) extractionProvider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
-    } catch (aiError) {
-      parsed = null;
-      console.warn(`Extraction IA du poste indisponible: ${aiError.message}`);
-    }
-
-    return res.json({
-      parsed: parsed || extractLocalJobSummary(text),
-      extractionProvider
-    });
-  } catch (error) {
-    return res.status(400).json({ error: error.message || "Extraction du poste impossible." });
-  }
-});
-
-app.post("/api/cv/optimize-ats", aiActionRateLimiter, async (req, res) => {
-  try {
-    const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
-    const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
-    const language = req.body?.language === "en" ? "en" : "fr";
-
-    if (!Array.isArray(candidate.experiences) && !candidate.summary) {
-      return res.status(422).json({
-        error:
-          language === "en"
-            ? "Import a CV with at least a summary or an experience before optimizing it."
-            : "Importe un CV avec au moins un résumé ou une expérience avant de l'optimiser."
-      });
-    }
-
-    let result = null;
-    try {
-      result = await generateCvAtsOptimizationWithAi(candidate, offer, language);
-    } catch (aiError) {
-      console.warn(`Optimisation ATS indisponible: ${aiError.message}`);
-    }
-
-    if (!result) {
-      return res.status(503).json({
-        error:
-          language === "en"
-            ? "AI optimization is temporarily unavailable. Try again shortly."
-            : "L'optimisation IA est temporairement indisponible. Réessaie dans un instant."
-      });
-    }
-
-    return res.json({ optimization: result });
-  } catch (error) {
-    return res.status(400).json({ error: error.message || "Optimisation ATS impossible." });
-  }
-});
-
-app.post("/api/cv", async (req, res) => {
+app.post("/api/school/events", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    const cvRecord = req.body?.cvRecord;
+    await requireSchoolOwner(userId);
 
-    if (!userId || !cvRecord) {
-      return res.status(400).json({ error: "userId et cvRecord requis." });
+    const title = coerceString(req.body?.title).trim();
+    const eventDate = coerceString(req.body?.eventDate).trim();
+    if (title.length < 2) {
+      return res.status(400).json({ error: "Le titre de l'événement doit contenir au moins 2 caractères." });
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(eventDate)) {
+      return res.status(400).json({ error: "La date doit être au format AAAA-MM-JJ." });
     }
 
-    const user = await getUserRowById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "Utilisateur introuvable." });
-    }
-
-    const id = `cv-${crypto.randomUUID()}`;
-    const createdAt = nowIso();
-    const fileName = coerceString(cvRecord.fileName || "cv.txt") || "cv.txt";
-    const sourceText = stripNullBytes(cvRecord.sourceText || "");
-    const parsedJson = JSON.stringify(cvRecord.parsed || {});
-
+    const id = `event-${crypto.randomUUID()}`;
     await db.query(
-      `INSERT INTO cvs (id, user_id, created_at, file_name, source_text, parsed_json)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        id,
-        userId,
-        createdAt,
-        fileName,
-        sourceText,
-        parsedJson
-      ]
+      "INSERT INTO school_events (id, school_user_id, title, description, event_date, created_at) VALUES ($1,$2,$3,$4,$5,$6)",
+      [id, userId, title, coerceString(req.body?.description).trim(), eventDate, nowIso()]
     );
-
-    return res.status(201).json({
-      cv: {
-        id,
-        userId,
-        createdAt,
-        fileName,
-        sourceText,
-        parsed: cvRecord.parsed || {}
-      }
-    });
+    await logSecurityEvent(req, userId, "school_event_created", { eventId: id });
+    return res.status(201).json({ ok: true, id });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
-app.get("/api/cv", async (req, res) => {
+app.delete("/api/school/events/:id", async (req, res) => {
   try {
-    const userId = coerceString(req.query.userId);
+    const userId = coerceString(req.query?.userId || req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    if (!userId) {
-      return res.status(400).json({ error: "userId requis." });
-    }
-
-    const { rows } = await db.query(
-      "SELECT id, user_id, created_at, file_name, source_text, parsed_json FROM cvs WHERE user_id = $1 ORDER BY created_at DESC",
-      [userId]
-    );
-
-    const items = rows.map((row) => ({
-      id: row.id,
-      userId: row.user_id,
-      createdAt: row.created_at,
-      fileName: row.file_name,
-      sourceText: row.source_text,
-      parsed: parseJsonField(row.parsed_json, {})
-    }));
-
-    return res.json({ items });
+    await requireSchoolOwner(userId);
+    const eventId = coerceString(req.params.id);
+    await db.query("DELETE FROM school_events WHERE id = $1 AND school_user_id = $2", [eventId, userId]);
+    await logSecurityEvent(req, userId, "school_event_deleted", { eventId });
+    return res.json({ ok: true });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 }
+

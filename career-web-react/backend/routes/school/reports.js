@@ -250,9 +250,14 @@ app.get("/api/school/reports", async (req, res) => {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
+    const { rows: promotionRows } = await db.query(
+      "SELECT id, name FROM school_promotions WHERE school_user_id = $1 ORDER BY created_at DESC",
+      [userId]
+    );
     const metrics = await buildSchoolMetrics(userId);
     const { rows } = await db.query("SELECT * FROM school_reports WHERE school_user_id = $1 ORDER BY created_at DESC LIMIT 50", [userId]);
     return res.json({
+      promotions: promotionRows.map((row) => ({ id: row.id, name: row.name })),
       snapshot: {
         totalStudents: metrics.students.length,
         activeStudents: metrics.students.length - metrics.inactiveStudents.length,
@@ -281,9 +286,30 @@ app.post("/api/school/reports/generate", async (req, res) => {
     if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const period = coerceString(req.body?.period || "monthly");
-    const metrics = await buildSchoolMetrics(userId);
+    const promotionId = coerceString(req.body?.promotionId);
+
+    let restrictToStudentIds = null;
+    let promotionName = "";
+    if (promotionId) {
+      const { rows: promoRow } = await db.query(
+        "SELECT name FROM school_promotions WHERE id = $1 AND school_user_id = $2",
+        [promotionId, userId]
+      );
+      if (!promoRow.length) {
+        return res.status(404).json({ error: "Promotion introuvable." });
+      }
+      promotionName = promoRow[0].name;
+      const { rows: memberRows } = await db.query(
+        "SELECT student_user_id FROM school_promotion_students WHERE promotion_id = $1",
+        [promotionId]
+      );
+      restrictToStudentIds = new Set(memberRows.map((row) => row.student_user_id));
+    }
+
+    const metrics = await buildSchoolMetrics(userId, { restrictToStudentIds });
     const payload = {
       generatedAt: nowIso(),
+      promotionName: promotionName || null,
       totalStudents: metrics.students.length,
       activeStudents: metrics.students.length - metrics.inactiveStudents.length,
       inactiveStudents: metrics.inactiveStudents.length,
@@ -295,7 +321,8 @@ app.post("/api/school/reports/generate", async (req, res) => {
       alerts: buildSchoolAlerts(metrics, "fr")
     };
     const id = `report-${crypto.randomUUID()}`;
-    const title = period === "weekly" ? "Rapport hebdomadaire employabilité" : "Rapport mensuel employabilité";
+    const baseTitle = period === "weekly" ? "Rapport hebdomadaire employabilité" : "Rapport mensuel employabilité";
+    const title = promotionName ? `${baseTitle} — ${promotionName}` : baseTitle;
     await db.query(
       "INSERT INTO school_reports (id, school_user_id, title, period, payload_json, created_at) VALUES ($1,$2,$3,$4,$5,$6)",
       [id, userId, title, period, JSON.stringify(payload), nowIso()]

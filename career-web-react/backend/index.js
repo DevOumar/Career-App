@@ -1,7 +1,7 @@
 import cors from "cors";
 import crypto from "crypto";
 import express from "express";
-import { rateLimit } from "express-rate-limit";
+import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
 import dns from "node:dns/promises";
@@ -377,6 +377,45 @@ const authRateLimiter = rateLimit({
 });
 app.use("/api/auth", authRateLimiter);
 
+// Garde-fou coût/abus sur les routes qui appellent un modèle IA : un compte
+// à solde "illimité" (999 jetons, cas des licences école/cabinet, voir
+// data/plans.js) n'a aucune autre limite technique sur ces routes — rien
+// n'empêchait aujourd'hui un usage automatisé de générer un coût API
+// incontrôlé. Plafond par utilisateur (pas par IP : un labo informatique
+// partage une IP), pas par requête HTTP brute.
+//
+// Deux profils, car toutes les routes IA n'ont pas la même granularité :
+// - "action" : un clic = un appel (analyse CV/offre, lettre, Email Scout,
+//   extraction CV/offre) → 20/jour est déjà généreux pour un usage humain.
+// - "conversation" : un tour de dialogue = un appel (négociation, entretien,
+//   4 à 10 appels par session normale) → plafond bien plus haut pour ne
+//   jamais gêner une vraie session de pratique, tout en bloquant un script.
+function makeAiRateLimiter({ windowMs, limit, envFlag, message }) {
+  return rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => coerceString(req.body?.userId || req.query?.userId) || ipKeyGenerator(req),
+    skip: () => process.env[envFlag] === "1",
+    message: { error: message }
+  });
+}
+
+const aiActionRateLimiter = makeAiRateLimiter({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 20,
+  envFlag: "DISABLE_AI_RATE_LIMIT",
+  message: "Limite quotidienne d'actions IA atteinte (20/jour). Réessayez demain."
+});
+
+const aiConversationRateLimiter = makeAiRateLimiter({
+  windowMs: 24 * 60 * 60 * 1000,
+  limit: 150,
+  envFlag: "DISABLE_AI_RATE_LIMIT",
+  message: "Limite quotidienne d'échanges IA atteinte pour aujourd'hui. Réessayez demain."
+});
+
 // Résout la session (token Bearer) sur CHAQUE requête, avant les routes :
 // req.sessionUserId contient l'id de l'utilisateur réellement authentifié
 // pour cette requête (ou null si aucun token valide). Ne bloque rien ici
@@ -661,6 +700,37 @@ await db.exec(`
     period TEXT NOT NULL,
     payload_json TEXT NOT NULL,
     created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS school_announcements (
+    id TEXT PRIMARY KEY,
+    school_user_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    promotion_id TEXT,
+    recipient_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS school_events (
+    id TEXT PRIMARY KEY,
+    school_user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    event_date TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS school_announcement_recipients (
+    announcement_id TEXT NOT NULL,
+    student_user_id TEXT NOT NULL,
+    PRIMARY KEY (announcement_id, student_user_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS school_digest_log (
+    school_user_id TEXT PRIMARY KEY,
+    last_sent_at TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS school_notifications (
@@ -3988,8 +4058,9 @@ async function getSchoolOrgProfile(userId) {
   };
 }
 
-async function buildSchoolMetrics(userId) {
-  const students = await getSchoolStudentRows(userId);
+async function buildSchoolMetrics(userId, { restrictToStudentIds = null } = {}) {
+  const allStudents = await getSchoolStudentRows(userId);
+  const students = restrictToStudentIds ? allStudents.filter((row) => restrictToStudentIds.has(row.id)) : allStudents;
   const studentIds = students.map((row) => row.id);
   const codeRows = await getSchoolLicenseCodeRows(userId);
   const seatsTotal = codeRows.reduce((sum, row) => sum + Number(row.seats_total || 0), 0);
@@ -4087,6 +4158,73 @@ function buildSchoolAlerts(metrics, language = "fr") {
     });
   }
   return alerts;
+}
+
+// Digest hebdomadaire École : envoie un résumé par email des alertes actives
+// (sièges bientôt saturés, étudiants sans CV, scores faibles, inactifs) aux
+// établissements concernés, une fois par semaine max par établissement (suivi
+// via school_digest_log). Purement additif au-dessus des mêmes calculs que la
+// cloche de notif in-app — aucune alerte n'est stockée deux fois.
+async function runSchoolWeeklyDigests() {
+  try {
+    const { rows: schools } = await db.query(
+      "SELECT id, first_name, email FROM users WHERE role_type = 'school'"
+    );
+    if (!schools.length) return;
+    const { rows: logRows } = await db.query("SELECT school_user_id, last_sent_at FROM school_digest_log");
+    const lastSentByUser = Object.fromEntries(logRows.map((row) => [row.school_user_id, new Date(row.last_sent_at).getTime()]));
+    const transporter = getMailTransporter();
+    if (!transporter) return;
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    for (const school of schools) {
+      const lastSent = lastSentByUser[school.id];
+      if (lastSent && now - lastSent < sevenDaysMs) continue;
+      try {
+        const metrics = await buildSchoolMetrics(school.id);
+        const alerts = buildSchoolAlerts(metrics, "fr");
+        if (alerts.length) {
+          const { rows: orgProfileRows } = await db.query(
+            "SELECT organization_name FROM user_org_profiles WHERE user_id = $1",
+            [school.id]
+          );
+          const organizationName = orgProfileRows[0]?.organization_name || school.first_name || "votre établissement";
+          const html = `
+            <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
+              <h2 style="color:#b83309;margin:0 0 18px;">Career CV — Résumé hebdomadaire</h2>
+              <p style="margin:0 0 14px;color:#1f2634;">Bonjour,</p>
+              <p style="margin:0 0 14px;color:#1f2634;">Voici les points d'attention pour <strong>${escapeHtml(organizationName)}</strong> cette semaine :</p>
+              <ul style="margin:0 0 18px;padding-left:20px;color:#1f2634;line-height:1.7;">
+                ${alerts.map((alert) => `<li><strong>${escapeHtml(alert.title)}</strong> — ${escapeHtml(alert.body)}</li>`).join("")}
+              </ul>
+              <p style="margin:0 0 14px;color:#1f2634;">Connectez-vous à votre espace École pour plus de détails.</p>
+              <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career CV</p>
+            </div>`;
+          const text = `Résumé hebdomadaire Career CV pour ${organizationName} :\n\n${alerts
+            .map((alert) => `- ${alert.title} : ${alert.body}`)
+            .join("\n")}\n\n— L'équipe Career CV`;
+          const recipient = AUTH_EMAIL_TO || school.email;
+          await transporter.sendMail({
+            from: MAIL_FROM,
+            to: recipient,
+            subject: `Career CV — Résumé hebdomadaire (${alerts.length} point${alerts.length > 1 ? "s" : ""} d'attention)`,
+            html,
+            text
+          });
+        }
+        await db.query(
+          `INSERT INTO school_digest_log (school_user_id, last_sent_at) VALUES ($1, $2)
+           ON CONFLICT (school_user_id) DO UPDATE SET last_sent_at = EXCLUDED.last_sent_at`,
+          [school.id, new Date().toISOString()]
+        );
+      } catch (_perSchoolError) {
+        // Une erreur sur un établissement ne doit pas bloquer les autres.
+      }
+    }
+  } catch (_error) {
+    // Le digest est une amélioration best-effort, jamais bloquante pour l'API.
+  }
 }
 
 
@@ -4411,6 +4549,8 @@ app.locals.ctx = {
   verifyPassword,
   createSixDigitCode,
   hashSessionToken,
+  aiActionRateLimiter,
+  aiConversationRateLimiter,
   addMinutes,
   escapeHtml,
   buildVerificationEmail,
@@ -4585,6 +4725,13 @@ if (serverStart.status === "existing") {
 } else {
   console.log(`Career API (PostgreSQL embarque) sur http://127.0.0.1:${serverStart.port}`);
   console.log(`Donnees PostgreSQL: ${dataDirectory}`);
+
+  // Digest hebdomadaire École : vérifié toutes les 6h, chaque établissement
+  // n'est réellement notifié qu'une fois par semaine (voir school_digest_log
+  // dans runSchoolWeeklyDigests). Un premier passage a lieu peu après le
+  // démarrage pour ne pas dépendre d'un cron externe.
+  setTimeout(() => runSchoolWeeklyDigests(), 60_000);
+  setInterval(() => runSchoolWeeklyDigests(), 6 * 60 * 60 * 1000);
 }
 
 

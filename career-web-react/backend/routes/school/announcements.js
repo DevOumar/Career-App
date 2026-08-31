@@ -1,14 +1,11 @@
-// Routes coverLetter — extrait automatiquement de backend/index.js (voir
-// ARCHITECTURE.md). Toutes les dépendances (db, helpers, constantes) sont
-// lues depuis app.locals.ctx, rempli une fois dans index.js après
-// l'initialisation complète (DB ouverte, helpers définis).
-export function registerCoverLetterRoutes(app) {
+// Sous-groupe de routes extrait de backend/routes/school.js
+// (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
+export function registerSchoolAnnouncementsRoutes(app) {
   const {
     requireMatchingSession,
     cors,
     crypto,
     express,
-    aiActionRateLimiter,
     fs,
     fsPromises,
     dns,
@@ -248,142 +245,112 @@ export function registerCoverLetterRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
-app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
+app.get("/api/school/announcements", async (req, res) => {
   try {
-    const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
-    const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
-    const tone = coerceString(req.body?.tone) || "formal";
-    const language = req.body?.language === "en" ? "en" : "fr";
-
-    let letterResult = null;
-    let provider = "local";
-    try {
-      letterResult = await generateCoverLetterWithAi(candidate, offer, tone, language);
-      if (letterResult) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
-    } catch (aiError) {
-      letterResult = null;
-      console.warn(`Generation IA de la lettre indisponible: ${aiError.message}`);
-    }
-
-    const result = letterResult || buildLocalCoverLetter(candidate, offer, language);
-    return res.json({ letter: result.letter, subject: result.subject, provider });
-  } catch (error) {
-    return res.status(400).json({ error: error.message || "Generation de la lettre impossible." });
-  }
-});
-
-app.get("/api/coverletter/conversations", async (req, res) => {
-  try {
-    const userId = coerceString(req.query.userId);
+    const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    if (!userId) {
-      return res.status(400).json({ error: "userId requis." });
-    }
+    await requireSchoolOwner(userId);
 
     const { rows } = await db.query(
-      "SELECT id, title, created_at, updated_at, payload_json FROM cover_letters WHERE user_id = $1 ORDER BY updated_at DESC",
+      "SELECT * FROM school_announcements WHERE school_user_id = $1 ORDER BY created_at DESC LIMIT 100",
       [userId]
     );
-
-    const items = rows.map((row) => ({
-      id: row.id,
-      title: row.title,
-      createdAt: row.created_at,
-      updatedAt: row.updated_at,
-      ...parseJsonField(row.payload_json, {})
-    }));
-
-    return res.json({ items });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
-  }
-});
-
-app.post("/api/coverletter/conversations", async (req, res) => {
-  try {
-    const userId = coerceString(req.body?.userId);
-    if (!requireMatchingSession(req, res, userId)) return;
-    const payload = req.body?.payload;
-    const title = coerceString(req.body?.title) || "Lettre de motivation";
-
-    if (!userId || !payload) {
-      return res.status(400).json({ error: "userId et payload requis." });
-    }
-
-    const user = await getUserRowById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "Utilisateur introuvable." });
-    }
-
-    const id = `letter-${crypto.randomUUID()}`;
-    const createdAt = nowIso();
-
-    await db.query(
-      `INSERT INTO cover_letters (id, user_id, title, created_at, updated_at, payload_json)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [id, userId, title, createdAt, createdAt, JSON.stringify(payload)]
-    );
-
-    return res.status(201).json({
-      conversation: { id, userId, title, createdAt, updatedAt: createdAt, ...payload }
+    return res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        subject: row.subject,
+        message: row.message,
+        promotionId: row.promotion_id,
+        recipientCount: row.recipient_count,
+        failedCount: row.failed_count,
+        createdAt: row.created_at
+      }))
     });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
-app.put("/api/coverletter/conversations/:id", async (req, res) => {
+app.post("/api/school/announcements/send", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    const conversationId = coerceString(req.params.id);
-    const payload = req.body?.payload;
-    const title = coerceString(req.body?.title);
+    await requireSchoolOwner(userId);
 
-    if (!userId || !conversationId || !payload) {
-      return res.status(400).json({ error: "userId, id et payload requis." });
+    const subject = coerceString(req.body?.subject);
+    const message = coerceString(req.body?.message);
+    const promotionId = coerceString(req.body?.promotionId);
+    // Relance ciblée (module Suivi & employabilité : "Relancer les inactifs",
+    // "Relancer les scores faibles"...) : liste explicite d'ids, prioritaire
+    // sur le filtre promotion.
+    const studentIds = Array.isArray(req.body?.studentIds) ? req.body.studentIds.map((value) => coerceString(value)).filter(Boolean) : null;
+    if (!subject || !message) {
+      return res.status(400).json({ error: "Objet et message requis." });
     }
 
-    const { rows } = await db.query(
-      "SELECT id FROM cover_letters WHERE id = $1 AND user_id = $2",
-      [conversationId, userId]
+    const transporter = getMailTransporter();
+    if (!transporter) {
+      return res.status(503).json({ error: "SMTP non configuré côté serveur : impossible d'envoyer des emails." });
+    }
+
+    const allStudents = await getSchoolStudentRows(userId);
+    let recipients = allStudents;
+    if (studentIds?.length) {
+      const idSet = new Set(studentIds);
+      recipients = allStudents.filter((row) => idSet.has(row.id));
+    } else if (promotionId) {
+      const { rows: memberRows } = await db.query(
+        "SELECT student_user_id FROM school_promotion_students WHERE promotion_id = $1",
+        [promotionId]
+      );
+      const memberIds = new Set(memberRows.map((row) => row.student_user_id));
+      recipients = allStudents.filter((row) => memberIds.has(row.id));
+    }
+    if (!recipients.length) {
+      return res.status(400).json({ error: "Aucun destinataire pour ce périmètre." });
+    }
+
+    let failedCount = 0;
+    for (const recipient of recipients) {
+      const built = buildAnnouncementEmail({ subject, message, firstName: recipient.first_name });
+      try {
+        await transporter.sendMail({
+          from: MAIL_FROM || `"${MAIL_FROM_NAME}" <${MAIL_FROM_ADDRESS || SMTP_USER}>`,
+          to: AUTH_EMAIL_TO || recipient.email,
+          subject: built.subject,
+          text: built.text,
+          html: built.html
+        });
+      } catch (sendError) {
+        failedCount += 1;
+        console.warn(`Echec envoi annonce ecole a ${recipient.email}: ${sendError.message}`);
+      }
+    }
+
+    const id = `sann-${crypto.randomUUID()}`;
+    await db.query(
+      `INSERT INTO school_announcements (id, school_user_id, subject, message, promotion_id, recipient_count, failed_count, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [id, userId, subject, message, promotionId || null, recipients.length, failedCount, nowIso()]
     );
-    if (!rows[0]) {
-      return res.status(404).json({ error: "Lettre introuvable." });
-    }
-
-    const updatedAt = nowIso();
-    if (title) {
+    // Traçabilité par destinataire : permet à chaque étudiant de retrouver
+    // l'annonce dans sa propre cloche de notifications (voir
+    // GET /api/notifications côté candidat), sans dépendre de l'email.
+    for (const recipient of recipients) {
       await db.query(
-        "UPDATE cover_letters SET payload_json = $1, updated_at = $2, title = $3 WHERE id = $4",
-        [JSON.stringify(payload), updatedAt, title, conversationId]
-      );
-    } else {
-      await db.query(
-        "UPDATE cover_letters SET payload_json = $1, updated_at = $2 WHERE id = $3",
-        [JSON.stringify(payload), updatedAt, conversationId]
+        "INSERT INTO school_announcement_recipients (announcement_id, student_user_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+        [id, recipient.id]
       );
     }
+    await logSecurityEvent(req, userId, "school_announcement_sent", {
+      promotionId: promotionId || null,
+      recipientCount: recipients.length,
+      failedCount
+    });
 
-    return res.json({ ok: true, updatedAt });
+    return res.json({ ok: true, recipientCount: recipients.length, failedCount });
   } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
-  }
-});
-
-app.delete("/api/coverletter/conversations/:id", async (req, res) => {
-  try {
-    const userId = coerceString(req.query.userId);
-    if (!requireMatchingSession(req, res, userId)) return;
-    const conversationId = coerceString(req.params.id);
-    if (!userId || !conversationId) {
-      return res.status(400).json({ error: "userId et id requis." });
-    }
-
-    await db.query("DELETE FROM cover_letters WHERE id = $1 AND user_id = $2", [conversationId, userId]);
-    return res.json({ ok: true });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 }

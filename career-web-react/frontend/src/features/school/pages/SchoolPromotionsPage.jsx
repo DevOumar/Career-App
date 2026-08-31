@@ -55,8 +55,12 @@ export default function SchoolPromotionsPage({ user, language }) {
         name: "Promotion name",
         program: "Program",
         level: "Level",
+        levelPlaceholder: "Select a level…",
         campus: "Campus",
         year: "Academic year",
+        yearHint: "Format YYYY-YYYY, e.g. 2025-2026",
+        yearInvalid: "Academic year must use the YYYY-YYYY format (e.g. 2025-2026).",
+        nameInvalid: "Promotion name must be at least 2 characters.",
         create: "Create promotion",
         assign: "Assign a student",
         addStudent: "Add",
@@ -71,8 +75,12 @@ export default function SchoolPromotionsPage({ user, language }) {
         name: "Nom de la promotion",
         program: "Programme",
         level: "Niveau",
+        levelPlaceholder: "Choisir un niveau…",
         campus: "Campus",
         year: "Année académique",
+        yearHint: "Format AAAA-AAAA, ex. 2025-2026",
+        yearInvalid: "L'année académique doit suivre le format AAAA-AAAA (ex. 2025-2026).",
+        nameInvalid: "Le nom de la promotion doit contenir au moins 2 caractères.",
         create: "Créer la promotion",
         assign: "Affecter un étudiant",
         addStudent: "Ajouter",
@@ -81,6 +89,17 @@ export default function SchoolPromotionsPage({ user, language }) {
         empty: "Aucune promotion créée pour le moment.",
         delete: "Supprimer"
       };
+
+  const LEVEL_OPTIONS = ["L1", "L2", "L3", "M1", "M2", "BUT1", "BUT2", "BUT3", "BTS1", "BTS2", "Prépa", "Bachelor", "MBA", "Doctorat"];
+  const ACADEMIC_YEAR_PATTERN = /^\d{4}-\d{4}$/;
+  const CURRENT_YEAR = new Date().getFullYear();
+  // Deux ans en arrière (promotions déjà diplômées, encore consultables) à
+  // trois ans devant (inscriptions anticipées) — largement suffisant, un
+  // champ libre resterait un vecteur d'erreurs de saisie (format, fautes...).
+  const ACADEMIC_YEAR_OPTIONS = Array.from({ length: 6 }, (_, index) => {
+    const start = CURRENT_YEAR - 2 + index;
+    return `${start}-${start + 1}`;
+  });
   const [data, setData] = useState({ items: [], students: [] });
   const [form, setForm] = useState({ name: "", program: "", level: "", campus: "", academicYear: "" });
   const [selectedStudents, setSelectedStudents] = useState({});
@@ -99,9 +118,18 @@ export default function SchoolPromotionsPage({ user, language }) {
   async function submit(event) {
     event.preventDefault();
     setError("");
+    const trimmedName = form.name.trim();
+    if (trimmedName.length < 2) {
+      setError(copy.nameInvalid);
+      return;
+    }
+    if (form.academicYear && !ACADEMIC_YEAR_PATTERN.test(form.academicYear.trim())) {
+      setError(copy.yearInvalid);
+      return;
+    }
     setSaving(true);
     try {
-      await createSchoolPromotion(user.id, form);
+      await createSchoolPromotion(user.id, { ...form, name: trimmedName, academicYear: form.academicYear.trim() });
       setForm({ name: "", program: "", level: "", campus: "", academicYear: "" });
       reload();
       Swal.fire({ icon: "success", title: language === "en" ? "Promotion created." : "Promotion créée.", timer: 1800, showConfirmButton: false });
@@ -143,15 +171,28 @@ export default function SchoolPromotionsPage({ user, language }) {
   return (
     <section className="school-promotions">
       <header className="module-header">
-        <h2>{copy.title}</h2>
-        <p>{copy.subtitle}</p>
+        <div>
+          <h2>{copy.title}</h2>
+          <p>{copy.subtitle}</p>
+        </div>
+        <SchoolExportCsvButton userId={user.id} language={language} resource="promotions" />
       </header>
       <form className="school-settings-form school-promotion-form" onSubmit={submit}>
-        <input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={copy.name} />
-        <input value={form.program} onChange={(event) => setForm({ ...form, program: event.target.value })} placeholder={copy.program} />
-        <input value={form.level} onChange={(event) => setForm({ ...form, level: event.target.value })} placeholder={copy.level} />
-        <input value={form.campus} onChange={(event) => setForm({ ...form, campus: event.target.value })} placeholder={copy.campus} />
-        <input value={form.academicYear} onChange={(event) => setForm({ ...form, academicYear: event.target.value })} placeholder={copy.year} />
+        <input required minLength={2} maxLength={80} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder={copy.name} />
+        <input maxLength={80} value={form.program} onChange={(event) => setForm({ ...form, program: event.target.value })} placeholder={copy.program} />
+        <select value={form.level} onChange={(event) => setForm({ ...form, level: event.target.value })}>
+          <option value="">{copy.levelPlaceholder}</option>
+          {LEVEL_OPTIONS.map((level) => (
+            <option key={level} value={level}>{level}</option>
+          ))}
+        </select>
+        <input maxLength={80} value={form.campus} onChange={(event) => setForm({ ...form, campus: event.target.value })} placeholder={copy.campus} />
+        <select value={form.academicYear} onChange={(event) => setForm({ ...form, academicYear: event.target.value })} title={copy.yearHint}>
+          <option value="">{copy.year}</option>
+          {ACADEMIC_YEAR_OPTIONS.map((year) => (
+            <option key={year} value={year}>{year}</option>
+          ))}
+        </select>
         <button className="btn-main ready" disabled={saving}>{saving ? <span className="btn-spinner" /> : null} {copy.create}</button>
       </form>
       {error ? <p className="field-error">{error}</p> : null}

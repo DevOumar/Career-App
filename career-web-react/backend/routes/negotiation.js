@@ -8,6 +8,8 @@ export function registerNegotiationRoutes(app) {
     cors,
     crypto,
     express,
+    aiActionRateLimiter,
+    aiConversationRateLimiter,
     fs,
     fsPromises,
     dns,
@@ -247,7 +249,7 @@ export function registerNegotiationRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
-app.post("/api/negotiation/reply", async (req, res) => {
+app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) => {
   try {
     const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
     const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};

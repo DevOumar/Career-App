@@ -927,7 +927,10 @@ export function planPriceLabel(planId, billingCycle, freeLabel, currency = "EUR"
   const plan = getPlanById(planId);
   if (!plan) return "—";
   if (plan.monthlyPrice === 0 && plan.annualPrice === 0) return freeLabel || "Gratuit";
-  if (plan.monthlyPrice == null) return formatEur(plan.annualPrice, currency);
+  if (plan.monthlyPrice == null) {
+    const amount = formatEur(plan.annualPrice, currency);
+    return plan.pricedPerSeat ? `${amount} / étudiant / an` : amount;
+  }
   const amount = billingCycle === "annual" ? plan.annualPrice : plan.monthlyPrice;
   return `${formatEur(amount, currency)} / ${billingCycle === "annual" ? "an" : "mois"}`;
 }

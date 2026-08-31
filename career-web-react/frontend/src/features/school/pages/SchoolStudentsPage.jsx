@@ -55,6 +55,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
           subtitle: "Students linked to your school's license.",
           search: "Search by name or email…",
           colName: "Name",
+          colPromotion: "Promotion",
           colJoined: "Joined on",
           colActivity: "Last activity",
           colScore: "Latest score",
@@ -78,6 +79,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
           subtitle: "Étudiants rattachés à la licence de votre établissement.",
           search: "Rechercher par nom ou email…",
           colName: "Nom",
+          colPromotion: "Promotion",
           colJoined: "Inscrit le",
           colActivity: "Dernière activité",
           colScore: "Dernier score",
@@ -184,6 +186,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
           <thead>
             <tr>
               <th>{copy.colName}</th>
+              <th>{copy.colPromotion}</th>
               <th>{copy.colJoined}</th>
               <th>{copy.colActivity}</th>
               <th>{copy.colScore}</th>
@@ -205,6 +208,13 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
                         <span className="muted">{student.email}</span>
                       </div>
                     </div>
+                  </td>
+                  <td>
+                    {student.promotionName ? (
+                      <span className="tag">{student.promotionName}</span>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
                   </td>
                   <td className="muted">{formatDate(student.createdAt)}</td>
                   <td className="muted">{student.lastActivity ? formatDate(student.lastActivity) : copy.never}</td>
@@ -231,7 +241,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
               ))
             ) : (
               <tr>
-                <td colSpan={6} className="admin-table-empty muted">
+                <td colSpan={7} className="admin-table-empty muted">
                   {copy.empty}
                 </td>
               </tr>

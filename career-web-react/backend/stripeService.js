@@ -113,9 +113,10 @@ export async function applyStripeWebhookEvent(
 
       let licenseCode = null;
       if (plan.seats && generateLicenseCodeForPlan) {
-        // Pour school_license (tarifé par étudiant), le nombre de sièges achetés
-        // (quantity Stripe) prime sur le minimum par défaut du plan.
-        const seatsOverride = plan.id === "school_license" && quantity ? quantity : null;
+        // Pour un plan tarifé par étudiant (pricedPerSeat), le nombre de
+        // sièges achetés (quantity Stripe) prime sur le minimum par défaut
+        // du plan.
+        const seatsOverride = plan.pricedPerSeat && quantity ? quantity : null;
         licenseCode = await generateLicenseCodeForPlan(userId, plan, seatsOverride);
       }
 

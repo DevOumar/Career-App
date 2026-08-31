@@ -405,6 +405,7 @@ export function AccountDrawer({
                           <input value={profileForm.lastName} onChange={(event) => setProfileForm((prev) => ({ ...prev, lastName: event.target.value }))} />
                         </label>
                       </div>
+                      {user.roleType === "candidate" || user.roleType === "student" ? (
                       <div className="account-inline-fields two">
                         <label>
                           {language === "en" ? "Target role" : "Poste visé"}
@@ -463,6 +464,7 @@ export function AccountDrawer({
                           ) : null}
                         </label>
                       </div>
+                      ) : null}
                       <div className="account-form-actions">
                         <button type="button" className="btn-secondary" onClick={() => setEditingProfile(false)}>{copy.cancel}</button>
                         <button className="btn-main" disabled={savingProfile}>
@@ -712,25 +714,11 @@ export function AccountDrawer({
               <p className="preferences-hint">{copy.themeHint}</p>
 
               <div className="account-rows">
-                <div className="account-row account-row-preference">
-                  <span>{copy.mode}</span>
-                  <div className="currency-pills">
-                    <button
-                      type="button"
-                      className={`currency-pill ${mode === "light" ? "active" : ""}`}
-                      onClick={() => setMode("light")}
-                    >
-                      {copy.modeLight}
-                    </button>
-                    <button
-                      type="button"
-                      className={`currency-pill ${mode === "dark" ? "active" : ""}`}
-                      onClick={() => setMode("dark")}
-                    >
-                      {copy.modeDark}
-                    </button>
-                  </div>
-                </div>
+                {/* Sélecteur de mode sombre retiré temporairement : la
+                    plupart des composants utilisent des couleurs codées en
+                    dur plutôt que les variables de thème, ce qui rend l'app
+                    illisible par endroits une fois activé. À réintégrer une
+                    fois un vrai passage fait sur tout le CSS. */}
                 <div className="account-row account-row-preference">
                   <span>{copy.density}</span>
                   <div className="currency-pills">

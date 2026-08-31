@@ -11,6 +11,8 @@ import { registerSchoolProfileRoutes } from "./school/profile.js";
 import { registerSchoolNotificationsRoutes } from "./school/notifications.js";
 import { registerSchoolPromotionsRoutes } from "./school/promotions.js";
 import { registerSchoolReportsRoutes } from "./school/reports.js";
+import { registerSchoolAnnouncementsRoutes } from "./school/announcements.js";
+import { registerSchoolEventsRoutes } from "./school/events.js";
 
 export function registerSchoolRoutes(app) {
   registerSchoolOverviewRoutes(app);
@@ -22,4 +24,6 @@ export function registerSchoolRoutes(app) {
   registerSchoolNotificationsRoutes(app);
   registerSchoolPromotionsRoutes(app);
   registerSchoolReportsRoutes(app);
+  registerSchoolAnnouncementsRoutes(app);
+  registerSchoolEventsRoutes(app);
 }

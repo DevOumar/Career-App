@@ -251,7 +251,23 @@ app.get("/api/school/insights", async (req, res) => {
     if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
 
-    const students = await getSchoolStudentRows(userId);
+    const allStudents = await getSchoolStudentRows(userId);
+
+    const { rows: promotionRows } = await db.query(
+      "SELECT id, name FROM school_promotions WHERE school_user_id = $1 ORDER BY created_at DESC",
+      [userId]
+    );
+
+    const promotionId = coerceString(req.query?.promotionId);
+    let students = allStudents;
+    if (promotionId) {
+      const { rows: memberRows } = await db.query(
+        "SELECT student_user_id FROM school_promotion_students WHERE promotion_id = $1",
+        [promotionId]
+      );
+      const memberIds = new Set(memberRows.map((row) => row.student_user_id));
+      students = allStudents.filter((row) => memberIds.has(row.id));
+    }
     const studentIds = students.map((row) => row.id);
 
     const { rows: matchRows } = studentIds.length
@@ -301,7 +317,12 @@ app.get("/api/school/insights", async (req, res) => {
         score: entry.score
       }));
 
-    return res.json({ scoreBuckets, topMissingKeywords, ranking });
+    return res.json({
+      scoreBuckets,
+      topMissingKeywords,
+      ranking,
+      promotions: promotionRows.map((row) => ({ id: row.id, name: row.name }))
+    });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

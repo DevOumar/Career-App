@@ -4,6 +4,7 @@ import React from "react";
 import { useState, useEffect } from "react";
 import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
+import { AdminPageLoader } from "../../components/AdminPageLoader.jsx";
 import { CURRENCY_OPTIONS, getCurrencyOption, formatAmountInCurrency, formatPlanPrice } from "../../lib/format.js";
 import { InfoPage } from "../landing/LandingPage.jsx";
 import { PRICING_COPY } from "./pricingCopy.js";
@@ -100,7 +101,7 @@ function allowedPricingSegmentsForRole(roleType) {
 
 const HISTORY_PAGE_SIZE = 10;
 
-function BillingHistoryTab({ userId, language, currency }) {
+export function BillingHistoryTab({ userId, language, currency }) {
   const copy = PRICING_COPY[language] || PRICING_COPY.fr;
   const [transactions, setTransactions] = useState([]);
   const [total, setTotal] = useState(0);
@@ -180,7 +181,7 @@ function BillingHistoryTab({ userId, language, currency }) {
       </div>
 
       {status === "loading" ? (
-        <p className="muted">{copy.historyLoading}</p>
+        <AdminPageLoader language={language} label={copy.historyLoading} />
       ) : status === "error" ? (
         <p className="form-error">{copy.historyError}</p>
       ) : !transactions.length ? (
@@ -242,6 +243,15 @@ function BillingHistoryTab({ userId, language, currency }) {
   );
 }
 
+// Un code de licence reste une info sensible (partage d'écran, capture) —
+// on n'affiche jamais que ses 4 derniers caractères, jamais le code entier,
+// même pour son propre compte.
+function maskLicenseCode(code) {
+  if (!code) return "";
+  const tail = code.slice(-4);
+  return `••••-${tail}`;
+}
+
 function PricingPage({
   user,
   premium,
@@ -252,7 +262,8 @@ function PricingPage({
   onActivatePlan,
   onStripeCheckout,
   onRedeemCode,
-  pendingPlanAction
+  pendingPlanAction,
+  onContactSales
 }) {
   const copy = PRICING_COPY[language] || PRICING_COPY.fr;
   const allowedSegments = allowedPricingSegmentsForRole(user?.roleType);
@@ -307,8 +318,13 @@ function PricingPage({
       if (!result.isConfirmed) return;
     }
 
+    if (plan.contactSalesOnly) {
+      onContactSales?.();
+      return;
+    }
+
     if (stripeEnabled && plan.grantsPremium) {
-      onStripeCheckout(plan.id, billingCycle, plan.id === "school_license" ? studentSeats : 1);
+      onStripeCheckout(plan.id, billingCycle, plan.pricedPerSeat ? studentSeats : 1);
     } else {
       onActivatePlan(plan.id, billingCycle);
     }
@@ -467,23 +483,33 @@ function PricingPage({
                   <li key={feature}>{feature}</li>
                 ))}
               </ul>
-              {plan.id === "school_license" ? (
+              {plan.pricedPerSeat && !plan.contactSalesOnly ? (
                 <label className="pricing-seats-input">
                   <span>{copy.studentSeatsLabel}</span>
                   <input
                     type="number"
                     min={plan.seats}
+                    max={plan.seatsMax || undefined}
                     step={1}
-                    value={studentSeats}
+                    value={Math.min(plan.seatsMax || Infinity, Math.max(plan.seats, studentSeats))}
                     onChange={(event) => {
                       const next = Number(event.target.value.replace(/\D/g, "")) || plan.seats;
-                      setStudentSeats(Math.max(plan.seats, next));
+                      const clamped = Math.min(plan.seatsMax || Infinity, Math.max(plan.seats, next));
+                      setStudentSeats(clamped);
                     }}
                   />
                   <span className="pricing-seats-total">
                     {copy.studentSeatsTotal}{" "}
-                    <strong>{formatAmountInCurrency(plan.annualPrice * studentSeats, currency)}</strong>
+                    <strong>
+                      {formatAmountInCurrency(
+                        plan.annualPrice * Math.min(plan.seatsMax || Infinity, Math.max(plan.seats, studentSeats)),
+                        currency
+                      )}
+                    </strong>
                   </span>
+                  {plan.seatsMax ? (
+                    <span className="pricing-seats-hint muted">{fillTemplate(copy.studentSeatsMaxHint, { max: plan.seatsMax })}</span>
+                  ) : null}
                 </label>
               ) : null}
               <button
@@ -493,7 +519,13 @@ function PricingPage({
                 onClick={() => handlePlanClick(plan)}
               >
                 {pendingPlanAction === plan.id ? <span className="btn-spinner" /> : null}{" "}
-                {isCurrentPlan ? copy.currentPlan : isAlreadyUnlimited ? copy.alreadyUnlimited : copy.activate}
+                {isCurrentPlan
+                  ? copy.currentPlan
+                  : isAlreadyUnlimited
+                  ? copy.alreadyUnlimited
+                  : plan.contactSalesOnly
+                  ? copy.contactSales
+                  : copy.activate}
               </button>
             </article>
           );
@@ -503,6 +535,18 @@ function PricingPage({
       <div className="pricing-license-block">
         <h3>{copy.licenseCodeTitle}</h3>
         <p className="muted">{copy.licenseCodeHint}</p>
+        {subscription.licenseCode
+          ? (() => {
+              const [before, after] = copy.licenseCodeCurrent.split("{code}");
+              return (
+                <p className="pricing-license-current">
+                  {before}
+                  <span className="pricing-license-code">{maskLicenseCode(subscription.licenseCode)}</span>
+                  {after}
+                </p>
+              );
+            })()
+          : null}
         <div className="pricing-license-form">
           <input
             value={licenseCode}

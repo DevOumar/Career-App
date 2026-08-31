@@ -428,7 +428,7 @@ app.get("/api/notifications", async (req, res) => {
 
     const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-    const [securityRes, paymentRes, staleApplicationsRes, userRow] = await Promise.all([
+    const [securityRes, paymentRes, staleApplicationsRes, userRow, announcementRes] = await Promise.all([
       db.query(
         // Filtre les types "significatifs" directement en SQL (pas en JS
         // après coup) : sinon un compte actif dont le login (login_google,
@@ -451,7 +451,16 @@ app.get("/api/notifications", async (req, res) => {
          ORDER BY created_at ASC LIMIT 5`,
         [userId, sevenDaysAgo]
       ),
-      getUserRowById(userId)
+      getUserRowById(userId),
+      db.query(
+        `SELECT sa.id, sa.subject, sa.message, sa.created_at, u.first_name AS school_name
+         FROM school_announcement_recipients sar
+         JOIN school_announcements sa ON sa.id = sar.announcement_id
+         JOIN users u ON u.id = sa.school_user_id
+         WHERE sar.student_user_id = $1 AND sa.created_at >= $2
+         ORDER BY sa.created_at DESC LIMIT 10`,
+        [userId, sevenDaysAgo]
+      )
     ]);
 
     const items = [];
@@ -472,6 +481,15 @@ app.get("/api/notifications", async (req, res) => {
         type: "payment_confirmed",
         createdAt: row.created_at,
         data: { amount: Number(row.amount_collected), currency: row.currency, planId: row.plan_id }
+      });
+    }
+
+    for (const row of announcementRes.rows) {
+      items.push({
+        id: `announcement-${row.id}`,
+        type: "school_announcement",
+        createdAt: row.created_at,
+        data: { subject: row.subject, message: row.message, schoolName: row.school_name }
       });
     }
 

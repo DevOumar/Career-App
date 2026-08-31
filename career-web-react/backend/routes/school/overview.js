@@ -288,7 +288,13 @@ app.get("/api/school/overview", async (req, res) => {
       topTargetRoles: metrics.topTargetRoles,
       topSkills: metrics.topSkills,
       alerts: buildSchoolAlerts(metrics, coerceString(req.query?.language || "fr")),
-      signupsTrend
+      signupsTrend,
+      // Ids exposés pour les actions de relance ciblée (bouton "Relancer" —
+      // envoie une annonce uniquement à ce segment via
+      // POST /api/school/announcements/send avec studentIds).
+      inactiveStudentIds: metrics.inactiveStudents.map((row) => row.id),
+      withoutCvStudentIds: metrics.withoutCvStudents.map((row) => row.id),
+      lowScoreStudentIds: metrics.lowScoreStudents.map((row) => row.id)
     });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });

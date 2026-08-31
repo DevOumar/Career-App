@@ -65,6 +65,8 @@ export function registerInterviewRoutes(app) {
   const {
     requireMatchingSession,
     express,
+    aiActionRateLimiter,
+    aiConversationRateLimiter,
     AI_PROVIDER,
     GROQ_API_KEY,
     OPENAI_API_KEY,
@@ -165,7 +167,7 @@ export function registerInterviewRoutes(app) {
   }
 
   // Démarrer la simulation
-  app.post("/api/interview/start", async (req, res) => {
+  app.post("/api/interview/start", aiConversationRateLimiter, async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
       if (!(await requireInterviewAccess(req, res, userId))) return;
@@ -204,7 +206,7 @@ export function registerInterviewRoutes(app) {
   });
 
   // Envoyer un message candidat
-  app.post("/api/interview/message", async (req, res) => {
+  app.post("/api/interview/message", aiConversationRateLimiter, async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
       if (!(await requireInterviewAccess(req, res, userId))) return;
@@ -270,7 +272,7 @@ export function registerInterviewRoutes(app) {
   });
 
   // Message Audio (Whisper transcription + Turn)
-  app.post("/api/interview/audio-message", express.raw({ type: "*/*", limit: "15mb" }), async (req, res) => {
+  app.post("/api/interview/audio-message", aiConversationRateLimiter, express.raw({ type: "*/*", limit: "15mb" }), async (req, res) => {
     try {
       const userId = coerceString(req.query?.userId);
       if (!(await requireInterviewAccess(req, res, userId))) return;

@@ -286,12 +286,13 @@ function applyThemeVars(themeId) {
 }
 
 function getMode() {
-  try {
-    const stored = localStorage.getItem("career_app_mode");
-    return stored === "dark" ? "dark" : "light";
-  } catch (_error) {
-    return "light";
-  }
+  // Le mode sombre n'est pas fini : la plupart des composants utilisent des
+  // couleurs codées en dur plutôt que les variables de thème, ce qui rend
+  // l'app illisible par endroits une fois activé (topbar, AccountDrawer...).
+  // Le bouton pour l'activer est retiré des Préférences en attendant un
+  // vrai passage sur tout le CSS ; on force aussi "light" ici pour remettre
+  // d'aplomb un compte resté coincé en sombre avant ce retrait.
+  return "light";
 }
 
 function getDensity() {
@@ -838,6 +839,12 @@ function candidateNotificationText(item, language) {
         icon: "profile",
         title: language === "en" ? "Profile incomplete" : "Profil incomplet",
         detail: language === "en" ? "Complete your profile to unlock more relevant features." : "Complétez votre profil pour des fonctionnalités plus pertinentes."
+      };
+    case "school_announcement":
+      return {
+        icon: "mail",
+        title: item.data?.subject || (language === "en" ? "Announcement from your school" : "Annonce de votre école"),
+        detail: [item.data?.schoolName, item.data?.message].filter(Boolean).join(" · ")
       };
     default:
       return { icon: "bell", title: item.type, detail: "" };
@@ -1767,9 +1774,32 @@ export default function App() {
     setPendingPlanAction("license");
     try {
       clearMessages();
-      const updated = await redeemLicenseCode({ userId: user.id, code: code.trim() });
-      setSession({ user: updated.user, premium: updated.premium });
-      setPremium(updated.premium);
+      const trimmedCode = code.trim();
+      let result = await redeemLicenseCode({ userId: user.id, code: trimmedCode });
+
+      // Déjà rattaché à un AUTRE code de licence (transfert d'établissement,
+      // renouvellement avec un nouveau code...) : le backend ne bascule pas
+      // silencieusement, il demande confirmation d'abord (voir
+      // routes/billing.js, requiresConfirmation).
+      if (result.requiresConfirmation) {
+        const confirmResult = await Swal.fire({
+          icon: "warning",
+          title: language === "en" ? "Replace your current access?" : "Remplacer votre accès actuel ?",
+          html:
+            language === "en"
+              ? `You're already using license <b style="color:#b83309;font-family:monospace;">${result.currentLicenseCodeMasked}</b>. Activating this new code switches you to <b>${result.newPlanName}</b> and frees your seat on the previous license.`
+              : `Vous utilisez déjà la licence <b style="color:#b83309;font-family:monospace;">${result.currentLicenseCodeMasked}</b>. Activer ce nouveau code vous bascule vers <b>${result.newPlanName}</b> et libère votre siège sur l'ancienne licence.`,
+          showCancelButton: true,
+          confirmButtonText: language === "en" ? "Switch" : "Basculer",
+          cancelButtonText: language === "en" ? "Cancel" : "Annuler",
+          confirmButtonColor: "#b83309"
+        });
+        if (!confirmResult.isConfirmed) return;
+        result = await redeemLicenseCode({ userId: user.id, code: trimmedCode, confirmSwitch: true });
+      }
+
+      setSession({ user: result.user, premium: result.premium });
+      setPremium(result.premium);
       setPageMessage(language === "en" ? "License code activated." : "Code de licence activé.");
     } catch (error) {
       setProcessingError(getFriendlyErrorMessage(error, language));
@@ -2431,6 +2461,7 @@ export default function App() {
             onStripeCheckout={handleStripeCheckout}
             onRedeemCode={handleRedeemLicenseCode}
             pendingPlanAction={pendingPlanAction}
+            onContactSales={() => setLegalPage("contact")}
           />
         ) : null}
       </main>

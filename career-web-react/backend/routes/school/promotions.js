@@ -245,6 +245,48 @@ export function registerSchoolPromotionsRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
+app.get("/api/school/promotions/compare", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    await requireSchoolOwner(userId);
+
+    const { rows: promoRows } = await db.query(
+      "SELECT * FROM school_promotions WHERE school_user_id = $1 ORDER BY created_at DESC",
+      [userId]
+    );
+    const promotionIds = promoRows.map((row) => row.id);
+    const { rows: links } = promotionIds.length
+      ? await db.query("SELECT promotion_id, student_user_id FROM school_promotion_students WHERE promotion_id = ANY($1)", [promotionIds])
+      : { rows: [] };
+
+    const items = [];
+    for (const promo of promoRows) {
+      const memberIds = new Set(links.filter((link) => link.promotion_id === promo.id).map((link) => link.student_user_id));
+      const metrics = await buildSchoolMetrics(userId, { restrictToStudentIds: memberIds });
+      items.push({
+        id: promo.id,
+        name: promo.name,
+        program: promo.program,
+        level: promo.level,
+        campus: promo.campus,
+        academicYear: promo.academic_year,
+        studentCount: metrics.students.length,
+        activationRate: metrics.students.length ? metrics.activationRate : 0,
+        avgScore: metrics.avgScore,
+        inactiveCount: metrics.inactiveStudents.length,
+        withoutCvCount: metrics.withoutCvStudents.length,
+        lowScoreCount: metrics.lowScoreStudents.length,
+        topSkills: metrics.topSkills.slice(0, 5)
+      });
+    }
+
+    return res.json({ items });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.get("/api/school/promotions", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
@@ -286,8 +328,12 @@ app.post("/api/school/promotions", async (req, res) => {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
-    const name = coerceString(req.body?.name);
-    if (!name) return res.status(400).json({ error: "Le nom de la promotion est requis." });
+    const name = coerceString(req.body?.name).trim();
+    if (name.length < 2) return res.status(400).json({ error: "Le nom de la promotion doit contenir au moins 2 caractères." });
+    const academicYear = coerceString(req.body?.academicYear).trim();
+    if (academicYear && !/^\d{4}-\d{4}$/.test(academicYear)) {
+      return res.status(400).json({ error: "L'année académique doit suivre le format AAAA-AAAA (ex. 2025-2026)." });
+    }
     const id = `promo-${crypto.randomUUID()}`;
     await db.query(
       `INSERT INTO school_promotions (id, school_user_id, name, program, level, campus, academic_year, created_at, updated_at)
@@ -296,10 +342,10 @@ app.post("/api/school/promotions", async (req, res) => {
         id,
         userId,
         name,
-        coerceString(req.body?.program),
-        coerceString(req.body?.level),
-        coerceString(req.body?.campus),
-        coerceString(req.body?.academicYear),
+        coerceString(req.body?.program).trim(),
+        coerceString(req.body?.level).trim(),
+        coerceString(req.body?.campus).trim(),
+        academicYear,
         nowIso()
       ]
     );
@@ -347,6 +393,50 @@ app.post("/api/school/promotions/:id/students", async (req, res) => {
       await logSecurityEvent(req, userId, "school_promotion_student_added", { promotionId, studentId });
     }
     return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.get("/api/school/promotions/export", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    await requireSchoolOwner(userId);
+
+    const { rows } = await db.query(
+      "SELECT * FROM school_promotions WHERE school_user_id = $1 ORDER BY created_at DESC",
+      [userId]
+    );
+    const promotionIds = rows.map((row) => row.id);
+    const { rows: links } = promotionIds.length
+      ? await db.query(
+          `SELECT sps.promotion_id, u.first_name, u.last_name, u.email
+           FROM school_promotion_students sps
+           JOIN users u ON u.id = sps.student_user_id
+           WHERE sps.promotion_id = ANY($1)`,
+          [promotionIds]
+        )
+      : { rows: [] };
+
+    const header = ["promotion", "programme", "niveau", "campus", "annee_academique", "etudiant_prenom", "etudiant_nom", "etudiant_email"].join(
+      ","
+    );
+    const lines = [];
+    for (const row of rows) {
+      const members = links.filter((link) => link.promotion_id === row.id);
+      const rowsForPromotion = members.length ? members : [{ first_name: "", last_name: "", email: "" }];
+      for (const member of rowsForPromotion) {
+        lines.push(
+          [row.name, row.program, row.level, row.campus, row.academic_year, member.first_name, member.last_name, member.email]
+            .map((value) => `"${String(value || "").replace(/"/g, '""')}"`)
+            .join(",")
+        );
+      }
+    }
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", "attachment; filename=\"career-app-promotions.csv\"");
+    return res.send([header, ...lines].join("\n"));
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

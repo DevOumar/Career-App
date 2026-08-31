@@ -303,7 +303,7 @@ app.get("/api/billing/transactions", async (req, res) => {
       params
     );
     const transactions = rows.map((row) => {
-      const plan = PLANS.find((item) => item.id === row.plan_id) || null;
+      const plan = getPlanById(row.plan_id);
       return {
         id: row.id,
         planId: row.plan_id,
@@ -372,13 +372,28 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
       return res.status(500).json({ error: `${priceEnvVar} manquant dans .env pour ce plan.` });
     }
 
-    // Seul school_license est tarifé "par étudiant" : la quantité vient du
-    // formulaire (nombre d'étudiants), avec le minimum de sièges du plan comme
-    // plancher. Pour tous les autres plans, un seul exemplaire du bundle est
-    // vendu (ignorer toute quantité fournie par le client évite un montant
-    // gonflé accidentellement pour un plan à prix fixe).
+    if (plan.contactSalesOnly) {
+      return res.status(400).json({ error: "Ce plan nécessite un contrat négocié — contactez-nous plutôt que de payer via Stripe." });
+    }
+
+    // Les plans école/cabinet tarifés "par étudiant" (pricedPerSeat) : la
+    // quantité vient du formulaire (nombre d'étudiants), avec le minimum de
+    // sièges du plan comme plancher et sa borne haute (seatsMax) comme
+    // plafond — un établissement qui dépasse le palier doit passer au
+    // palier supérieur, pas acheter un volume hors palier au mauvais prix.
+    // Pour tous les autres plans, un seul exemplaire du bundle est vendu
+    // (ignorer toute quantité fournie par le client évite un montant gonflé
+    // accidentellement pour un plan à prix fixe).
     const requestedQuantity = Math.round(Number(req.body?.quantity) || 1);
-    const quantity = plan.id === "school_license" ? Math.max(plan.seats || 1, requestedQuantity) : 1;
+    let quantity = 1;
+    if (plan.pricedPerSeat) {
+      quantity = Math.max(plan.seats || 1, requestedQuantity);
+      if (plan.seatsMax && quantity > plan.seatsMax) {
+        return res.status(400).json({
+          error: `Ce palier est limité à ${plan.seatsMax} étudiants. Choisissez le palier supérieur pour un volume plus important.`
+        });
+      }
+    }
 
     const subscription = parseJsonField(user.subscription_json, {});
     const params = buildCheckoutSessionParams({
@@ -522,10 +537,38 @@ app.post("/api/plans/redeem", async (req, res) => {
 
     const currentSubscription = parseJsonField(user.subscription_json, {});
     const alreadyRedeemed = currentSubscription.licenseCode === code;
+    // L'utilisateur est déjà rattaché à UN AUTRE code de licence (école ou
+    // cabinet différent, ou renouvellement avec un nouveau code) : on ne
+    // bloque pas ce cas (transfert d'établissement légitime), mais le front
+    // doit le confirmer explicitement avant d'écraser l'accès actuel — voir
+    // requiresConfirmation ci-dessous.
+    const switchingFromAnotherLicense = Boolean(currentSubscription.licenseCode) && !alreadyRedeemed;
+    const confirmed = Boolean(req.body?.confirmSwitch);
+
+    if (switchingFromAnotherLicense && !confirmed) {
+      // Le code n'est jamais renvoyé en clair, même dans cette réponse de
+      // confirmation destinée au propriétaire du compte — juste de quoi
+      // reconnaître visuellement "c'est bien mon ancienne licence".
+      const rawCode = String(currentSubscription.licenseCode || "");
+      return res.json({
+        requiresConfirmation: true,
+        currentLicenseCodeMasked: rawCode ? `••••-${rawCode.slice(-4)}` : "",
+        newPlanName: plan.name?.fr || plan.id
+      });
+    }
 
     if (!alreadyRedeemed) {
       if (Number(licenseRow.seats_used) >= Number(licenseRow.seats_total)) {
         return res.status(409).json({ error: "Ce code de licence a atteint son nombre maximum d'utilisateurs." });
+      }
+      if (switchingFromAnotherLicense) {
+        // Libère le siège occupé sur l'ancien code — sans ça, l'ancien
+        // établissement facture/compte un siège pour un étudiant qui n'y
+        // est plus rattaché.
+        await db.query(
+          "UPDATE license_codes SET seats_used = GREATEST(0, seats_used - 1) WHERE code = $1",
+          [currentSubscription.licenseCode]
+        );
       }
       await db.query("UPDATE license_codes SET seats_used = seats_used + 1 WHERE code = $1", [code]);
       await applyPlanToUser(userId, plan, null, code, null, "license_redeem");

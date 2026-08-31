@@ -335,10 +335,10 @@ export async function getHealth() {
   return request("/health");
 }
 
-export async function redeemLicenseCode({ userId, code }) {
+export async function redeemLicenseCode({ userId, code, confirmSwitch = false }) {
   return request("/plans/redeem", {
     method: "POST",
-    body: { userId, code }
+    body: { userId, code, confirmSwitch }
   });
 }
 
@@ -794,8 +794,9 @@ export async function getSchoolLicense(userId) {
   return data.items;
 }
 
-export async function getSchoolInsights(userId) {
+export async function getSchoolInsights(userId, { promotionId = "" } = {}) {
   const params = new URLSearchParams({ userId });
+  if (promotionId) params.set("promotionId", promotionId);
   return request(`/school/insights?${params.toString()}`);
 }
 
@@ -809,6 +810,13 @@ export async function sendSchoolInvitation(userId, email) {
   return request("/school/invitations/send", {
     method: "POST",
     body: { userId, email }
+  });
+}
+
+export async function sendSchoolInvitationsBulk(userId, emails) {
+  return request("/school/students/bulk-invite", {
+    method: "POST",
+    body: { userId, emails }
   });
 }
 
@@ -862,9 +870,45 @@ export async function getSchoolReports(userId) {
   return request(`/school/reports?userId=${encodeURIComponent(userId)}`);
 }
 
-export async function generateSchoolReport(userId, period = "monthly") {
+export async function generateSchoolReport(userId, period = "monthly", promotionId = "") {
   return request("/school/reports/generate", {
     method: "POST",
-    body: { userId, period }
+    body: { userId, period, promotionId }
+  });
+}
+
+export async function getSchoolPromotionsCompare(userId) {
+  const params = new URLSearchParams({ userId });
+  const data = await request(`/school/promotions/compare?${params.toString()}`);
+  return data.items;
+}
+
+export async function getSchoolAnnouncements(userId) {
+  const data = await request(`/school/announcements?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function sendSchoolAnnouncement(userId, { subject, message, promotionId = "", studentIds = null }) {
+  return request("/school/announcements/send", {
+    method: "POST",
+    body: { userId, subject, message, promotionId, studentIds }
+  });
+}
+
+export async function getSchoolEvents(userId) {
+  const data = await request(`/school/events?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function createSchoolEvent(userId, payload) {
+  return request("/school/events", {
+    method: "POST",
+    body: { userId, ...payload }
+  });
+}
+
+export async function deleteSchoolEvent(userId, eventId) {
+  return request(`/school/events/${encodeURIComponent(eventId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
   });
 }

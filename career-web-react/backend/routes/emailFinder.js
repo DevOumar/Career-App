@@ -8,6 +8,7 @@ export function registerEmailFinderRoutes(app) {
     cors,
     crypto,
     express,
+    aiActionRateLimiter,
     fs,
     fsPromises,
     dns,
@@ -247,7 +248,7 @@ export function registerEmailFinderRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
-app.post("/api/email-finder/search", async (req, res) => {
+app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;

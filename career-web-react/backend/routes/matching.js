@@ -8,6 +8,7 @@ export function registerMatchingRoutes(app) {
     cors,
     crypto,
     express,
+    aiActionRateLimiter,
     fs,
     fsPromises,
     dns,
@@ -247,7 +248,7 @@ export function registerMatchingRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
-app.post("/api/match/analyze", async (req, res) => {
+app.post("/api/match/analyze", aiActionRateLimiter, async (req, res) => {
   try {
     const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
     const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};

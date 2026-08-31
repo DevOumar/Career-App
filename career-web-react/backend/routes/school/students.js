@@ -278,6 +278,20 @@ app.get("/api/school/students", async (req, res) => {
       latestScoreByStudent[row.user_id] = typeof score === "number" ? score : null;
     }
 
+    const promotionByStudent = {};
+    if (studentIds.length) {
+      const { rows: promoLinks } = await db.query(
+        `SELECT sps.student_user_id, sp.name
+         FROM school_promotion_students sps
+         JOIN school_promotions sp ON sp.id = sps.promotion_id
+         WHERE sp.school_user_id = $1 AND sps.student_user_id = ANY($2)`,
+        [userId, studentIds]
+      );
+      for (const row of promoLinks) {
+        promotionByStudent[row.student_user_id] = row.name;
+      }
+    }
+
     const filtered = students.filter((row) => {
       if (!search) return true;
       const haystack = `${row.first_name} ${row.last_name} ${row.email}`.toLowerCase();
@@ -296,6 +310,7 @@ app.get("/api/school/students", async (req, res) => {
           avatarDataUrl: row.avatar_data_url || "",
           createdAt: row.created_at,
           licenseCode: subscription.licenseCode || null,
+          promotionName: promotionByStudent[row.id] || null,
           lastActivity,
           active: Boolean(lastActivity && new Date(lastActivity).getTime() >= Date.now() - 30 * 24 * 60 * 60 * 1000),
           latestScore: latestScoreByStudent[row.id] ?? null
@@ -357,13 +372,107 @@ app.get("/api/school/students/export", async (req, res) => {
     if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const students = await getSchoolStudentRows(userId);
-    const header = ["prenom", "nom", "email", "date_inscription"].join(",");
+    const studentIds = students.map((row) => row.id);
+    const promotionByStudent = {};
+    if (studentIds.length) {
+      const { rows: promoLinks } = await db.query(
+        `SELECT sps.student_user_id, sp.name
+         FROM school_promotion_students sps
+         JOIN school_promotions sp ON sp.id = sps.promotion_id
+         WHERE sp.school_user_id = $1 AND sps.student_user_id = ANY($2)`,
+        [userId, studentIds]
+      );
+      for (const row of promoLinks) promotionByStudent[row.student_user_id] = row.name;
+    }
+    const header = ["prenom", "nom", "email", "promotion", "date_inscription"].join(",");
     const lines = students.map((row) =>
-      [row.first_name, row.last_name, row.email, row.created_at].map((value) => `"${String(value || "").replace(/"/g, '""')}"`).join(",")
+      [row.first_name, row.last_name, row.email, promotionByStudent[row.id] || "", row.created_at]
+        .map((value) => `"${String(value || "").replace(/"/g, '""')}"`)
+        .join(",")
     );
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", "attachment; filename=\"career-app-etudiants.csv\"");
     return res.send([header, ...lines].join("\n"));
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/school/students/bulk-invite", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const school = await requireSchoolOwner(userId);
+
+    const rawEmails = Array.isArray(req.body?.emails) ? req.body.emails : [];
+    const emails = [...new Set(rawEmails.map((value) => normalizeEmail(coerceString(value))).filter((value) => value.includes("@")))].slice(
+      0,
+      500
+    );
+    if (!emails.length) {
+      return res.status(400).json({ error: "Aucun email valide fourni." });
+    }
+
+    const codeRows = await getSchoolLicenseCodeRows(userId);
+    let activeCode = codeRows.find((row) => !Number(row.revoked) && Number(row.seats_used) < Number(row.seats_total));
+
+    const { rows: orgProfileRows } = await db.query(
+      "SELECT organization_name FROM user_org_profiles WHERE user_id = $1",
+      [userId]
+    );
+    const organizationName = orgProfileRows[0]?.organization_name || school.first_name;
+    const transporter = getMailTransporter();
+
+    const results = { sent: [], skippedExisting: [], skippedNoSeat: [] };
+    for (const email of emails) {
+      if (!activeCode || Number(activeCode.seats_used) >= Number(activeCode.seats_total)) {
+        results.skippedNoSeat.push(email);
+        continue;
+      }
+      const existingUser = await getUserRowByAnyEmail(email);
+      if (existingUser) {
+        results.skippedExisting.push(email);
+        continue;
+      }
+      const id = `inv-${crypto.randomUUID()}`;
+      await db.query(
+        `INSERT INTO school_invitations (id, school_user_id, email, license_code, status, created_at, redeemed_at)
+         VALUES ($1,$2,$3,$4,'pending',$5,NULL)`,
+        [id, userId, email, activeCode.code, nowIso()]
+      );
+      if (transporter) {
+        const html = `
+          <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
+            <h2 style="color:#2f5bff;margin:0 0 18px;">Career CV</h2>
+            <p style="margin:0 0 14px;color:#1f2634;">Bonjour,</p>
+            <p style="margin:0 0 14px;line-height:1.6;color:#1f2634;">
+              ${organizationName} vous invite à rejoindre Career CV pour optimiser votre CV et préparer vos candidatures.
+            </p>
+            <p style="margin:0 0 14px;color:#1f2634;">Votre code de licence : <strong>${activeCode.code}</strong></p>
+            <p style="margin:0 0 14px;color:#1f2634;">Créez votre compte puis renseignez ce code depuis la page Tarifs pour activer votre accès gratuitement.</p>
+            <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career CV</p>
+          </div>`;
+        const text = `Bonjour,\n\n${organizationName} vous invite à rejoindre Career CV.\nVotre code de licence : ${activeCode.code}\nCréez votre compte puis renseignez ce code depuis la page Tarifs.\n\n— L'équipe Career CV`;
+        const recipient = AUTH_EMAIL_TO || email;
+        try {
+          await transporter.sendMail({ from: MAIL_FROM, to: recipient, subject: "Invitation Career CV", html, text });
+        } catch (_error) {
+          // L'invitation reste enregistrée même si l'envoi échoue.
+        }
+      }
+      results.sent.push(email);
+      // Recharger la fraîcheur du siège utilisé pour ne pas dépasser la capacité
+      // sur ce même code au fil de la boucle (mise à jour en mémoire locale).
+      activeCode = { ...activeCode, seats_used: Number(activeCode.seats_used) + 1 };
+    }
+
+    await logSecurityEvent(req, userId, "school_invitation_bulk_sent", {
+      sentCount: results.sent.length,
+      skippedExistingCount: results.skippedExisting.length,
+      skippedNoSeatCount: results.skippedNoSeat.length
+    });
+
+    return res.status(201).json(results);
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

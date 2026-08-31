@@ -61,7 +61,8 @@ export default function SchoolInsightsPage({ user, language }) {
           emptyMissing: "No missing keywords yet",
           emptyMissingHint: "Recurring skill gaps across your students will show up here.",
           emptyRanking: "No ranking yet",
-          emptyRankingHint: "Once students have a match score, they'll appear here ranked from best to worst fit."
+          emptyRankingHint: "Once students have a match score, they'll appear here ranked from best to worst fit.",
+          allPromotions: "All promotions"
         }
       : {
           title: "Suivi & employabilité",
@@ -74,17 +75,19 @@ export default function SchoolInsightsPage({ user, language }) {
           emptyMissing: "Pas encore de mots-clés",
           emptyMissingHint: "Les manques récurrents de compétences chez vos étudiants apparaîtront ici.",
           emptyRanking: "Pas encore de classement",
-          emptyRankingHint: "Dès qu'un étudiant obtient un score de matching, il apparaît ici classé du meilleur au moins bon."
+          emptyRankingHint: "Dès qu'un étudiant obtient un score de matching, il apparaît ici classé du meilleur au moins bon.",
+          allPromotions: "Toutes les promotions"
         };
 
   const [insights, setInsights] = useState(null);
   const [error, setError] = useState("");
+  const [promotionId, setPromotionId] = useState("");
 
   useEffect(() => {
-    getSchoolInsights(user.id)
+    getSchoolInsights(user.id, { promotionId })
       .then(setInsights)
       .catch((err) => setError(getFriendlyErrorMessage(err, language)));
-  }, [user.id]);
+  }, [user.id, promotionId]);
 
   if (error) return <p className="field-error">{error}</p>;
   if (!insights) return <p className="muted">…</p>;
@@ -96,8 +99,22 @@ export default function SchoolInsightsPage({ user, language }) {
   return (
     <section className="admin-dashboard">
       <header className="module-header">
-        <h2>{copy.title}</h2>
-        <p>{copy.subtitle}</p>
+        <div>
+          <h2>{copy.title}</h2>
+          <p>{copy.subtitle}</p>
+        </div>
+        {insights.promotions?.length ? (
+          <select
+            className="school-insight-promotion-filter"
+            value={promotionId}
+            onChange={(event) => setPromotionId(event.target.value)}
+          >
+            <option value="">{copy.allPromotions}</option>
+            {insights.promotions.map((promo) => (
+              <option key={promo.id} value={promo.id}>{promo.name}</option>
+            ))}
+          </select>
+        ) : null}
       </header>
 
       <div className="admin-panel school-insight-panel">
@@ -112,9 +129,11 @@ export default function SchoolInsightsPage({ user, language }) {
             {bucketEntries.map(([label, count]) => (
               <div key={label} className="admin-trend-bar-col">
                 <div className="admin-trend-bar-track">
-                  <div className="admin-trend-bar" style={{ height: `${Math.max(4, (count / maxBucket) * 100)}%` }}>
-                    {count > 0 ? <span>{count}</span> : null}
-                  </div>
+                  {count > 0 ? (
+                    <div className="admin-trend-bar" style={{ height: `${Math.max(6, (count / maxBucket) * 100)}%` }}>
+                      <span>{count}</span>
+                    </div>
+                  ) : null}
                 </div>
                 <span className="admin-trend-label">{label}</span>
               </div>
@@ -125,7 +144,7 @@ export default function SchoolInsightsPage({ user, language }) {
         )}
       </div>
 
-      <div className="admin-panel-grid">
+      <div className="admin-panel-grid school-insight-grid">
         <div className="admin-panel school-insight-panel">
           <h3>
             <span className="school-panel-icon">

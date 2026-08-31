@@ -654,6 +654,26 @@ app.delete("/api/account", async (req, res) => {
     }
 
     await logSecurityEvent(req, userId, "account_deleted", { email: user.email });
+
+    if (user.role_type === "school") {
+      // Nettoyage RGPD spécifique École : promotions, invitations, rapports,
+      // notifications et codes de licence émis par cet établissement. Les
+      // comptes étudiants qui ont utilisé ces codes ne sont volontairement PAS
+      // rétrogradés/supprimés ici — cohérent avec le comportement existant de
+      // "Révoquer un code" côté Admin, qui ne touche pas non plus aux abonnés
+      // déjà actifs.
+      const { rows: promoRows } = await db.query("SELECT id FROM school_promotions WHERE school_user_id = $1", [userId]);
+      const promotionIds = promoRows.map((row) => row.id);
+      if (promotionIds.length) {
+        await db.query("DELETE FROM school_promotion_students WHERE promotion_id = ANY($1)", [promotionIds]);
+      }
+      await db.query("DELETE FROM school_promotions WHERE school_user_id = $1", [userId]);
+      await db.query("DELETE FROM school_invitations WHERE school_user_id = $1", [userId]);
+      await db.query("DELETE FROM school_reports WHERE school_user_id = $1", [userId]);
+      await db.query("DELETE FROM school_notifications WHERE school_user_id = $1", [userId]);
+      await db.query("DELETE FROM license_codes WHERE owner_user_id = $1", [userId]);
+    }
+
     await db.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM email_verification_codes WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_email_addresses WHERE user_id = $1", [userId]);

@@ -50,6 +50,11 @@ import SchoolStudentsPage from "./pages/SchoolStudentsPage.jsx";
 import SchoolInvitationsPage from "./pages/SchoolInvitationsPage.jsx";
 import SchoolPromotionsPage from "./pages/SchoolPromotionsPage.jsx";
 import SchoolLicensePage from "./pages/SchoolLicensePage.jsx";
+import SchoolPricingPage from "./pages/SchoolPricingPage.jsx";
+import SchoolBillingPage from "./pages/SchoolBillingPage.jsx";
+import SchoolAnnouncementsPage from "./pages/SchoolAnnouncementsPage.jsx";
+import SchoolComparePage from "./pages/SchoolComparePage.jsx";
+import SchoolEventsPage from "./pages/SchoolEventsPage.jsx";
 import SchoolInsightsPage from "./pages/SchoolInsightsPage.jsx";
 import SchoolReportsPage from "./pages/SchoolReportsPage.jsx";
 import SchoolSettingsPage from "./pages/SchoolSettingsPage.jsx";
@@ -58,8 +63,13 @@ const SCHOOL_MODULE_DEFS = [
   { id: "dashboard", icon: "chart" },
   { id: "students", icon: "profile" },
   { id: "promotions", icon: "network" },
+  { id: "compare", icon: "scale" },
   { id: "invitations", icon: "mail" },
+  { id: "announcements", icon: "mail" },
+  { id: "events", icon: "history" },
   { id: "license", icon: "save" },
+  { id: "billing", icon: "save" },
+  { id: "pricing", icon: "pricetag" },
   { id: "insights", icon: "chart" },
   { id: "reports", icon: "file" },
   { id: "settings", icon: "settings" }
@@ -180,6 +190,11 @@ function SchoolApp({
           promotions: "Promotions",
           invitations: "Invitations",
           license: "My license",
+          pricing: "Pricing",
+          billing: "Billing",
+          announcements: "Announcements",
+          compare: "Compare promotions",
+          events: "Events",
           insights: "Tracking & employability",
           reports: "Reports",
           settings: "Institution settings",
@@ -194,6 +209,11 @@ function SchoolApp({
           promotions: "Promotions",
           invitations: "Invitations",
           license: "Ma licence",
+          pricing: "Tarifs",
+          billing: "Facturation",
+          announcements: "Annonces",
+          compare: "Comparer les promotions",
+          events: "Événements",
           insights: "Suivi & employabilité",
           reports: "Rapports",
           settings: "Paramètres de l'établissement",
@@ -419,13 +439,18 @@ function SchoolApp({
             <span className="active">{copy[tab]}</span>
           </nav>
 
-          {tab === "dashboard" ? <SchoolDashboardPage user={user} language={language} /> : null}
+          {tab === "dashboard" ? <SchoolDashboardPage user={user} language={language} onGoToTab={setTab} /> : null}
           {tab === "students" ? (
             <SchoolStudentsPage user={user} language={language} initialSearch={studentsSearch} />
           ) : null}
           {tab === "promotions" ? <SchoolPromotionsPage user={user} language={language} /> : null}
           {tab === "invitations" ? <SchoolInvitationsPage user={user} language={language} /> : null}
           {tab === "license" ? <SchoolLicensePage user={user} language={language} currency={currency} /> : null}
+          {tab === "pricing" ? <SchoolPricingPage user={user} language={language} currency={currency} /> : null}
+          {tab === "billing" ? <SchoolBillingPage user={user} language={language} currency={currency} /> : null}
+          {tab === "announcements" ? <SchoolAnnouncementsPage user={user} language={language} /> : null}
+          {tab === "compare" ? <SchoolComparePage user={user} language={language} /> : null}
+          {tab === "events" ? <SchoolEventsPage user={user} language={language} /> : null}
           {tab === "insights" ? <SchoolInsightsPage user={user} language={language} /> : null}
           {tab === "reports" ? <SchoolReportsPage user={user} language={language} /> : null}
           {tab === "settings" ? <SchoolSettingsPage user={user} language={language} /> : null}
@@ -485,13 +510,13 @@ function SchoolApp({
   );
 }
 
-export function SchoolExportCsvButton({ userId, language }) {
+export function SchoolExportCsvButton({ userId, language, resource = "students" }) {
   const [loading, setLoading] = useState(false);
   async function handleClick() {
     setLoading(true);
     try {
       const base = await getApiBase();
-      window.open(`${base}/school/students/export?userId=${encodeURIComponent(userId)}`, "_blank");
+      window.open(`${base}/school/${resource}/export?userId=${encodeURIComponent(userId)}`, "_blank");
     } finally {
       setLoading(false);
     }
