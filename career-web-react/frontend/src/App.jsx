@@ -1311,7 +1311,18 @@ export default function App() {
   async function handleSignup(payload) {
     try {
       clearMessages();
-      return await registerUser(payload);
+      const result = await registerUser(payload);
+      // Bascule temporaire côté serveur (AUTH_SKIP_SIGNUP_OTP) : l'inscription
+      // renvoie directement un token au lieu d'un objet "verification" — on
+      // connecte tout de suite, sans passer par l'écran de saisie du code.
+      if (result.token) {
+        setToken(result.token);
+        setSessionLoading(true);
+        await syncSession(result.token);
+        setActivePage("home");
+        rememberLastAuthMethod("password");
+      }
+      return result;
     } catch (error) {
       setAuthError(getFriendlyErrorMessage(error, language));
       throw error;
@@ -3172,6 +3183,9 @@ function AuthScreen({
       setIsSubmitting(true);
       try {
         const result = await onSignup(buildSignupPayload());
+        // Si le serveur a déjà connecté directement (bascule temporaire
+        // AUTH_SKIP_SIGNUP_OTP), pas d'écran de code à afficher.
+        if (result.token) return;
         setVerificationEmail(result.verification?.email || signupForm.email);
         setResendSeconds(result.verification?.resendAfterSeconds || 30);
         setLoginCode(["", "", "", "", "", ""]);

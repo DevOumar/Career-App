@@ -114,6 +114,11 @@ const MAIL_FROM_NAME = String(process.env.MAIL_FROM_NAME || "Career CV").trim();
 const MAIL_FROM = String(process.env.MAIL_FROM || "").trim();
 const MAIL_FROM_ADDRESS = String(process.env.MAIL_FROM_ADDRESS || SMTP_USER).trim();
 const AUTH_EMAIL_TO = String(process.env.AUTH_EMAIL_TO || "").trim();
+// Bascule temporaire (soutenance / démo) : saute l'envoi + la saisie du code
+// OTP à l'inscription, l'inscription connecte directement comme un login. À
+// remettre à "false" (ou retirer la variable) une fois la démo terminée —
+// ne touche PAS à la connexion par mot de passe, déjà sans OTP par défaut.
+const AUTH_SKIP_SIGNUP_OTP = String(process.env.AUTH_SKIP_SIGNUP_OTP || "").trim() === "true";
 const DATABASE_URL = String(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "").trim();
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
 const googleOAuthClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
@@ -5080,6 +5085,7 @@ app.locals.ctx = {
   requireCabinetOwner,
   requireCabinetOwnerRole,
   resolveCabinetRootId,
+  AUTH_SKIP_SIGNUP_OTP,
   getCabinetLicenseCodeRows,
   getCabinetRecruiterRows,
   buildCabinetMetrics,
