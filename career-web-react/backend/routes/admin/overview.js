@@ -197,6 +197,7 @@ export function registerAdminOverviewRoutes(app) {
     getEffectivePlanById,
     requireAdmin,
     requireAdminModule,
+    resolveAccountSegments,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -357,7 +358,21 @@ app.get("/api/admin/overview", async (req, res) => {
     );
     const inactiveAccounts = inactiveRows[0]?.count || 0;
 
+    // Répartition des comptes candidat/étudiant : solo (aucun code de
+    // licence) vs rattaché école vs rattaché cabinet — la vue "usersByRole"
+    // ci-dessus donne déjà le nombre d'écoles/cabinets en tant que comptes,
+    // mais pas combien de LEURS étudiants/candidats ça représente au total.
+    const { rows: candidateRows } = await db.query(
+      "SELECT id, subscription_json FROM users WHERE role_type IN ('candidate', 'student')"
+    );
+    const candidateSegments = await resolveAccountSegments(candidateRows);
+    const candidateSegmentCounts = { solo: 0, school: 0, agency: 0 };
+    for (const segment of Object.values(candidateSegments)) {
+      candidateSegmentCounts[segment] = (candidateSegmentCounts[segment] || 0) + 1;
+    }
+
     return res.json({
+      candidateSegmentCounts,
       usersByRole: Object.fromEntries(roleCounts.map((row) => [row.role_type, row.count])),
       totalCvs: cvCountRows[0]?.count || 0,
       totalMatchRuns: matchCountRows[0]?.count || 0,

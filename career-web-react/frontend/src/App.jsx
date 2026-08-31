@@ -9,6 +9,7 @@ import SalaryNegotiationPage from "./features/negotiation/SalaryNegotiationPage.
 import ApplicationsPage from "./features/applications/ApplicationsPage.jsx";
 import { AdminApp } from "./features/admin/AdminApp.jsx";
 import SchoolApp, { SchoolEmptyState } from "./features/school/SchoolApp.jsx";
+import CabinetApp from "./features/cabinet/CabinetApp.jsx";
 import { ImportPage, AnalysisPage, OffersPage, CvHistoryPage } from "./features/cv/CvPages.jsx";
 import { APPLICATIONS_COPY } from "./features/applications/applicationsCopy.js";
 import { SatisfactionSurveyModal, satisfactionTierFor } from "./features/satisfaction/SatisfactionSurveyModal.jsx";
@@ -2147,6 +2148,45 @@ export default function App() {
   if (user.roleType === "school") {
     return (
       <SchoolApp
+        user={user}
+        language={language}
+        setLanguage={setLanguage}
+        currency={currency}
+        setCurrency={setCurrency}
+        theme={theme}
+        setTheme={setTheme}
+        mode={mode}
+        setMode={setMode}
+        density={density}
+        setDensity={setDensity}
+        onLogout={handleLogout}
+        landingCopy={landingCopy}
+        onSaveAccount={handleAccountSave}
+        onAvatarUpload={handleAvatarUpload}
+        avatarUploading={avatarUploading}
+        onRequestSecondaryEmail={handleSecondaryEmailRequest}
+        onVerifySecondaryEmail={handleSecondaryEmailVerify}
+        onSetPrimaryEmail={handlePrimaryEmail}
+        onRemoveEmail={handleRemoveEmail}
+        onRemoveConnectedAccount={handleRemoveConnectedAccount}
+        onLinkGoogleAccount={handleLinkGoogleAccount}
+        securityForm={securityForm}
+        setSecurityForm={setSecurityForm}
+        securitySaving={securitySaving}
+        onSubmitPassword={submitPasswordChange}
+        onRevokeSession={handleRevokeSession}
+        currentSessionId={session?.currentSessionId}
+        onExportData={handleExportAccountData}
+        onExportSummary={handleExportSummary}
+        onDeleteAccount={handleDeleteAccount}
+        onNavigateLegal={setLegalPage}
+      />
+    );
+  }
+
+  if (user.roleType === "recruiter_firm" || user.roleType === "recruiter_internal") {
+    return (
+      <CabinetApp
         user={user}
         language={language}
         setLanguage={setLanguage}

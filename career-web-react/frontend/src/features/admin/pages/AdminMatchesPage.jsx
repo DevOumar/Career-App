@@ -84,18 +84,19 @@ import { AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminM
 
 export default function AdminMatchesPage({ user, language }) {
   const copy = language === "en"
-    ? { title: "Analyzed jobs", subtitle: "CV/job matching history and market signals from real user analyses.", search: "Search by user, job, company…", avg: "Average score", skills: "Top skills", sectors: "Top sectors", colJob: "Job", colUser: "User", colScore: "Score", colSignals: "Signals", empty: "No analyzed job yet." }
-    : { title: "Offres analysées", subtitle: "Historique des matchings CV/offres et signaux métier issus des vraies analyses.", search: "Rechercher par utilisateur, poste, entreprise…", avg: "Score moyen", skills: "Compétences demandées", sectors: "Secteurs fréquents", colJob: "Offre", colUser: "Utilisateur", colScore: "Score", colSignals: "Signaux", empty: "Aucune offre analysée." };
-  const [data, setData] = useState({ items: [], topSkills: [], topSectors: [], averageScore: null });
+    ? { title: "Analyzed jobs", subtitle: "CV/job matching history and market signals from real user analyses.", search: "Search by user, job, company…", avg: "Average score", skills: "Top skills", sectors: "Top sectors", colJob: "Job", colUser: "User", colAccount: "Account", colScore: "Score", colSignals: "Signals", empty: "No analyzed job yet.", allSegments: "All accounts", segmentSolo: "Solo candidate", segmentSchool: "School-linked", segmentAgency: "Agency-linked" }
+    : { title: "Offres analysées", subtitle: "Historique des matchings CV/offres et signaux métier issus des vraies analyses.", search: "Rechercher par utilisateur, poste, entreprise…", avg: "Score moyen", skills: "Compétences demandées", sectors: "Secteurs fréquents", colJob: "Offre", colUser: "Utilisateur", colAccount: "Compte", colScore: "Score", colSignals: "Signaux", empty: "Aucune offre analysée.", allSegments: "Tous les comptes", segmentSolo: "Candidat solo", segmentSchool: "Rattaché école", segmentAgency: "Rattaché cabinet" };
+  const [data, setData] = useState({ items: [], topSkills: [], topSectors: [], averageScore: null, segmentCounts: {} });
   const [search, setSearch] = useState("");
+  const [segment, setSegment] = useState("");
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     setPage(1);
     setLoading(true);
-    getAdminMatches(user.id, { search }).then(setData).catch((err) => setError(getFriendlyErrorMessage(err, language))).finally(() => setLoading(false));
-  }, [user.id, search, language]);
+    getAdminMatches(user.id, { search, segment }).then(setData).catch((err) => setError(getFriendlyErrorMessage(err, language))).finally(() => setLoading(false));
+  }, [user.id, search, segment, language]);
   const totalPages = Math.max(1, Math.ceil(data.items.length / ADMIN_PAGE_SIZE));
   const pagedItems = data.items.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
   return (
@@ -106,22 +107,31 @@ export default function AdminMatchesPage({ user, language }) {
         <div className="admin-signal-card"><h3>{copy.skills}</h3><div className="admin-chip-cloud">{data.topSkills.map((item) => <span key={item.name}>{item.name}<strong>{item.count}</strong></span>)}</div></div>
         <div className="admin-signal-card"><h3>{copy.sectors}</h3><div className="admin-chip-cloud">{data.topSectors.map((item) => <span key={item.name}>{item.name}<strong>{item.count}</strong></span>)}</div></div>
       </div>
-      <div className="admin-table-toolbar"><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} /></div>
+      <div className="admin-table-toolbar split">
+        <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
+        <select value={segment} onChange={(event) => setSegment(event.target.value)}>
+          <option value="">{copy.allSegments}</option>
+          <option value="solo">{copy.segmentSolo} ({data.segmentCounts?.solo || 0})</option>
+          <option value="school">{copy.segmentSchool} ({data.segmentCounts?.school || 0})</option>
+          <option value="agency">{copy.segmentAgency} ({data.segmentCounts?.agency || 0})</option>
+        </select>
+      </div>
       {error ? <p className="field-error">{error}</p> : null}
       {loading ? <AdminPageLoader language={language} /> : null}
       {!loading ? (
       <div className="admin-table-wrap">
         <table className="admin-table">
-          <thead><tr><th>{copy.colJob}</th><th>{copy.colUser}</th><th>{copy.colScore}</th><th>{copy.colSignals}</th></tr></thead>
+          <thead><tr><th>{copy.colJob}</th><th>{copy.colUser}</th><th>{copy.colAccount}</th><th>{copy.colScore}</th><th>{copy.colSignals}</th></tr></thead>
           <tbody>
             {pagedItems.length ? pagedItems.map((item) => (
               <tr key={item.id}>
                 <td><strong>{item.title || "—"}</strong><span className="muted admin-block-muted">{item.company || "—"} · {item.location || "—"} · {formatDate(item.createdAt)}</span></td>
                 <td><div className="admin-table-name"><AvatarCircle user={{ firstName: item.userFirstName, lastName: item.userLastName, avatarDataUrl: item.userAvatarDataUrl }} /><div><strong>{item.userFirstName} {item.userLastName}</strong><span className="muted">{item.userEmail}</span></div></div></td>
+                <td><span className={`tag ${item.accountSegment === "school" ? "tag-success" : item.accountSegment === "agency" ? "tag-warning" : ""}`}>{item.accountSegment === "school" ? copy.segmentSchool : item.accountSegment === "agency" ? copy.segmentAgency : copy.segmentSolo}</span></td>
                 <td><span className={`tag ${Number(item.score) >= 75 ? "tag-success" : Number(item.score) < 50 ? "tag-danger" : ""}`}>{item.score == null ? "—" : `${item.score}/100`}</span></td>
                 <td><div className="admin-chip-cloud compact">{[...item.technicalSkills.slice(0, 4), ...item.missingKeywords.slice(0, 3)].map((skill) => <span key={skill}>{skill}</span>)}</div></td>
               </tr>
-            )) : <tr><td colSpan={4} className="admin-table-empty muted">{copy.empty}</td></tr>}
+            )) : <tr><td colSpan={5} className="admin-table-empty muted">{copy.empty}</td></tr>}
           </tbody>
         </table>
       </div>

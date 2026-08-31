@@ -34,6 +34,7 @@ import { registerBillingRoutes } from "./routes/billing.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerSatisfactionRoutes } from "./routes/satisfaction.js";
 import { registerSchoolRoutes } from "./routes/school.js";
+import { registerCabinetRoutes } from "./routes/cabinet.js";
 import { registerTokensRoutes } from "./routes/tokens.js";
 import { registerEmailFinderRoutes } from "./routes/emailFinder.js";
 import { registerCvRoutes } from "./routes/cv.js";
@@ -736,6 +737,76 @@ await db.exec(`
   CREATE TABLE IF NOT EXISTS school_digest_log (
     school_user_id TEXT PRIMARY KEY,
     last_sent_at TEXT NOT NULL
+  );
+
+  -- Espace Cabinet (cabinet_* — mêmes principes que school_*, adaptés au
+  -- métier recrutement : les "membres" sont des recruteurs de l'équipe
+  -- (invités comme les étudiants d'une école), mais les candidats évalués
+  -- (cabinet_candidates) sont un vivier propre au cabinet, PAS des comptes
+  -- Career CV — un recruteur y importe/saisit des profils externes.
+  CREATE TABLE IF NOT EXISTS cabinet_invitations (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    license_code TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    redeemed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS cabinet_candidates (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    first_name TEXT NOT NULL DEFAULT '',
+    last_name TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    phone TEXT NOT NULL DEFAULT '',
+    headline TEXT NOT NULL DEFAULT '',
+    skills_json TEXT NOT NULL DEFAULT '[]',
+    notes TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'sourced',
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS cabinet_missions (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    client_name TEXT NOT NULL DEFAULT '',
+    location TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS cabinet_mission_candidates (
+    mission_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    stage TEXT NOT NULL DEFAULT 'sourced',
+    score INTEGER,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (mission_id, candidate_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS cabinet_announcements (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    recipient_count INTEGER NOT NULL DEFAULT 0,
+    failed_count INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS cabinet_reports (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    mission_id TEXT,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
   );
 
   CREATE TABLE IF NOT EXISTS school_notifications (
@@ -4036,6 +4107,16 @@ async function requireSchoolOwner(userId) {
   return school;
 }
 
+async function requireCabinetOwner(userId) {
+  const cabinet = await getUserRowById(userId);
+  if (!cabinet || !RECRUITER_TYPES.has(cabinet.role_type)) {
+    const error = new Error("Accès cabinet requis.");
+    error.statusCode = 403;
+    throw error;
+  }
+  return cabinet;
+}
+
 async function getSchoolLicenseCodeRows(schoolUserId) {
   const { rows } = await db.query("SELECT * FROM license_codes WHERE owner_user_id = $1 ORDER BY created_at DESC", [
     schoolUserId
@@ -4054,6 +4135,100 @@ async function getSchoolStudentRows(schoolUserId) {
     const subscription = parseJsonField(row.subscription_json, {});
     return subscription.licenseCode && codeSet.has(subscription.licenseCode);
   });
+}
+
+async function getCabinetLicenseCodeRows(cabinetUserId) {
+  const { rows } = await db.query("SELECT * FROM license_codes WHERE owner_user_id = $1 ORDER BY created_at DESC", [
+    cabinetUserId
+  ]);
+  return rows;
+}
+
+async function getCabinetRecruiterRows(cabinetUserId) {
+  const codeRows = await getCabinetLicenseCodeRows(cabinetUserId);
+  const codeSet = new Set(codeRows.map((row) => row.code));
+  if (!codeSet.size) return [];
+  const { rows: allUsers } = await db.query(
+    "SELECT id, first_name, last_name, email, avatar_data_url, created_at, subscription_json FROM users WHERE role_type = 'recruiter_internal' OR role_type = 'recruiter_firm'"
+  );
+  return allUsers.filter((row) => {
+    if (row.id === cabinetUserId) return false;
+    const subscription = parseJsonField(row.subscription_json, {});
+    return subscription.licenseCode && codeSet.has(subscription.licenseCode);
+  });
+}
+
+async function buildCabinetMetrics(cabinetUserId) {
+  const recruiters = await getCabinetRecruiterRows(cabinetUserId);
+  const codeRows = await getCabinetLicenseCodeRows(cabinetUserId);
+  const seatsTotal = codeRows.reduce((sum, row) => sum + Number(row.seats_total || 0), 0);
+  const seatsUsed = codeRows.reduce((sum, row) => sum + Number(row.seats_used || 0), 0);
+  const { rows: candidateRows } = await db.query(
+    "SELECT id, status FROM cabinet_candidates WHERE cabinet_user_id = $1",
+    [cabinetUserId]
+  );
+  const { rows: missionRows } = await db.query(
+    "SELECT id, status FROM cabinet_missions WHERE cabinet_user_id = $1",
+    [cabinetUserId]
+  );
+  const openMissions = missionRows.filter((row) => row.status === "open" || row.status === "in_progress");
+  return {
+    recruiters,
+    codeRows,
+    seatsTotal,
+    seatsUsed,
+    candidateCount: candidateRows.length,
+    missionCount: missionRows.length,
+    openMissionCount: openMissions.length
+  };
+}
+
+function buildCabinetAlerts(metrics, language = "fr") {
+  const alerts = [];
+  const remainingSeats = Math.max(0, Number(metrics.seatsTotal || 0) - Number(metrics.seatsUsed || 0));
+  if (metrics.seatsTotal && remainingSeats <= Math.max(1, Math.ceil(metrics.seatsTotal * 0.1))) {
+    alerts.push({
+      type: "license_capacity",
+      title: language === "en" ? "License capacity is almost full" : "Licence presque saturée",
+      body: language === "en" ? `${remainingSeats} seat(s) remaining.` : `${remainingSeats} siège(s) restant(s).`
+    });
+  }
+  if (metrics.openMissionCount === 0 && metrics.missionCount > 0) {
+    alerts.push({
+      type: "no_open_mission",
+      title: language === "en" ? "No open mission" : "Aucune mission ouverte",
+      body: language === "en" ? "All missions are closed." : "Toutes les missions sont clôturées."
+    });
+  }
+  return alerts;
+}
+
+// Résout, pour un lot d'utilisateurs (avec leur subscription_json déjà
+// chargé), le segment de compte : "solo" (aucun code de licence), "school"
+// (code émis par un établissement) ou "agency" (code émis par un
+// cabinet/recruteur/entreprise). Centralisé ici pour rester identique entre
+// CV importés, Offres analysées, et toute future vue Admin qui en aurait
+// besoin — un code de licence peut être émis par une école OU un cabinet,
+// donc la présence seule ne suffit pas, il faut le role_type du propriétaire.
+async function resolveAccountSegments(usersWithSubscription) {
+  const licenseCodes = [
+    ...new Set(usersWithSubscription.map((row) => parseJsonField(row.subscription_json, {})?.licenseCode).filter(Boolean))
+  ];
+  const { rows: codeOwnerRows } = licenseCodes.length
+    ? await db.query(
+        `SELECT lc.code, u.role_type FROM license_codes lc JOIN users u ON u.id = lc.owner_user_id WHERE lc.code = ANY($1)`,
+        [licenseCodes]
+      )
+    : { rows: [] };
+  const segmentByCode = Object.fromEntries(
+    codeOwnerRows.map((row) => [row.code, row.role_type === "school" ? "school" : "agency"])
+  );
+  const segmentByUserId = {};
+  for (const row of usersWithSubscription) {
+    const licenseCode = parseJsonField(row.subscription_json, {})?.licenseCode;
+    segmentByUserId[row.id] = licenseCode && segmentByCode[licenseCode] ? segmentByCode[licenseCode] : "solo";
+  }
+  return segmentByUserId;
 }
 
 async function getSchoolOrgProfile(userId) {
@@ -4673,6 +4848,7 @@ app.locals.ctx = {
   getEffectivePlanById,
   requireAdmin,
   requireAdminModule,
+  resolveAccountSegments,
   PLATFORM_SETTING_DEFAULTS,
   platformSettingsCache,
   loadPlatformSettings,
@@ -4712,6 +4888,11 @@ app.locals.ctx = {
   requireSchoolOwner,
   getSchoolLicenseCodeRows,
   getSchoolStudentRows,
+  requireCabinetOwner,
+  getCabinetLicenseCodeRows,
+  getCabinetRecruiterRows,
+  buildCabinetMetrics,
+  buildCabinetAlerts,
   getSchoolOrgProfile,
   buildSchoolMetrics,
   buildSchoolAlerts,
@@ -4731,6 +4912,7 @@ registerBillingRoutes(app);
 registerAdminRoutes(app);
 registerSatisfactionRoutes(app);
 registerSchoolRoutes(app);
+registerCabinetRoutes(app);
 registerTokensRoutes(app);
 registerEmailFinderRoutes(app);
 registerCvRoutes(app);

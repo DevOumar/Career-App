@@ -84,8 +84,52 @@ import { AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminM
 
 export default function AdminAiMonitoringPage({ user, language }) {
   const copy = language === "en"
-    ? { title: "AI monitoring", subtitle: "Operational view of extraction and matching reliability.", success: "Successful extractions", failed: "Needs review", partial: "Partial", runs: "Match analyses", cost: "Estimated cost", avg: "Average score", invalid: "Invalid responses / weak extractions" }
-    : { title: "Monitoring IA", subtitle: "Vue opérationnelle de la fiabilité extraction et matching.", success: "Extractions réussies", failed: "À revoir", partial: "Partielles", runs: "Analyses matching", cost: "Coût estimé", avg: "Score moyen", invalid: "Réponses invalides / extractions faibles" };
+    ? {
+        title: "AI monitoring",
+        subtitle: "Operational view of extraction and matching reliability.",
+        success: "Successful extractions",
+        failed: "Needs review",
+        partial: "Partial",
+        runs: "Match analyses",
+        cost: "Estimated cost",
+        avg: "Average score",
+        invalid: "Invalid responses / weak extractions",
+        costVsRevenue: "AI cost vs revenue",
+        costByModule: "Estimated cost by module",
+        totalRevenue: "Total revenue collected",
+        totalCost: "Total estimated AI cost",
+        margin: "Estimated margin",
+        marginRate: "Margin rate",
+        moduleCv: "CV extraction",
+        moduleMatching: "Job matching",
+        moduleCoverLetter: "Cover letters",
+        moduleNegotiation: "Salary negotiation",
+        moduleInterview: "Interview simulator",
+        moduleEmailScout: "Email Scout"
+      }
+    : {
+        title: "Monitoring IA",
+        subtitle: "Vue opérationnelle de la fiabilité extraction et matching.",
+        success: "Extractions réussies",
+        failed: "À revoir",
+        partial: "Partielles",
+        runs: "Analyses matching",
+        cost: "Coût estimé",
+        avg: "Score moyen",
+        invalid: "Réponses invalides / extractions faibles",
+        costVsRevenue: "Coût IA vs revenu",
+        costByModule: "Coût estimé par module",
+        totalRevenue: "Revenu total encaissé",
+        totalCost: "Coût IA total estimé",
+        margin: "Marge estimée",
+        marginRate: "Taux de marge",
+        moduleCv: "Extraction CV",
+        moduleMatching: "Matching offres",
+        moduleCoverLetter: "Lettres de motivation",
+        moduleNegotiation: "Négociation salariale",
+        moduleInterview: "Simulateur d'entretiens",
+        moduleEmailScout: "Email Scout"
+      };
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
   useEffect(() => {
@@ -104,6 +148,39 @@ export default function AdminAiMonitoringPage({ user, language }) {
         <AdminMiniMetric icon="scale" label={copy.cost} value={`${data.estimatedCost.amount} ${data.estimatedCost.currency}`} />
         <AdminMiniMetric icon="matchmark" label={copy.avg} value={data.averageMatchScore == null ? "—" : `${data.averageMatchScore}/100`} />
       </div>
+      <div className="admin-panel-grid">
+        <div className="admin-panel">
+          <h3>{copy.costVsRevenue}</h3>
+          <ul className="admin-stat-list">
+            <li>
+              <span>{copy.totalRevenue}</span>
+              <strong>{data.totalRevenueCollected?.toFixed(2)} €</strong>
+            </li>
+            <li>
+              <span>{copy.totalCost}</span>
+              <strong>{data.estimatedCost.amount} €</strong>
+            </li>
+            <li>
+              <span>{copy.margin}</span>
+              <strong style={{ color: data.estimatedMargin >= 0 ? "var(--success, #1a7f37)" : "#a8071a" }}>
+                {data.estimatedMargin?.toFixed(2)} €{data.marginRate != null ? ` (${Math.round(data.marginRate * 100)}%)` : ""}
+              </strong>
+            </li>
+          </ul>
+        </div>
+        <div className="admin-panel">
+          <h3>{copy.costByModule}</h3>
+          <ul className="admin-stat-list">
+            <li><span>{copy.moduleCv}</span><strong>{data.costByModule?.cv} €</strong></li>
+            <li><span>{copy.moduleMatching}</span><strong>{data.costByModule?.matching} €</strong></li>
+            <li><span>{copy.moduleCoverLetter}</span><strong>{data.costByModule?.coverLetter} €</strong></li>
+            <li><span>{copy.moduleNegotiation}</span><strong>{data.costByModule?.negotiation} €</strong></li>
+            <li><span>{copy.moduleInterview}</span><strong>{data.costByModule?.interview} €</strong></li>
+            <li><span>{copy.moduleEmailScout}</span><strong>{data.costByModule?.emailScout} €</strong></li>
+          </ul>
+        </div>
+      </div>
+
       <div className="admin-signal-card">
         <h3>{copy.invalid}</h3>
         <div className="admin-quality-feed">

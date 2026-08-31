@@ -310,9 +310,35 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
     const { rows: eventRows } = await db.query(
       `SELECT event_type, COUNT(*)::int AS count
        FROM account_security_events
-       WHERE event_type IN ('cv_upload', 'match_analysis', 'admin_announcement_sent')
+       WHERE event_type IN ('cv_upload', 'match_analysis', 'admin_announcement_sent', 'email_finder_search')
        GROUP BY event_type`
     );
+
+    // Estimation de coût élargie à TOUS les modules IA (pas seulement CV +
+    // matching) : lettres de motivation (1 appel/lettre), négociation et
+    // entretien (1 appel par message échangé, compté dans payload_json —
+    // une conversation à 6 échanges coûte 6 appels, pas 1), Email Scout.
+    const { rows: coverLetterRows } = await db.query("SELECT COUNT(*)::int AS count FROM cover_letters");
+    const { rows: negotiationRows } = await db.query("SELECT payload_json FROM negotiation_conversations");
+    const { rows: interviewRows } = await db.query("SELECT payload_json FROM interview_conversations");
+    function countMessages(rows) {
+      let total = 0;
+      for (const row of rows) {
+        const payload = parseJsonField(row.payload_json, {});
+        const messages = Array.isArray(payload.messages) ? payload.messages : Array.isArray(payload) ? payload : [];
+        total += messages.length || 1;
+      }
+      return total;
+    }
+    const coverLetterCount = coverLetterRows[0]?.count || 0;
+    const negotiationCallCount = countMessages(negotiationRows);
+    const interviewCallCount = countMessages(interviewRows);
+    const emailScoutCount = (eventRows.find((row) => row.event_type === "email_finder_search")?.count) || 0;
+
+    const { rows: revenueRows } = await db.query(
+      "SELECT COALESCE(SUM(amount_collected), 0) AS total FROM transactions"
+    );
+    const totalRevenueCollected = Number(revenueRows[0]?.total || 0);
 
     const cvStatuses = cvRows.map((row) => getCvExtractionStatus(parseJsonField(row.parsed_json, {})));
     const successfulExtractions = cvStatuses.filter((item) => item.status === "extracted").length;
@@ -330,6 +356,23 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
     }
 
     const eventCounts = Object.fromEntries(eventRows.map((row) => [row.event_type, row.count]));
+
+    // Même tarif indicatif par appel que l'estimation existante (0,002€/appel
+    // — ordre de grandeur pour un modèle Groq/gpt-oss-120b), appliqué
+    // désormais à tous les modules IA, pas seulement CV+matching.
+    const COST_PER_CALL = 0.002;
+    const costByModule = {
+      cv: Math.round(cvRows.length * COST_PER_CALL * 1000) / 1000,
+      matching: Math.round(matchRows.length * COST_PER_CALL * 1000) / 1000,
+      coverLetter: Math.round(coverLetterCount * COST_PER_CALL * 1000) / 1000,
+      negotiation: Math.round(negotiationCallCount * COST_PER_CALL * 1000) / 1000,
+      interview: Math.round(interviewCallCount * COST_PER_CALL * 1000) / 1000,
+      emailScout: Math.round(emailScoutCount * COST_PER_CALL * 1000) / 1000
+    };
+    const totalEstimatedCost = Math.round(Object.values(costByModule).reduce((sum, value) => sum + value, 0) * 1000) / 1000;
+    const estimatedMargin = Math.round((totalRevenueCollected - totalEstimatedCost) * 100) / 100;
+    const marginRate = totalRevenueCollected > 0 ? estimatedMargin / totalRevenueCollected : null;
+
     return res.json({
       successfulExtractions,
       partialExtractions,
@@ -339,9 +382,13 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
       providerCounts,
       estimatedCost: {
         currency: "EUR",
-        amount: Number(((cvRows.length + matchRows.length) * 0.002).toFixed(3)),
-        note: "Estimation indicative basée sur le nombre d'appels IA enregistrés."
+        amount: totalEstimatedCost,
+        note: "Estimation indicative — nombre d'appels IA enregistrés × coût moyen par appel, tous modules confondus (CV, matching, lettre, négociation, entretien, Email Scout)."
       },
+      costByModule,
+      totalRevenueCollected,
+      estimatedMargin,
+      marginRate,
       averageAnalysisTimeSeconds: null,
       apiErrors: failedExtractions,
       eventCounts,

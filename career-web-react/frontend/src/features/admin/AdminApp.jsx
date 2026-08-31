@@ -968,7 +968,19 @@ export const ADMIN_EVENT_LABELS = {
   admin_cv_deleted: { fr: "CV supprimé par l'admin", en: "CV deleted by admin" },
   admin_license_code_revoked: { fr: "Code de licence révoqué", en: "License code revoked" },
   admin_license_code_restored: { fr: "Code de licence restauré", en: "License code restored" },
-  admin_setting_changed: { fr: "Paramètre plateforme modifié", en: "Platform setting changed" }
+  admin_setting_changed: { fr: "Paramètre plateforme modifié", en: "Platform setting changed" },
+  admin_transaction_refunded: { fr: "Transaction remboursée par l'admin", en: "Transaction refunded by admin" },
+  admin_plan_price_changed: { fr: "Prix d'un plan modifié", en: "Plan price changed" },
+  admin_plan_price_reset: { fr: "Prix d'un plan réinitialisé", en: "Plan price reset" },
+  admin_announcement_sent: { fr: "Annonce plateforme envoyée", en: "Platform announcement sent" },
+  school_promotion_created: { fr: "Promotion créée (école)", en: "Promotion created (school)" },
+  school_promotion_deleted: { fr: "Promotion supprimée (école)", en: "Promotion deleted (school)" },
+  school_invitation_sent: { fr: "Invitation étudiant envoyée", en: "Student invitation sent" },
+  school_invitation_bulk_sent: { fr: "Invitations en masse envoyées", en: "Bulk invitations sent" },
+  school_announcement_sent: { fr: "Annonce école envoyée", en: "School announcement sent" },
+  school_event_created: { fr: "Événement école créé", en: "School event created" },
+  school_event_deleted: { fr: "Événement école supprimé", en: "School event deleted" },
+  school_report_generated: { fr: "Rapport école généré", en: "School report generated" }
 };
 
 export function eventTypeLabel(eventType, language) {

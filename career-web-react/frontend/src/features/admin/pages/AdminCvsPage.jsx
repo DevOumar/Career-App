@@ -93,8 +93,13 @@ export default function AdminCvsPage({ user, language }) {
           extracted: "Extracted",
           partial: "Partial",
           needsReview: "Needs review",
+          allSegments: "All accounts",
+          segmentSolo: "Solo candidate",
+          segmentSchool: "School-linked student",
+          segmentAgency: "Agency-linked",
           colCv: "CV",
           colUser: "User",
+          colAccount: "Account",
           colStatus: "Status",
           colData: "Extracted data",
           colActions: "Actions",
@@ -110,8 +115,13 @@ export default function AdminCvsPage({ user, language }) {
           extracted: "Extrait",
           partial: "Partiel",
           needsReview: "À revoir",
+          allSegments: "Tous les comptes",
+          segmentSolo: "Candidat solo",
+          segmentSchool: "Étudiant rattaché à une école",
+          segmentAgency: "Rattaché à un cabinet",
           colCv: "CV",
           colUser: "Utilisateur",
+          colAccount: "Compte",
           colStatus: "Statut",
           colData: "Données extraites",
           colActions: "Actions",
@@ -119,9 +129,10 @@ export default function AdminCvsPage({ user, language }) {
           delete: "Supprimer",
           empty: "Aucun CV trouvé."
         };
-  const [data, setData] = useState({ items: [], statusCounts: {} });
+  const [data, setData] = useState({ items: [], statusCounts: {}, segmentCounts: {} });
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("");
+  const [segment, setSegment] = useState("");
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
@@ -129,7 +140,7 @@ export default function AdminCvsPage({ user, language }) {
 
   function reload() {
     setLoading(true);
-    getAdminCvs(user.id, { search, status })
+    getAdminCvs(user.id, { search, status, segment })
       .then(setData)
       .catch((err) => setError(getFriendlyErrorMessage(err, language)))
       .finally(() => setLoading(false));
@@ -139,7 +150,7 @@ export default function AdminCvsPage({ user, language }) {
     setPage(1);
     reload();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [search, status]);
+  }, [search, status, segment]);
 
   async function handleReanalyze(item) {
     setBusyId(item.id);
@@ -190,13 +201,19 @@ export default function AdminCvsPage({ user, language }) {
         <AdminMiniMetric icon="alert" label={copy.partial} value={data.statusCounts?.partial || 0} tone="warning" />
         <AdminMiniMetric icon="shield" label={copy.needsReview} value={data.statusCounts?.needs_review || 0} tone="danger" />
       </div>
-      <div className="admin-table-toolbar split">
+      <div className="admin-table-toolbar split triple">
         <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
         <select value={status} onChange={(event) => setStatus(event.target.value)}>
           <option value="">{copy.all}</option>
           <option value="extracted">{copy.extracted}</option>
           <option value="partial">{copy.partial}</option>
           <option value="needs_review">{copy.needsReview}</option>
+        </select>
+        <select value={segment} onChange={(event) => setSegment(event.target.value)}>
+          <option value="">{copy.allSegments}</option>
+          <option value="solo">{copy.segmentSolo} ({data.segmentCounts?.solo || 0})</option>
+          <option value="school">{copy.segmentSchool} ({data.segmentCounts?.school || 0})</option>
+          <option value="agency">{copy.segmentAgency} ({data.segmentCounts?.agency || 0})</option>
         </select>
       </div>
       {error ? <p className="field-error">{error}</p> : null}
@@ -208,6 +225,7 @@ export default function AdminCvsPage({ user, language }) {
             <tr>
               <th>{copy.colCv}</th>
               <th>{copy.colUser}</th>
+              <th>{copy.colAccount}</th>
               <th>{copy.colStatus}</th>
               <th>{copy.colData}</th>
               <th>{copy.colActions}</th>
@@ -229,6 +247,11 @@ export default function AdminCvsPage({ user, language }) {
                     </div>
                   </div>
                 </td>
+                <td>
+                  <span className={`tag ${item.accountSegment === "school" ? "tag-success" : item.accountSegment === "agency" ? "tag-warning" : ""}`}>
+                    {item.accountSegment === "school" ? copy.segmentSchool : item.accountSegment === "agency" ? copy.segmentAgency : copy.segmentSolo}
+                  </span>
+                </td>
                 <td><span className={`tag ${item.status === "extracted" ? "tag-success" : item.status === "needs_review" ? "tag-danger" : ""}`}>{statusCopy[item.status] || item.status}</span></td>
                 <td>
                   <div className="admin-extract-preview">
@@ -249,7 +272,7 @@ export default function AdminCvsPage({ user, language }) {
                 </td>
               </tr>
             )) : (
-              <tr><td colSpan={5} className="admin-table-empty muted">{copy.empty}</td></tr>
+              <tr><td colSpan={6} className="admin-table-empty muted">{copy.empty}</td></tr>
             )}
           </tbody>
         </table>

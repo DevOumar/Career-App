@@ -197,6 +197,7 @@ export function registerAdminCvsAndMatchingRoutes(app) {
     getEffectivePlanById,
     requireAdmin,
     requireAdminModule,
+    resolveAccountSegments,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -254,12 +255,19 @@ app.get("/api/admin/cvs", async (req, res) => {
 
     const search = coerceString(req.query?.search).toLowerCase();
     const statusFilter = coerceString(req.query?.status);
+    // "solo" (candidat/étudiant sans code de licence) / "school" (rattaché à
+    // une licence émise par un établissement) / "agency" (rattaché à une
+    // licence émise par un cabinet/recruteur/entreprise).
+    const segmentFilter = coerceString(req.query?.segment);
     const cvRows = await getAdminCvRows();
     const userIds = [...new Set(cvRows.map((row) => row.user_id))];
     const { rows: userRows } = userIds.length
-      ? await db.query("SELECT id, first_name, last_name, email, role_type, avatar_data_url FROM users WHERE id = ANY($1)", [userIds])
+      ? await db.query("SELECT id, first_name, last_name, email, role_type, avatar_data_url, subscription_json FROM users WHERE id = ANY($1)", [
+          userIds
+        ])
       : { rows: [] };
     const userById = Object.fromEntries(userRows.map((row) => [row.id, row]));
+    const segmentByUserId = await resolveAccountSegments(userRows);
 
     const items = cvRows
       .map((row) => {
@@ -274,6 +282,7 @@ app.get("/api/admin/cvs", async (req, res) => {
           userEmail: owner?.email || "",
           userRoleType: owner?.role_type || "",
           userAvatarDataUrl: owner?.avatar_data_url || "",
+          accountSegment: segmentByUserId[row.user_id] || "solo",
           createdAt: row.created_at,
           fileName: row.file_name,
           characterCount: String(row.source_text || "").length,
@@ -284,6 +293,7 @@ app.get("/api/admin/cvs", async (req, res) => {
       })
       .filter((item) => {
         if (statusFilter && item.status !== statusFilter) return false;
+        if (segmentFilter && item.accountSegment !== segmentFilter) return false;
         if (!search) return true;
         const haystack = `${item.fileName} ${item.userFirstName} ${item.userLastName} ${item.userEmail} ${item.preview.headline} ${item.preview.skills.join(" ")}`.toLowerCase();
         return haystack.includes(search);
@@ -293,7 +303,11 @@ app.get("/api/admin/cvs", async (req, res) => {
       acc[item.status] = (acc[item.status] || 0) + 1;
       return acc;
     }, {});
-    return res.json({ items, statusCounts });
+    const segmentCounts = items.reduce((acc, item) => {
+      acc[item.accountSegment] = (acc[item.accountSegment] || 0) + 1;
+      return acc;
+    }, {});
+    return res.json({ items, statusCounts, segmentCounts });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
@@ -336,12 +350,14 @@ app.get("/api/admin/matches", async (req, res) => {
     if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdminModule(adminUserId, "adminMatches");
     const search = coerceString(req.query?.search).toLowerCase();
+    const segmentFilter = coerceString(req.query?.segment);
     const { rows: runRows } = await db.query("SELECT id, user_id, created_at, payload_json FROM match_runs ORDER BY created_at DESC LIMIT 500");
     const userIds = [...new Set(runRows.map((row) => row.user_id))];
     const { rows: userRows } = userIds.length
-      ? await db.query("SELECT id, first_name, last_name, email, avatar_data_url FROM users WHERE id = ANY($1)", [userIds])
+      ? await db.query("SELECT id, first_name, last_name, email, avatar_data_url, subscription_json FROM users WHERE id = ANY($1)", [userIds])
       : { rows: [] };
     const userById = Object.fromEntries(userRows.map((row) => [row.id, row]));
+    const segmentByUserId = await resolveAccountSegments(userRows);
     const skillCounts = {};
     const sectorCounts = {};
     const scores = [];
@@ -362,10 +378,12 @@ app.get("/api/admin/matches", async (req, res) => {
         userLastName: owner?.last_name || "",
         userEmail: owner?.email || "",
         userAvatarDataUrl: owner?.avatar_data_url || "",
+        accountSegment: segmentByUserId[row.user_id] || "solo",
         createdAt: row.created_at,
         ...summary
       };
     }).filter((item) => {
+      if (segmentFilter && item.accountSegment !== segmentFilter) return false;
       if (!search) return true;
       const haystack = `${item.userFirstName} ${item.userLastName} ${item.userEmail} ${item.title} ${item.company} ${item.sector}`.toLowerCase();
       return haystack.includes(search);
@@ -373,11 +391,16 @@ app.get("/api/admin/matches", async (req, res) => {
 
     const topSkills = Object.entries(skillCounts).sort((a, b) => b[1] - a[1]).slice(0, 12).map(([name, count]) => ({ name, count }));
     const topSectors = Object.entries(sectorCounts).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([name, count]) => ({ name, count }));
+    const segmentCounts = items.reduce((acc, item) => {
+      acc[item.accountSegment] = (acc[item.accountSegment] || 0) + 1;
+      return acc;
+    }, {});
     return res.json({
       items,
       averageScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null,
       topSkills,
-      topSectors
+      topSectors,
+      segmentCounts
     });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });

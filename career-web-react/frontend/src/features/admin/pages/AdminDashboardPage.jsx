@@ -111,6 +111,10 @@ export default function AdminDashboardPage({ user, language }) {
           pendingInvitations: "Pending school invitations",
           emailScoutSearches: "Email Scout searches",
           inactiveAccounts: "Inactive accounts (30d+)",
+          segmentBreakdown: "Candidates by origin",
+          segmentSolo: "Solo candidates",
+          segmentSchool: "School-linked",
+          segmentAgency: "Agency-linked",
           latestUsers: "Last 10 signups",
           colUser: "User",
           colRole: "Role",
@@ -142,6 +146,10 @@ export default function AdminDashboardPage({ user, language }) {
           pendingInvitations: "Invitations école en attente",
           emailScoutSearches: "Recherches Email Scout",
           inactiveAccounts: "Comptes inactifs (30j+)",
+          segmentBreakdown: "Candidats par origine",
+          segmentSolo: "Candidats solo",
+          segmentSchool: "Rattachés à une école",
+          segmentAgency: "Rattachés à un cabinet",
           latestUsers: "10 dernières inscriptions",
           colUser: "Utilisateur",
           colRole: "Rôle",
@@ -263,6 +271,15 @@ export default function AdminDashboardPage({ user, language }) {
         <div className="admin-panel admin-trend-panel">
           <h3>{copy.planDistribution}</h3>
           <AdminDonutChart segments={planSegments} emptyLabel={copy.noPlanData} />
+        </div>
+
+        <div className="admin-panel admin-trend-panel">
+          <h3>{copy.segmentBreakdown}</h3>
+          <div className="admin-module-metrics">
+            <AdminMiniMetric icon="profile" label={copy.segmentSolo} value={overview.candidateSegmentCounts?.solo || 0} tone="primary" />
+            <AdminMiniMetric icon="network" label={copy.segmentSchool} value={overview.candidateSegmentCounts?.school || 0} tone="success" />
+            <AdminMiniMetric icon="briefcase" label={copy.segmentAgency} value={overview.candidateSegmentCounts?.agency || 0} tone="warning" />
+          </div>
         </div>
       </div>
 
