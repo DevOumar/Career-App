@@ -256,7 +256,12 @@ app.get("/api/cabinet/profile", async (req, res) => {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
     const cabinet = await requireCabinetOwner(userId);
-    const { rows } = await db.query("SELECT * FROM user_org_profiles WHERE user_id = $1", [userId]);
+    // Un compte recruiter_firm/recruiter_internal stocke son profil dans
+    // user_recruiter_profiles (rempli dès l'inscription/la création par un
+    // admin via upsertRecruiterProfile), PAS dans user_org_profiles qui est
+    // réservée aux comptes school — lire la mauvaise table faisait
+    // disparaître le nom de cabinet saisi à l'inscription.
+    const { rows } = await db.query("SELECT * FROM user_recruiter_profiles WHERE user_id = $1", [userId]);
     const row = rows[0] || {};
     return res.json({
       admin: {
@@ -289,7 +294,7 @@ app.put("/api/cabinet/profile", async (req, res) => {
     await requireCabinetOwner(userId);
     const profile = req.body?.profile || {};
     await db.query(
-      `INSERT INTO user_org_profiles (user_id, organization_name, website, address, city, country, contact_email, contact_phone, primary_contact_name, updated_at)
+      `INSERT INTO user_recruiter_profiles (user_id, organization_name, website, address, city, country, contact_email, contact_phone, primary_contact_name, updated_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (user_id) DO UPDATE SET
          organization_name=EXCLUDED.organization_name,

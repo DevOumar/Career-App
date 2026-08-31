@@ -926,6 +926,12 @@ await db.exec(`
   ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS cv_file_name TEXT NOT NULL DEFAULT '';
   ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS source_text TEXT NOT NULL DEFAULT '';
   ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS parsed_json TEXT NOT NULL DEFAULT '{}';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS city TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS contact_email TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS contact_phone TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS primary_contact_name TEXT NOT NULL DEFAULT '';
 `);
 
 // Sessions déjà expirées avant l'ajout de la colonne expires_at (créées
