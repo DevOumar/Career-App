@@ -221,6 +221,7 @@ export function AccountDrawer({
           connectedRemoveTitle: "Google sign-in",
           connectedRemoveText: "This unlinks your Google account. You won't be able to sign in with it anymore, but password and email-code login remain available.",
           schoolSection: "School",
+          cabinetSection: "Recruitment firm",
           schoolType: "Type",
           schoolWebsite: "Website",
           schoolLocation: "Location",
@@ -288,6 +289,7 @@ export function AccountDrawer({
           connectedRemoveTitle: "Connexion Google",
           connectedRemoveText: "Cela délie votre compte Google. Vous ne pourrez plus l'utiliser pour vous connecter, mais la connexion par mot de passe et code e-mail reste disponible.",
           schoolSection: "École",
+          cabinetSection: "Cabinet de recrutement",
           schoolType: "Type",
           schoolWebsite: "Site web",
           schoolLocation: "Localisation",
@@ -601,7 +603,7 @@ export function AccountDrawer({
 
                 {user.schoolLicense && !user.schoolLicense.revoked && user.schoolLicense.organizationName ? (
                   <div className="account-row account-row-school">
-                    <span>{copy.schoolSection}</span>
+                    <span>{user.roleType === "recruiter_internal" || user.roleType === "recruiter_firm" ? copy.cabinetSection : copy.schoolSection}</span>
                     <div className="account-school-card">
                       <div className="account-school-head">
                         {user.schoolLicense.logoDataUrl ? (

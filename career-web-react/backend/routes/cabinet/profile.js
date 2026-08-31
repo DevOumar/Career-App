@@ -279,7 +279,8 @@ app.get("/api/cabinet/profile", async (req, res) => {
         country: row.country || "",
         contactEmail: row.contact_email || "",
         contactPhone: row.contact_phone || "",
-        primaryContactName: row.primary_contact_name || ""
+        primaryContactName: row.primary_contact_name || "",
+        logoDataUrl: row.logo_data_url || ""
       }
     });
   } catch (error) {
@@ -294,8 +295,8 @@ app.put("/api/cabinet/profile", async (req, res) => {
     await requireCabinetOwner(userId);
     const profile = req.body?.profile || {};
     await db.query(
-      `INSERT INTO user_recruiter_profiles (user_id, organization_name, website, address, city, country, contact_email, contact_phone, primary_contact_name, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO user_recruiter_profiles (user_id, organization_name, website, address, city, country, contact_email, contact_phone, primary_contact_name, logo_data_url, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
        ON CONFLICT (user_id) DO UPDATE SET
          organization_name=EXCLUDED.organization_name,
          website=EXCLUDED.website,
@@ -305,6 +306,7 @@ app.put("/api/cabinet/profile", async (req, res) => {
          contact_email=EXCLUDED.contact_email,
          contact_phone=EXCLUDED.contact_phone,
          primary_contact_name=EXCLUDED.primary_contact_name,
+         logo_data_url=EXCLUDED.logo_data_url,
          updated_at=EXCLUDED.updated_at`,
       [
         userId,
@@ -316,6 +318,7 @@ app.put("/api/cabinet/profile", async (req, res) => {
         normalizeEmail(profile.contactEmail || ""),
         coerceString(profile.contactPhone),
         coerceString(profile.primaryContactName),
+        normalizeAvatarDataUrl(profile.logoDataUrl || ""),
         nowIso()
       ]
     );

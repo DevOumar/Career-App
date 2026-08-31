@@ -932,6 +932,7 @@ await db.exec(`
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS contact_email TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS contact_phone TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS primary_contact_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS logo_data_url TEXT NOT NULL DEFAULT '';
 `);
 
 // Sessions déjà expirées avant l'ajout de la colonne expires_at (créées
@@ -3533,14 +3534,29 @@ async function getPublicUserById(userId) {
   // si l'école renomme son compte.
   const subscription = parseJsonField(userRow.subscription_json, {});
   if (subscription.licenseCode) {
+    // Le propriétaire d'un code de licence peut être une école
+    // (user_org_profiles) OU un cabinet (user_recruiter_profiles) — deux
+    // tables différentes selon son role_type. On les joint toutes les deux
+    // et on prend celle qui a une ligne (COALESCE), sinon le contact recruteur
+    // "Comptes connectés" d'un compte recruiter_internal restait vide alors
+    // que le cabinet avait bien rempli ses informations dans ses Paramètres.
     const { rows } = await db.query(
       `SELECT lc.plan_id, lc.revoked, u.first_name, u.last_name, u.email,
-              o.organization_name, o.acronym, o.organization_type, o.website, o.logo_data_url,
-              o.address, o.city, o.country, o.email_domain, o.contact_email, o.contact_phone,
-              o.primary_contact_name
+              COALESCE(o.organization_name, r.organization_name) AS organization_name,
+              o.acronym, o.organization_type,
+              COALESCE(o.website, r.website) AS website,
+              COALESCE(o.logo_data_url, r.logo_data_url) AS logo_data_url,
+              COALESCE(o.address, r.address) AS address,
+              COALESCE(o.city, r.city) AS city,
+              COALESCE(o.country, r.country) AS country,
+              o.email_domain,
+              COALESCE(o.contact_email, r.contact_email) AS contact_email,
+              COALESCE(o.contact_phone, r.contact_phone) AS contact_phone,
+              COALESCE(o.primary_contact_name, r.primary_contact_name) AS primary_contact_name
        FROM license_codes lc
        LEFT JOIN users u ON u.id = lc.owner_user_id
        LEFT JOIN user_org_profiles o ON o.user_id = lc.owner_user_id
+       LEFT JOIN user_recruiter_profiles r ON r.user_id = lc.owner_user_id
        WHERE lc.code = $1`,
       [subscription.licenseCode]
     );
@@ -3558,8 +3574,9 @@ async function getPublicUserById(userId) {
         country: row.country || "",
         emailDomain: row.email_domain || "",
         // Contact affiché : coordonnées de contact renseignées dans les
-        // paramètres de l'établissement si présentes, sinon l'email de
-        // connexion du compte école comme repli honnête (pas de valeur inventée).
+        // paramètres de l'établissement/cabinet si présentes, sinon l'email
+        // de connexion du compte propriétaire comme repli honnête (pas de
+        // valeur inventée).
         contactEmail: row.contact_email || row.email || "",
         contactPhone: row.contact_phone || "",
         primaryContactName: row.primary_contact_name || "",

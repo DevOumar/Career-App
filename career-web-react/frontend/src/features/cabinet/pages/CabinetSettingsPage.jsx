@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { getCabinetProfile, updateCabinetProfile } from "../../../lib/inMemoryDb.js";
+import { fileToBase64 } from "../../../lib/cvService.js";
 
 export default function CabinetSettingsPage({ user, language }) {
   const copy =
@@ -10,6 +11,11 @@ export default function CabinetSettingsPage({ user, language }) {
       ? {
           title: "Firm settings",
           subtitle: "Information shown to your invited recruiters.",
+          logo: "Firm logo",
+          logoUpload: "Upload logo",
+          logoRemove: "Remove logo",
+          logoInvalid: "Please select an image file.",
+          logoError: "Unable to read this image.",
           organizationName: "Firm name",
           website: "Website",
           address: "Address",
@@ -24,6 +30,11 @@ export default function CabinetSettingsPage({ user, language }) {
       : {
           title: "Paramètres du cabinet",
           subtitle: "Informations affichées à vos recruteurs invités.",
+          logo: "Logo du cabinet",
+          logoUpload: "Télécharger le logo",
+          logoRemove: "Supprimer le logo",
+          logoInvalid: "Veuillez sélectionner une image.",
+          logoError: "Impossible de lire cette image.",
           organizationName: "Nom du cabinet",
           website: "Site web",
           address: "Adresse",
@@ -46,6 +57,26 @@ export default function CabinetSettingsPage({ user, language }) {
       .then((data) => setForm(data.profile))
       .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }, [user.id, language]);
+
+  async function handleLogoUpload(event) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type?.startsWith("image/")) {
+      setError(copy.logoInvalid);
+      event.target.value = "";
+      return;
+    }
+    try {
+      // fileToBase64 renvoie le base64 brut sans préfixe "data:" — on
+      // reconstruit une vraie data URL avec son type MIME pour <img src>.
+      const content = await fileToBase64(file);
+      setForm((prev) => ({ ...prev, logoDataUrl: `data:${file.type};base64,${content}` }));
+    } catch (_error) {
+      setError(copy.logoError);
+    } finally {
+      event.target.value = "";
+    }
+  }
 
   async function submit(event) {
     event.preventDefault();
@@ -79,6 +110,24 @@ export default function CabinetSettingsPage({ user, language }) {
       </div>
 
       <form className="card block application-form" onSubmit={submit}>
+        <label>
+          {copy.logo}
+          <div className="school-logo-editor">
+            <span className="school-logo-preview">
+              {form.logoDataUrl ? <img src={form.logoDataUrl} alt="" /> : <UiIcon name="briefcase" />}
+            </span>
+            <label className="btn-ghost">
+              <UiIcon name="upload" />
+              {copy.logoUpload}
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={handleLogoUpload} />
+            </label>
+            {form.logoDataUrl ? (
+              <button type="button" className="admin-row-action danger" onClick={() => setForm((prev) => ({ ...prev, logoDataUrl: "" }))}>
+                {copy.logoRemove}
+              </button>
+            ) : null}
+          </div>
+        </label>
         <input value={form.organizationName} onChange={(event) => setForm((prev) => ({ ...prev, organizationName: event.target.value }))} placeholder={copy.organizationName} />
         <input value={form.website} onChange={(event) => setForm((prev) => ({ ...prev, website: event.target.value }))} placeholder={copy.website} />
         <input value={form.address} onChange={(event) => setForm((prev) => ({ ...prev, address: event.target.value }))} placeholder={copy.address} />
