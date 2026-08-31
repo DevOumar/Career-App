@@ -5,13 +5,15 @@ import React from "react";
 // — à la demande explicite du client, plus proche du candidat que de
 // l'École/Admin niveau design, alors que la logique métier (licence,
 // sièges, vivier de candidats, missions) est calquée sur celle de l'École.
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { AvatarCircle } from "../../components/AvatarCircle.jsx";
 import { LanguageSwitch } from "../../components/LanguageSwitch.jsx";
 import { getAccountLabel } from "../../lib/accounts.js";
 import AccountDrawer from "../account/AccountDrawer.jsx";
 import { ConnectedFooter } from "../../App.jsx";
+import { getCabinetNotifications } from "../../lib/inMemoryDb.js";
+import { formatDate } from "../../lib/format.js";
 import CabinetHomePage from "./pages/CabinetHomePage.jsx";
 import CabinetRecruitersPage from "./pages/CabinetRecruitersPage.jsx";
 import CabinetInvitationsPage from "./pages/CabinetInvitationsPage.jsx";
@@ -24,17 +26,32 @@ import CabinetBillingPage from "./pages/CabinetBillingPage.jsx";
 import CabinetPricingPage from "./pages/CabinetPricingPage.jsx";
 import CabinetSettingsPage from "./pages/CabinetSettingsPage.jsx";
 
+// Onglets de premier niveau + deux regroupements en menu déroulant
+// ("Équipe" et "Abonnement") pour éviter que 11 onglets à plat ne débordent
+// de la topbar (constaté à l'usage — cf. capture avec "Paramètres" coupé).
 export const CABINET_NAV_ITEMS = [
   { id: "home", icon: "home" },
-  { id: "recruiters", icon: "profile" },
   { id: "candidates", icon: "network" },
   { id: "missions", icon: "briefcase" },
   { id: "reports", icon: "file" },
-  { id: "invitations", icon: "mail" },
-  { id: "announcements", icon: "chat" },
-  { id: "license", icon: "save" },
-  { id: "billing", icon: "scale" },
-  { id: "pricing", icon: "pricetag" },
+  {
+    id: "team",
+    icon: "profile",
+    children: [
+      { id: "recruiters", icon: "profile" },
+      { id: "invitations", icon: "mail" },
+      { id: "announcements", icon: "chat" }
+    ]
+  },
+  {
+    id: "subscription",
+    icon: "save",
+    children: [
+      { id: "license", icon: "save" },
+      { id: "billing", icon: "scale" },
+      { id: "pricing", icon: "pricetag" }
+    ]
+  },
   { id: "settings", icon: "settings" }
 ];
 
@@ -82,6 +99,49 @@ export default function CabinetApp({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState("account");
+  const [openGroup, setOpenGroup] = useState("");
+  const navRef = useRef(null);
+  const [notifications, setNotifications] = useState([]);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [readNotificationIds, setReadNotificationIds] = useState(new Set());
+  const notifRef = useRef(null);
+  const unreadNotificationCount = notifications.filter((item) => !readNotificationIds.has(item.id)).length;
+
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(`career_app_cabinet_read_notifications_${user.id}`) || "[]");
+      setReadNotificationIds(new Set(Array.isArray(stored) ? stored : []));
+    } catch (_error) {
+      setReadNotificationIds(new Set());
+    }
+  }, [user.id]);
+
+  useEffect(() => {
+    getCabinetNotifications(user.id, language).then(setNotifications).catch(() => setNotifications([]));
+  }, [user.id, language, tab]);
+
+  function markAllNotificationsRead() {
+    const nextIds = new Set([...readNotificationIds, ...notifications.map((item) => item.id)]);
+    setReadNotificationIds(nextIds);
+    try {
+      localStorage.setItem(`career_app_cabinet_read_notifications_${user.id}`, JSON.stringify([...nextIds]));
+    } catch (_error) {
+      // ignore storage errors (private mode, quota, etc.)
+    }
+  }
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (navRef.current && !navRef.current.contains(event.target)) {
+        setOpenGroup("");
+      }
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setNotifOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const copy =
     language === "en"
@@ -97,10 +157,16 @@ export default function CabinetApp({
           billing: "Billing",
           pricing: "Pricing",
           settings: "Settings",
+          team: "Team",
+          subscription: "Subscription",
           role: "Recruitment firm",
           logout: "Log out",
           manageAccount: "Manage account",
-          secured: "Secured by"
+          secured: "Secured by",
+          notifications: "Notifications",
+          markAllRead: "Mark all as read",
+          notifEmpty: "New recruiters, license capacity and stale missions will show up here.",
+          notifNothing: "Nothing to report"
         }
       : {
           home: "Accueil",
@@ -114,15 +180,22 @@ export default function CabinetApp({
           billing: "Facturation",
           pricing: "Tarifs",
           settings: "Paramètres",
+          team: "Équipe",
+          subscription: "Abonnement",
           role: "Cabinet de recrutement",
           logout: "Déconnexion",
           manageAccount: "Gérer son compte",
-          secured: "Sécurisé par"
+          secured: "Sécurisé par",
+          notifications: "Notifications",
+          markAllRead: "Tout marquer lu",
+          notifEmpty: "Nouveaux recruteurs, licence proche de la saturation et missions sans candidat apparaîtront ici.",
+          notifNothing: "Rien à signaler"
         };
 
   function goTo(id) {
     setTab(id);
     setUserMenuOpen(false);
+    setOpenGroup("");
     try {
       localStorage.setItem("career_app_cabinet_tab", id);
     } catch (_error) {
@@ -143,22 +216,108 @@ export default function CabinetApp({
           <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
         </button>
 
-        <nav className="topnav">
-          {CABINET_NAV_ITEMS.map((item) => (
-            <button
-              key={item.id}
-              className={`nav-btn ${tab === item.id ? "active" : ""}`}
-              onClick={() => goTo(item.id)}
-            >
-              <span className="nav-btn-icon">
-                <UiIcon name={item.icon} />
-              </span>
-              <span className="nav-btn-label">{copy[item.id]}</span>
-            </button>
-          ))}
+        <nav className="topnav" ref={navRef}>
+          {CABINET_NAV_ITEMS.map((item) => {
+            if (!item.children) {
+              return (
+                <button
+                  key={item.id}
+                  className={`nav-btn ${tab === item.id ? "active" : ""}`}
+                  onClick={() => goTo(item.id)}
+                >
+                  <span className="nav-btn-icon">
+                    <UiIcon name={item.icon} />
+                  </span>
+                  <span className="nav-btn-label">{copy[item.id]}</span>
+                </button>
+              );
+            }
+            const isChildActive = item.children.some((child) => child.id === tab);
+            const isOpen = openGroup === item.id;
+            return (
+              <div className="nav-btn-group" key={item.id}>
+                <button
+                  type="button"
+                  className={`nav-btn ${isChildActive ? "active" : ""}`}
+                  onClick={() => setOpenGroup((prev) => (prev === item.id ? "" : item.id))}
+                >
+                  <span className="nav-btn-icon">
+                    <UiIcon name={item.icon} />
+                  </span>
+                  <span className="nav-btn-label">{copy[item.id]}</span>
+                  <UiIcon name="chevron" className={`nav-btn-caret ${isOpen ? "open" : ""}`} />
+                </button>
+                {isOpen ? (
+                  <div className="nav-btn-dropdown">
+                    {item.children.map((child) => (
+                      <button
+                        key={child.id}
+                        type="button"
+                        className={tab === child.id ? "active" : ""}
+                        onClick={() => goTo(child.id)}
+                      >
+                        <UiIcon name={child.icon} />
+                        <span>{copy[child.id]}</span>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </nav>
 
         <div className="topbar-user">
+          <div className="topbar-notif" ref={notifRef}>
+            <button
+              type="button"
+              className="topbar-icon-btn"
+              title={copy.notifications}
+              onClick={() => setNotifOpen((prev) => !prev)}
+            >
+              <UiIcon name="bell" />
+              {unreadNotificationCount ? (
+                <span className="topbar-notif-badge">{unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}</span>
+              ) : null}
+            </button>
+            {notifOpen ? (
+              <div className="topbar-notif-panel">
+                <div className="topbar-notif-panel-head">
+                  <strong>{copy.notifications}</strong>
+                  <span className="muted">
+                    {notifications.length ? `${notifications.length} ${language === "en" ? "item(s)" : "élément(s)"}` : copy.notifNothing}
+                  </span>
+                </div>
+                {unreadNotificationCount ? (
+                  <button type="button" className="topbar-notif-mark-read" onClick={markAllNotificationsRead}>
+                    {copy.markAllRead}
+                  </button>
+                ) : null}
+                {notifications.length ? (
+                  <div className="topbar-notif-list">
+                    {notifications.map((item) => {
+                      const isUnread = !readNotificationIds.has(item.id);
+                      return (
+                        <div key={item.id} className={`topbar-notif-row ${isUnread ? "unread" : ""}`}>
+                          <span className="topbar-notif-icon">
+                            <UiIcon name={item.type === "recruiter_joined" ? "profile" : item.type === "mission_no_candidate" ? "briefcase" : "alert"} />
+                          </span>
+                          <div>
+                            <strong>{item.title}</strong>
+                            <span className="muted" title={item.body}>{item.body}</span>
+                            {item.createdAt ? <span className="topbar-notif-time">{formatDate(item.createdAt)}</span> : null}
+                          </div>
+                          {isUnread ? <span className="topbar-notif-dot" aria-hidden="true" /> : null}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="muted topbar-notif-empty">{copy.notifEmpty}</p>
+                )}
+              </div>
+            ) : null}
+          </div>
           <LanguageSwitch language={language} setLanguage={setLanguage} variant="dropdown" />
           <button className="user-menu-trigger" onClick={() => setUserMenuOpen((prev) => !prev)}>
             <AvatarCircle user={user} />

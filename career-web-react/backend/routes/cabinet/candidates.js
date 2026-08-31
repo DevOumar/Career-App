@@ -248,7 +248,8 @@ export function registerCabinetCandidatesRoutes(app) {
     getCabinetRecruiterRows,
     buildCabinetMetrics,
     buildCabinetAlerts,
-    resolveAccountSegments
+    resolveAccountSegments,
+    aiActionRateLimiter
   } = app.locals.ctx;
 
 const CABINET_CANDIDATE_STATUSES = new Set(["sourced", "contacted", "interviewing", "placed", "rejected"]);
@@ -276,6 +277,8 @@ app.get("/api/cabinet/candidates", async (req, res) => {
         skills: parseJsonField(row.skills_json, []),
         notes: row.notes,
         status: row.status,
+        cvFileName: row.cv_file_name || "",
+        hasCv: Boolean(row.source_text),
         createdAt: row.created_at,
         updatedAt: row.updated_at
       }))
@@ -295,6 +298,47 @@ app.get("/api/cabinet/candidates", async (req, res) => {
   }
 });
 
+// Extraction IA d'un CV pour préremplir la fiche vivier — même pipeline que
+// POST /api/cv/extract côté candidat (extractTextFromUpload +
+// extractCvWithAi + postProcessCvExtraction), mais rien n'est enregistré
+// dans la table `cvs` (réservée aux comptes Career CV) : le texte source et
+// le JSON extrait ne sont persistés que si/quand la fiche candidat vivier
+// est effectivement créée (voir POST /api/cabinet/candidates).
+app.post("/api/cabinet/candidates/extract", aiActionRateLimiter, async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    await requireCabinetOwner(userId);
+
+    const fileName = coerceString(req.body?.fileName || "cv.txt");
+    const mimeType = coerceString(req.body?.mimeType);
+    const sourceText = await extractTextFromUpload({ fileName, mimeType, base64: req.body?.base64 });
+
+    if (sourceText.length < 20) {
+      return res.status(422).json({
+        error: "Impossible d'extraire assez de texte depuis ce fichier. Essaie un PDF texte ou un DOCX plus lisible."
+      });
+    }
+
+    let parsed = null;
+    try {
+      parsed = await extractCvWithAi(sourceText);
+    } catch (aiError) {
+      parsed = null;
+      console.warn(`Extraction IA (vivier cabinet) indisponible: ${aiError.message}`);
+    }
+    const finalParsed = postProcessCvExtraction(sourceText, parsed);
+
+    return res.json({
+      fileName,
+      sourceText,
+      parsed: finalParsed
+    });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Extraction du CV impossible." });
+  }
+});
+
 app.post("/api/cabinet/candidates", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
@@ -309,10 +353,13 @@ app.post("/api/cabinet/candidates", async (req, res) => {
     const skills = Array.isArray(req.body?.skills) ? req.body.skills.map((value) => coerceString(value).trim()).filter(Boolean) : [];
     const id = `ccand-${crypto.randomUUID()}`;
     const now = nowIso();
+    // cvFileName/sourceText/parsedJson : renseignés quand le candidat est
+    // créé à partir d'un CV importé (voir POST .../extract) — optionnels,
+    // vides pour une fiche saisie manuellement.
     await db.query(
       `INSERT INTO cabinet_candidates
-        (id, cabinet_user_id, first_name, last_name, email, phone, headline, skills_json, notes, status, created_by, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$12)`,
+        (id, cabinet_user_id, first_name, last_name, email, phone, headline, skills_json, notes, status, created_by, cv_file_name, source_text, parsed_json, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15)`,
       [
         id,
         userId,
@@ -325,6 +372,9 @@ app.post("/api/cabinet/candidates", async (req, res) => {
         coerceString(req.body?.notes).trim(),
         "sourced",
         userId,
+        coerceString(req.body?.cvFileName).trim(),
+        coerceString(req.body?.sourceText),
+        req.body?.parsedJson ? JSON.stringify(req.body.parsedJson) : "{}",
         now
       ]
     );
@@ -361,8 +411,9 @@ app.put("/api/cabinet/candidates/:id", async (req, res) => {
     await db.query(
       `UPDATE cabinet_candidates SET
         first_name = $1, last_name = $2, email = $3, phone = $4, headline = $5,
-        skills_json = $6, notes = $7, status = $8, updated_at = $9
-       WHERE id = $10 AND cabinet_user_id = $11`,
+        skills_json = $6, notes = $7, status = $8,
+        cv_file_name = $9, source_text = $10, parsed_json = $11, updated_at = $12
+       WHERE id = $13 AND cabinet_user_id = $14`,
       [
         coerceString(req.body?.firstName ?? existing.first_name).trim(),
         coerceString(req.body?.lastName ?? existing.last_name).trim(),
@@ -372,6 +423,9 @@ app.put("/api/cabinet/candidates/:id", async (req, res) => {
         JSON.stringify(skills),
         coerceString(req.body?.notes ?? existing.notes).trim(),
         status || existing.status,
+        req.body?.cvFileName !== undefined ? coerceString(req.body.cvFileName).trim() : existing.cv_file_name,
+        req.body?.sourceText !== undefined ? coerceString(req.body.sourceText) : existing.source_text,
+        req.body?.parsedJson ? JSON.stringify(req.body.parsedJson) : existing.parsed_json,
         nowIso(),
         candidateId,
         userId

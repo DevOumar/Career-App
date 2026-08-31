@@ -285,5 +285,78 @@ app.get("/api/cabinet/overview", async (req, res) => {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
+
+// Cloche de notifications — même principe que GET /api/notifications côté
+// candidat : rien n'est stocké, tout est recalculé à la volée à partir
+// d'événements réels (jamais de contenu fabriqué), avec des ids stables
+// pour que le "lu" (géré en local côté client) reste cohérent d'un appel à
+// l'autre.
+app.get("/api/cabinet/notifications", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    await requireCabinetOwner(userId);
+    const language = coerceString(req.query?.language || "fr");
+
+    const metrics = await buildCabinetMetrics(userId);
+    const alerts = buildCabinetAlerts(metrics, language);
+    const items = alerts.map((alert) => ({
+      id: `alert-${alert.type}`,
+      type: alert.type,
+      title: alert.title,
+      body: alert.body,
+      createdAt: null
+    }));
+
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+    // Nouveaux recruteurs ayant rejoint récemment (invitation acceptée).
+    const { rows: redeemedInvites } = await db.query(
+      `SELECT id, email, redeemed_at FROM cabinet_invitations
+       WHERE cabinet_user_id = $1 AND status = 'redeemed' AND redeemed_at >= $2
+       ORDER BY redeemed_at DESC LIMIT 10`,
+      [userId, sevenDaysAgo]
+    );
+    for (const row of redeemedInvites) {
+      items.push({
+        id: `recruiter-joined-${row.id}`,
+        type: "recruiter_joined",
+        title: language === "en" ? "A recruiter joined your firm" : "Un recruteur a rejoint votre cabinet",
+        body: row.email,
+        createdAt: row.redeemed_at
+      });
+    }
+
+    // Missions ouvertes depuis plus de 3 jours sans aucun candidat affecté —
+    // signal actionnable, pas juste un compteur.
+    const { rows: staleMissions } = await db.query(
+      `SELECT m.id, m.title, m.created_at FROM cabinet_missions m
+       WHERE m.cabinet_user_id = $1 AND m.status != 'closed' AND m.created_at < $2
+         AND NOT EXISTS (SELECT 1 FROM cabinet_mission_candidates mc WHERE mc.mission_id = m.id)
+       ORDER BY m.created_at ASC LIMIT 10`,
+      [userId, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()]
+    );
+    for (const row of staleMissions) {
+      items.push({
+        id: `mission-no-candidate-${row.id}`,
+        type: "mission_no_candidate",
+        title: language === "en" ? "Mission without any candidate" : "Mission sans candidat affecté",
+        body: row.title,
+        createdAt: row.created_at
+      });
+    }
+
+    items.sort((a, b) => {
+      if (!a.createdAt && !b.createdAt) return 0;
+      if (!a.createdAt) return -1;
+      if (!b.createdAt) return 1;
+      return new Date(b.createdAt) - new Date(a.createdAt);
+    });
+
+    return res.json({ items: items.slice(0, 30) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
 }
 

@@ -930,6 +930,12 @@ export async function getCabinetOverview(userId, language = "fr") {
   return request(`/cabinet/overview?${params.toString()}`);
 }
 
+export async function getCabinetNotifications(userId, language = "fr") {
+  const params = new URLSearchParams({ userId, language });
+  const data = await request(`/cabinet/notifications?${params.toString()}`);
+  return data.items;
+}
+
 export async function getCabinetRecruiters(userId, { search = "" } = {}) {
   const params = new URLSearchParams({ userId, search });
   const data = await request(`/cabinet/recruiters?${params.toString()}`);
@@ -961,6 +967,13 @@ export async function getCabinetLicense(userId) {
 export async function getCabinetCandidates(userId, { search = "", status = "" } = {}) {
   const params = new URLSearchParams({ userId, search, status });
   return request(`/cabinet/candidates?${params.toString()}`);
+}
+
+export async function extractCabinetCandidateCv(userId, { fileName, mimeType, base64 }) {
+  return request("/cabinet/candidates/extract", {
+    method: "POST",
+    body: { userId, fileName, mimeType, base64 }
+  });
 }
 
 export async function createCabinetCandidate(userId, payload) {

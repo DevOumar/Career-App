@@ -923,6 +923,9 @@ await db.exec(`
   ALTER TABLE cvs ADD COLUMN IF NOT EXISTS source_text TEXT NOT NULL DEFAULT '';
   ALTER TABLE cvs ADD COLUMN IF NOT EXISTS parsed_json TEXT NOT NULL DEFAULT '{}';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS satisfaction_last_prompted_at TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS cv_file_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS source_text TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS parsed_json TEXT NOT NULL DEFAULT '{}';
 `);
 
 // Sessions déjà expirées avant l'ajout de la colonne expires_at (créées

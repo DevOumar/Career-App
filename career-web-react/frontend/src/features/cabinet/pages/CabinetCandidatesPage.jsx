@@ -1,9 +1,10 @@
 import React from "react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Swal from "sweetalert2";
 import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
-import { createCabinetCandidate, updateCabinetCandidate, deleteCabinetCandidate, getCabinetCandidates } from "../../../lib/inMemoryDb.js";
+import { createCabinetCandidate, updateCabinetCandidate, deleteCabinetCandidate, getCabinetCandidates, extractCabinetCandidateCv } from "../../../lib/inMemoryDb.js";
+import { fileToBase64 } from "../../../lib/cvService.js";
 
 const STATUSES = ["sourced", "contacted", "interviewing", "placed", "rejected"];
 
@@ -33,7 +34,11 @@ export default function CabinetCandidatesPage({ user, language }) {
           notes: "Notes",
           status: "Status",
           save: "Save",
-          formError: "First or last name required."
+          formError: "First or last name required.",
+          uploadCv: "Import a CV (AI-filled)",
+          extracting: "Reading CV…",
+          extractError: "Could not read this CV. Try another file, or fill the form manually.",
+          extractedFrom: (name) => `Prefilled from ${name}`
         }
       : {
           title: "Vivier de candidats",
@@ -58,7 +63,11 @@ export default function CabinetCandidatesPage({ user, language }) {
           notes: "Notes",
           status: "Statut",
           save: "Enregistrer",
-          formError: "Prénom ou nom requis."
+          formError: "Prénom ou nom requis.",
+          uploadCv: "Importer un CV (préremplissage IA)",
+          extracting: "Lecture du CV…",
+          extractError: "Impossible de lire ce CV. Essayez un autre fichier, ou remplissez le formulaire à la main.",
+          extractedFrom: (name) => `Préempli depuis ${name}`
         };
 
   const [data, setData] = useState(null);
@@ -167,6 +176,7 @@ export default function CabinetCandidatesPage({ user, language }) {
         <CandidateFormModal
           copy={copy}
           item={editingItem}
+          userId={user.id}
           onClose={() => { setFormOpen(false); setEditingItem(null); }}
           onSubmit={async (payload) => {
             if (editingItem) {
@@ -184,7 +194,7 @@ export default function CabinetCandidatesPage({ user, language }) {
   );
 }
 
-function CandidateFormModal({ copy, item, onClose, onSubmit }) {
+function CandidateFormModal({ copy, item, userId, onClose, onSubmit }) {
   const [form, setForm] = useState({
     firstName: item?.firstName || "",
     lastName: item?.lastName || "",
@@ -193,13 +203,45 @@ function CandidateFormModal({ copy, item, onClose, onSubmit }) {
     headline: item?.headline || "",
     skills: (item?.skills || []).join(", "),
     notes: item?.notes || "",
-    status: item?.status || "sourced"
+    status: item?.status || "sourced",
+    cvFileName: item?.cvFileName || "",
+    sourceText: "",
+    parsedJson: null
   });
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [extracting, setExtracting] = useState(false);
+  const fileInputRef = useRef(null);
 
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
+  }
+
+  async function handleFileSelected(file) {
+    if (!file) return;
+    setError("");
+    setExtracting(true);
+    try {
+      const base64 = await fileToBase64(file);
+      const result = await extractCabinetCandidateCv(userId, { fileName: file.name, mimeType: file.type, base64 });
+      const parsed = result.parsed || {};
+      setForm((prev) => ({
+        ...prev,
+        firstName: parsed.firstName || prev.firstName,
+        lastName: parsed.lastName || prev.lastName,
+        email: parsed.email || prev.email,
+        phone: parsed.phone || prev.phone,
+        headline: parsed.headline || prev.headline,
+        skills: (parsed.skills || []).length ? parsed.skills.join(", ") : prev.skills,
+        cvFileName: result.fileName,
+        sourceText: result.sourceText,
+        parsedJson: parsed
+      }));
+    } catch (err) {
+      setError(err?.message || copy.extractError);
+    } finally {
+      setExtracting(false);
+    }
   }
 
   async function handleSubmit(event) {
@@ -224,6 +266,20 @@ function CandidateFormModal({ copy, item, onClose, onSubmit }) {
       <div className="modal-card" onClick={(event) => event.stopPropagation()}>
         <form onSubmit={handleSubmit} className="application-form">
           <h3>{copy.formTitle}</h3>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx,.doc,.txt"
+            style={{ display: "none" }}
+            onChange={(event) => handleFileSelected(event.target.files?.[0])}
+          />
+          <button type="button" className="btn-secondary" onClick={() => fileInputRef.current?.click()} disabled={extracting}>
+            {extracting ? <span className="btn-spinner dark" /> : <UiIcon name="upload" />}
+            {extracting ? copy.extracting : copy.uploadCv}
+          </button>
+          {form.cvFileName ? <p className="field-hint success">{copy.extractedFrom(form.cvFileName)}</p> : null}
+
           <input value={form.firstName} onChange={(event) => update("firstName", event.target.value)} placeholder={copy.firstName} />
           <input value={form.lastName} onChange={(event) => update("lastName", event.target.value)} placeholder={copy.lastName} />
           <input value={form.email} onChange={(event) => update("email", event.target.value)} placeholder={copy.email} />

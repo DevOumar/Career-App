@@ -1404,6 +1404,69 @@ select:focus-visible {
   color: #b83309;
 }
 
+.nav-btn-group {
+  position: relative;
+}
+
+.nav-btn-caret {
+  width: 0.6rem;
+  height: 0.6rem;
+  transform: rotate(90deg);
+  transition: transform 0.15s ease;
+  opacity: 0.6;
+}
+
+.nav-btn-caret.open {
+  transform: rotate(-90deg);
+}
+
+.nav-btn-dropdown {
+  position: absolute;
+  top: calc(100% + 0.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 190px;
+  padding: 0.4rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-md, 0 10px 30px rgba(12, 12, 16, 0.12));
+  z-index: 40;
+}
+
+.nav-btn-dropdown button {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  border: 0;
+  background: transparent;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.nav-btn-dropdown button:hover {
+  background: var(--surface-2);
+}
+
+.nav-btn-dropdown button.active {
+  color: var(--primary);
+  background: var(--bg-accent);
+}
+
+.nav-btn-dropdown button svg {
+  width: 0.95rem;
+  height: 0.95rem;
+  flex: 0 0 auto;
+}
+
 .nav-btn.active {
   color: #fff;
   background: linear-gradient(120deg, var(--primary), #b83309);
