@@ -1141,7 +1141,6 @@ select:focus-visible {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  box-shadow: 0 12px 28px rgba(12, 12, 16, 0.05);
 }
 
 .career-card::before {
@@ -1592,7 +1591,6 @@ select:focus-visible {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
 }
 
 .block {
@@ -1792,7 +1790,6 @@ select:focus {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
   padding: 1.4rem 1.5rem;
   display: flex;
   flex-direction: column;
@@ -1865,7 +1862,6 @@ select:focus {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
   padding: 1.4rem 1.5rem;
   min-height: 220px;
   display: flex;
@@ -2138,7 +2134,6 @@ input[aria-invalid="true"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   padding: 1.1rem 1.25rem;
 }
 
@@ -2467,7 +2462,6 @@ input[aria-invalid="true"] {
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.86);
   padding: 0.9rem;
-  box-shadow: var(--shadow-sm);
 }
 
 .home-step-grid span {
@@ -2590,7 +2584,6 @@ input[aria-invalid="true"] {
   border-radius: var(--radius-lg);
   background: #fff;
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
 }
 
 .import-step {
@@ -3959,7 +3952,6 @@ input[aria-invalid="true"] {
   border-radius: var(--radius-lg);
   border: 1px solid var(--line);
   background: var(--surface);
-  box-shadow: var(--shadow-sm);
 }
 
 .match-language-pill {
@@ -4380,7 +4372,6 @@ input[aria-invalid="true"] {
   border-radius: var(--radius-md);
   background: var(--surface);
   padding: 1rem;
-  box-shadow: var(--shadow-sm);
 }
 
 .offer-card.locked {
@@ -4655,7 +4646,6 @@ input[aria-invalid="true"] {
   border: 1px solid var(--line);
   padding: 0.7rem 0.8rem;
   cursor: grab;
-  box-shadow: 0 4px 14px rgba(12, 12, 16, 0.05);
   transition: box-shadow 0.2s ease, transform 0.2s ease;
 }
 
@@ -5211,7 +5201,6 @@ input[aria-invalid="true"] {
   border-radius: var(--radius-lg);
   background: #fff;
   padding: 1.3rem;
-  box-shadow: var(--shadow-sm);
   transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
 
@@ -7836,7 +7825,6 @@ input[aria-invalid="true"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   padding: 1.5rem;
   display: flex;
   flex-direction: column;
@@ -7852,8 +7840,8 @@ input[aria-invalid="true"] {
   position: absolute;
   top: -0.7rem;
   right: 1.1rem;
-  background: var(--primary);
-  color: #fff;
+  background: var(--bg-accent);
+  color: var(--primary-ink);
   font-size: 0.68rem;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -8416,7 +8404,6 @@ input[aria-invalid="true"] {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
   padding: 1.4rem 1.6rem;
   margin-bottom: 1.5rem;
   position: relative;
@@ -9250,7 +9237,6 @@ input[aria-invalid="true"] {
 .letter-document-card {
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
   overflow: hidden;
   background: #fff;
 }
@@ -9614,7 +9600,6 @@ input[aria-invalid="true"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
   padding: 1.8rem;
 }
 
@@ -9787,7 +9772,6 @@ input[aria-invalid="true"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
   padding: 1.5rem 1.6rem;
   display: flex;
   flex-direction: column;
@@ -10371,7 +10355,6 @@ input[aria-invalid="true"] {
   border: 1px solid #e7e3da;
   border-radius: var(--radius-md);
   background: #fff;
-  box-shadow: 0 12px 26px rgba(12, 12, 16, 0.06);
 }
 
 .school-shell-root .admin-mini-metric > span {
@@ -11544,7 +11527,6 @@ input[aria-invalid="true"] {
   flex-direction: column;
   gap: 0.3rem;
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   padding: 1.05rem 1.2rem;
   position: relative;
   overflow: hidden;
@@ -11678,7 +11660,6 @@ input[aria-invalid="true"] {
   border: 1px solid var(--line);
   border-top: 3px solid var(--role-color);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   padding: 1.2rem 1.3rem;
 }
 
@@ -11746,7 +11727,6 @@ input[aria-invalid="true"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   padding: 1.1rem 1.3rem;
 }
 
@@ -12107,7 +12087,6 @@ input[aria-invalid="true"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-md);
   overflow: hidden;
   overflow-x: auto;
 }
@@ -12384,7 +12363,6 @@ input[aria-invalid="true"] {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   padding: 1.3rem 1.4rem;
 }
 
@@ -12498,7 +12476,6 @@ input[aria-invalid="true"] {
   background: #fff;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
   padding: 1.2rem 1.4rem;
 }
 
@@ -12813,7 +12790,6 @@ input[aria-invalid="true"] {
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-sm);
   padding: 1.2rem 1.3rem;
 }
 
@@ -14253,7 +14229,6 @@ input[aria-invalid="true"] {
   overflow: hidden;
   border-radius: var(--radius-md);
   background: #fff;
-  box-shadow: 0 1px 2px rgba(12, 12, 16, 0.08);
 }
 
 .admin-shell-root .admin-mail-inbox-toolbar {
@@ -14501,7 +14476,6 @@ input[aria-invalid="true"] {
   border: 1px solid #e7e3da;
   border-radius: var(--radius-md);
   background: rgba(255, 255, 255, 0.92);
-  box-shadow: 0 12px 28px rgba(12, 12, 16, 0.06);
 }
 
 .admin-shell-root .admin-activity .admin-subtabs::-webkit-scrollbar {
@@ -14593,7 +14567,6 @@ input[aria-invalid="true"] {
   border: 1px solid #e7e3da;
   border-radius: var(--radius-md);
   background: #fff;
-  box-shadow: 0 12px 26px rgba(12, 12, 16, 0.06);
 }
 
 .admin-shell-root .admin-mini-metric > span {
@@ -14700,7 +14673,6 @@ input[aria-invalid="true"] {
   border: 1px solid #e7e3da;
   border-radius: var(--radius-md);
   background: #fff;
-  box-shadow: 0 12px 26px rgba(12, 12, 16, 0.06);
 }
 
 .admin-shell-root .admin-signal-card h3 {
