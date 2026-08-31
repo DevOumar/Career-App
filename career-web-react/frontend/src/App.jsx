@@ -900,6 +900,7 @@ export default function App() {
     }
   }, [density]);
   const [stripeEnabled, setStripeEnabled] = useState(false);
+  const [authSkipOtp, setAuthSkipOtp] = useState(false);
   const [planOverrides, setPlanOverrides] = useState({});
   const [session, setSession] = useState(null);
   const [premium, setPremium] = useState(null);
@@ -1113,7 +1114,10 @@ export default function App() {
 
   useEffect(() => {
     getHealth()
-      .then((health) => setStripeEnabled(Boolean(health.stripeEnabled)))
+      .then((health) => {
+        setStripeEnabled(Boolean(health.stripeEnabled));
+        setAuthSkipOtp(Boolean(health.authSkipOtp));
+      })
       .catch(() => setStripeEnabled(false));
   }, []);
 
@@ -2092,6 +2096,7 @@ export default function App() {
         setLanguage={setLanguage}
         copy={authCopy}
         landingCopy={landingCopy}
+        authSkipOtp={authSkipOtp}
       />
     );
   }
@@ -2933,7 +2938,8 @@ function AuthScreen({
   language,
   setLanguage,
   copy,
-  landingCopy
+  landingCopy,
+  authSkipOtp = false
 }) {
   const [showLanding, setShowLanding] = useState(true);
   const [legalPage, setLegalPage] = useState(null);
@@ -3138,6 +3144,12 @@ function AuthScreen({
     if (mode === "login") {
       if (loginStep === "identifier") {
         if (!loginForm.identifier.trim()) return;
+        // Bascule temporaire démo/soutenance (authSkipOtp) : on va direct au
+        // mot de passe au lieu de demander un code par email par défaut.
+        if (authSkipOtp) {
+          setLoginStep("password");
+          return;
+        }
         setIsSubmitting(true);
         try {
           const result = await onRequestLoginCode({ identifier: loginForm.identifier });

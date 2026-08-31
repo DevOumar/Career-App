@@ -63,6 +63,7 @@ export function registerHealthRoutes(app) {
     MAIL_FROM,
     MAIL_FROM_ADDRESS,
     AUTH_EMAIL_TO,
+    AUTH_SKIP_SIGNUP_OTP,
     DATABASE_URL,
     GOOGLE_CLIENT_ID,
     googleOAuthClient,
@@ -281,7 +282,11 @@ app.get("/api/health", async (_req, res) => {
     aiModel: AI_MODEL || null,
     aiKeyConfigured: Boolean(aiExtractionConfig()?.apiKey),
     stripeEnabled: Boolean(stripe) && getPlatformSettingBool("stripe_enabled"),
-    googleSignInEnabled: Boolean(googleOAuthClient) && getPlatformSettingBool("google_signin_enabled")
+    googleSignInEnabled: Boolean(googleOAuthClient) && getPlatformSettingBool("google_signin_enabled"),
+    // Bascule temporaire démo/soutenance : signale au frontend de sauter la
+    // demande de code par défaut à la connexion (voir AUTH_SKIP_SIGNUP_OTP
+    // dans index.js — couvre login ET inscription malgré son nom).
+    authSkipOtp: AUTH_SKIP_SIGNUP_OTP
   });
 });
 }
