@@ -355,6 +355,7 @@ app.post("/api/school/promotions/:id/students", async (req, res) => {
 app.delete("/api/school/promotions/:id", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId || req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const promotionId = coerceString(req.params.id);
     await db.query("DELETE FROM school_promotion_students WHERE promotion_id = $1", [promotionId]);

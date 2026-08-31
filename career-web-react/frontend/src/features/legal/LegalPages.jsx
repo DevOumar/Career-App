@@ -2,6 +2,7 @@ import React from "react";
 // Module Pages légales : confidentialité, CGU, mentions (structure commune
 // LegalDocPage).
 import { useState, useEffect } from "react";
+import { UiIcon } from "../../components/UiIcon.jsx";
 import { LanguageSwitch } from "../../components/LanguageSwitch.jsx";
 import { ConnectedFooter } from "../../App.jsx";
 
@@ -80,7 +81,8 @@ function LegalDocPage({
 
       <main className="legal-page">
         <button type="button" className="legal-back" onClick={onBack}>
-          {language === "en" ? "? Back to home" : "? Retour à l'accueil"}
+          <UiIcon name="chevron" className="legal-back-icon" />
+          {language === "en" ? "Back to home" : "Retour à l'accueil"}
         </button>
 
         <p className="legal-eyebrow">{eyebrow}</p>
@@ -206,7 +208,9 @@ function PrivacyPolicyPage({
           heading: "How do we protect it?",
           list: [
             "All traffic between your browser and our servers is encrypted (HTTPS/TLS).",
-            "Passwords are salted and hashed; they are never recoverable in plain text, by us or anyone else.",
+            "Passwords are salted and hashed (PBKDF2, 140,000 iterations); they are never recoverable in plain text, by us or anyone else.",
+            "An account locks temporarily after 5 failed login attempts, and you can reset it yourself by email if you forgot your password.",
+            "You can view every device connected to your account and disconnect any of them individually from Account > Security.",
             "Access to production data is limited and logged."
           ]
         },
@@ -218,12 +222,13 @@ function PrivacyPolicyPage({
         },
         {
           heading: "What are your rights?",
-          paragraphs: ["You are always in control of your data. From your account settings, or by writing to us, you can:"],
+          paragraphs: ["You are always in control of your data, directly from Account > Security:"],
           list: [
-            "Request a copy of the personal data we hold about you.",
-            "Correct information that is inaccurate.",
-            "Delete your account and the data attached to it.",
-            "Export your data in a portable format."
+            "Download all your personal data (\"Download my data\" button, full JSON export or a printable readable PDF summary).",
+            "Correct inaccurate information from your profile.",
+            "View and disconnect each device connected to your account individually.",
+            "Permanently delete your account and the data attached to it.",
+            "For anything else (a correction not possible directly in the app, a specific question), write to us."
           ]
         }
       ]
@@ -269,7 +274,9 @@ function PrivacyPolicyPage({
           heading: "Comment protégeons-nous vos données ?",
           list: [
             "Tout le trafic entre votre navigateur et nos serveurs est chiffré (HTTPS/TLS).",
-            "Les mots de passe sont salés et hachés ; ils ne sont récupérables en clair par personne, y compris nous.",
+            "Les mots de passe sont salés et hachés (PBKDF2, 140 000 itérations) ; ils ne sont récupérables en clair par personne, y compris nous.",
+            "Un compte se verrouille temporairement après 5 tentatives de connexion échouées, et vous pouvez le réinitialiser vous-même par email si vous avez oublié votre mot de passe.",
+            "Vous pouvez consulter tous les appareils connectés à votre compte et déconnecter individuellement n'importe lequel depuis Compte > Sécurité.",
             "L'accès aux données de production est restreint et journalisé."
           ]
         },
@@ -281,12 +288,13 @@ function PrivacyPolicyPage({
         },
         {
           heading: "Quels sont vos droits ?",
-          paragraphs: ["Vous gardez le contrôle de vos données. Depuis les paramètres de votre compte, ou en nous écrivant, vous pouvez :"],
+          paragraphs: ["Vous gardez le contrôle de vos données, directement depuis Compte > Sécurité :"],
           list: [
-            "Demander une copie des données personnelles que nous détenons sur vous.",
-            "Corriger une information inexacte.",
-            "Supprimer votre compte et les données qui y sont attachées.",
-            "Exporter vos données dans un format réutilisable."
+            "Télécharger toutes vos données personnelles (bouton « Télécharger mes données », format JSON complet ou résumé lisible imprimable en PDF).",
+            "Corriger une information inexacte depuis votre profil.",
+            "Consulter et déconnecter individuellement chacun des appareils connectés à votre compte.",
+            "Supprimer définitivement votre compte et les données qui y sont attachées.",
+            "Pour toute autre demande (rectification qui ne serait pas possible directement dans l'interface, question sur un traitement précis), écrivez-nous."
           ]
         }
       ];

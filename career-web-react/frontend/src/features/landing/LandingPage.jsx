@@ -8,7 +8,21 @@ import { LanguageSwitch } from "../../components/LanguageSwitch.jsx";
 // import "arrière" volontaire, sûr car utilisé seulement au rendu.
 import { ConnectedFooter } from "../../App.jsx";
 
-const PRODUCT_SECTION_IDS = ["section-features", "section-matching", "section-entretiens", "section-offres"];
+// Index -> section ancre pour la colonne "Produit" du footer public (ordre
+// synchronisé avec linksProduct dans App.jsx : Fonctionnalités, Matching CV,
+// Entretiens, Lettre IA, Négociation, Email Scout, Offres, Tarifs, FAQ).
+// Lettre IA/Négociation/Email Scout n'ont pas de section dédiée sur la
+// landing (ce sont des modules réservés aux comptes connectés) : ils
+// renvoient vers la grille de fonctionnalités où ils sont bien présentés.
+const PRODUCT_SECTION_IDS = [
+  "section-features",
+  "section-matching",
+  "section-entretiens",
+  "section-features",
+  "section-features",
+  "section-features",
+  "section-offres"
+];
 
 const CAREER_CARDS = [
   { title: "Data Analyst", score: 91, skills: "Python · SQL · Power BI", tone: "green" },
@@ -279,11 +293,11 @@ function LandingPage({
             <h2>{copy.featuresTitle}</h2>
             <p>{copy.featuresText}</p>
           </div>
-          <div className="feature-grid">
+          <div className="feature-grid feature-grid-6">
             {copy.featureCards.map((card, index) => (
               <article className={index === 1 ? "feature-card dark" : "feature-card"} key={card.title}>
                 <span className="feature-icon">
-                  <UiIcon name={index === 0 ? "upload" : index === 1 ? "chat" : "chart"} />
+                  <UiIcon name={card.icon || "chart"} />
                 </span>
                 <h3>{card.title}</h3>
                 <p>{card.text}</p>
@@ -361,11 +375,12 @@ function LandingPage({
           title={copy.footerProduct}
           links={copy.linksProduct}
           onLinkClick={(_link, index) => {
-            if (index === 4) {
+            // Derniers items fixes : Tarifs (avant-dernier) et FAQ (dernier).
+            if (index === copy.linksProduct.length - 2) {
               onPricingClick?.();
               return;
             }
-            if (index === 5) {
+            if (index === copy.linksProduct.length - 1) {
               document.getElementById("section-faq")?.scrollIntoView({ behavior: "smooth", block: "start" });
               return;
             }
@@ -493,7 +508,8 @@ function InfoPage({
 
       <main className="legal-page info-page">
         <button type="button" className="legal-back" onClick={onBack}>
-          {language === "en" ? "? Back to home" : "? Retour à l'accueil"}
+          <UiIcon name="chevron" className="legal-back-icon" />
+          {language === "en" ? "Back to home" : "Retour à l'accueil"}
         </button>
 
         <p className="legal-eyebrow">{eyebrow}</p>

@@ -819,6 +819,17 @@ select:focus-visible {
   gap: 1rem;
 }
 
+/* 6 modules à présenter (au lieu des 3 historiques) : grille symétrique
+   3 colonnes / 2 rangées plutôt que le ratio asymétrique pensé pour 3
+   cartes seulement. */
+.feature-grid-6 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.feature-grid-6 .feature-card {
+  min-height: 260px;
+}
+
 .feature-card {
   min-height: 320px;
   border: 1px solid #eeebe3;
@@ -981,6 +992,7 @@ select:focus-visible {
 
 .faq-section {
   margin-top: 4rem;
+  margin-bottom: 4rem;
 }
 
 .faq-list {
@@ -12001,6 +12013,9 @@ input[aria-invalid="true"] {
 }
 
 .legal-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
   border: none;
   background: none;
   color: var(--text-3);
@@ -12013,6 +12028,12 @@ input[aria-invalid="true"] {
 
 .legal-back:hover {
   color: var(--primary);
+}
+
+.legal-back-icon {
+  width: 0.85rem;
+  height: 0.85rem;
+  transform: rotate(180deg);
 }
 
 .legal-eyebrow {

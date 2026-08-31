@@ -337,17 +337,38 @@ const LANDING_COPY = {
       {
         title: "CV Optimizer",
         text: "Analyse CV/offre, score de compatibilité et recommandations concrètes.",
-        tags: ["Analyse ATS", "Mots-clés", "Réécriture"]
+        tags: ["Analyse ATS", "Mots-clés", "Réécriture"],
+        icon: "upload"
       },
       {
         title: "Interview Coach",
-        text: "Questions adaptées au poste, réponses modèles et feedback structuré.",
-        tags: ["RH", "Technique", "Soft skills"]
+        text: "Simulateur d'entretien avec feedback en direct, chat ou appel vocal, et bilan détaillé en fin de session.",
+        tags: ["RH", "Technique", "Voix"],
+        icon: "chat"
       },
       {
         title: "Job Matching",
         text: "Classement des offres selon vos compétences, votre expérience et vos objectifs.",
-        tags: ["Score", "Gaps", "Priorités"]
+        tags: ["Score", "Gaps", "Priorités"],
+        icon: "chart"
+      },
+      {
+        title: "Lettre IA",
+        text: "Lettre de motivation générée à partir de votre profil réel et de l'offre visée, en plusieurs tons et modèles.",
+        tags: ["Personnalisée", "Modifiable", "Export PDF"],
+        icon: "matchmark"
+      },
+      {
+        title: "Négociation salariale",
+        text: "Entraînez-vous face à un recruteur IA réaliste et recevez des conseils concrets avant l'entretien décisif.",
+        tags: ["Coaching", "Prétentions", "Confiance"],
+        icon: "scale"
+      },
+      {
+        title: "Email Scout",
+        text: "Retrouvez l'email professionnel probable d'un recruteur en quelques secondes, avec vérification du domaine.",
+        tags: ["Contact direct", "Vérifié", "Rapide"],
+        icon: "mail"
       }
     ],
     stepsTitle: "Comment ça marche ?",
@@ -386,13 +407,25 @@ const LANDING_COPY = {
       {
         q: "Comment modifier ou résilier mon abonnement ?",
         a: "Contactez notre support depuis la page Contact : chaque demande liée à un abonnement est traitée manuellement pour l'instant."
+      },
+      {
+        q: "Comment fonctionne le simulateur de négociation salariale ?",
+        a: "Indiquez votre prétention salariale visée, puis échangez avec un recruteur IA réaliste qui teste vos arguments. Vous recevez des conseils concrets et un bilan pour aborder la vraie négociation avec plus de confiance."
+      },
+      {
+        q: "Qu'est-ce qu'Email Scout ?",
+        a: "À partir du nom d'une entreprise et d'un contact, Email Scout teste les formats d'email les plus courants et vérifie en direct que le domaine peut recevoir des messages, pour vous donner une piste fiable plutôt qu'un coup de chance."
+      },
+      {
+        q: "J'ai oublié mon mot de passe, comment le récupérer ?",
+        a: "Cliquez sur « Mot de passe oublié ? » sur l'écran de connexion : vous recevez un code par email pour choisir un nouveau mot de passe, sans perdre l'accès à votre compte."
       }
     ],
     footerText: "Career CV aide les candidats à optimiser leur CV, cibler les bonnes offres et préparer leurs entretiens.",
     footerProduct: "Produit",
     footerCompany: "Entreprise",
     footerLegal: "Légal",
-    linksProduct: ["Fonctionnalités", "Matching CV", "Entretiens", "Offres", "Tarifs", "FAQ"],
+    linksProduct: ["Fonctionnalités", "Matching CV", "Entretiens", "Lettre IA", "Négociation", "Email Scout", "Offres", "Tarifs", "FAQ"],
     linksCompany: ["À propos", "Contact", "Partenariats"],
     linksLegal: ["Confidentialité", "CGU", "Cookies", "Sécurité"]
   },
@@ -429,17 +462,38 @@ const LANDING_COPY = {
       {
         title: "CV Optimizer",
         text: "CV/job analysis, compatibility score, and concrete recommendations.",
-        tags: ["ATS analysis", "Keywords", "Rewrite"]
+        tags: ["ATS analysis", "Keywords", "Rewrite"],
+        icon: "upload"
       },
       {
         title: "Interview Coach",
-        text: "Role-based questions, model answers, and structured feedback.",
-        tags: ["HR", "Technical", "Soft skills"]
+        text: "Interview simulator with live feedback, chat or voice call, and a detailed wrap-up at the end.",
+        tags: ["HR", "Technical", "Voice"],
+        icon: "chat"
       },
       {
         title: "Job Matching",
         text: "Rank jobs based on your skills, experience, and goals.",
-        tags: ["Score", "Gaps", "Priorities"]
+        tags: ["Score", "Gaps", "Priorities"],
+        icon: "chart"
+      },
+      {
+        title: "AI Cover Letter",
+        text: "A cover letter generated from your real profile and the target job, in several tones and templates.",
+        tags: ["Personalized", "Editable", "PDF export"],
+        icon: "matchmark"
+      },
+      {
+        title: "Salary Negotiation",
+        text: "Practice with a realistic AI recruiter and get concrete coaching before the real conversation.",
+        tags: ["Coaching", "Expectations", "Confidence"],
+        icon: "scale"
+      },
+      {
+        title: "Email Scout",
+        text: "Find a recruiter's likely professional email in seconds, with domain verification.",
+        tags: ["Direct contact", "Verified", "Fast"],
+        icon: "mail"
       }
     ],
     stepsTitle: "How it works",
@@ -478,13 +532,25 @@ const LANDING_COPY = {
       {
         q: "How do I change or cancel my subscription?",
         a: "Contact our support from the Contact page: subscription requests are currently handled manually."
+      },
+      {
+        q: "How does the salary negotiation simulator work?",
+        a: "Enter your target salary, then chat with a realistic AI recruiter who tests your arguments. You get concrete coaching and a wrap-up to approach the real negotiation with more confidence."
+      },
+      {
+        q: "What is Email Scout?",
+        a: "From a company name and a contact's name, Email Scout tests the most common email formats and verifies live that the domain can receive messages, giving you a reliable lead instead of a guess."
+      },
+      {
+        q: "I forgot my password, how do I get it back?",
+        a: "Click \"Forgot password?\" on the login screen: you'll receive a code by email to choose a new password without losing access to your account."
       }
     ],
     footerText: "Career CV helps candidates optimize CVs, target the right jobs, and prepare interviews.",
     footerProduct: "Product",
     footerCompany: "Company",
     footerLegal: "Legal",
-    linksProduct: ["Features", "CV matching", "Interviews", "Jobs", "Pricing", "FAQ"],
+    linksProduct: ["Features", "CV matching", "Interviews", "AI Letter", "Negotiation", "Email Scout", "Jobs", "Pricing", "FAQ"],
     linksCompany: ["About", "Contact", "Partnerships"],
     linksLegal: ["Privacy", "Terms", "Cookies", "Security"]
   }
@@ -2375,6 +2441,9 @@ export default function App() {
         onHomeClick={() => goTo("home")}
         onImportClick={() => goTo("import")}
         onInterviewsClick={() => goTo("entretiens")}
+        onLetterClick={() => goTo("lettre")}
+        onNegotiationClick={() => goTo("negociation")}
+        onEmailScoutClick={() => goTo("email-finder")}
         onApplicationsClick={() => goTo("candidatures")}
         onPricingClick={() => goTo("tarifs")}
         onAboutClick={() => setLegalPage("about")}
@@ -2616,9 +2685,32 @@ export function ConnectedFooter({
   onHomeClick,
   onImportClick,
   onInterviewsClick,
+  onLetterClick,
+  onNegotiationClick,
+  onEmailScoutClick,
   onApplicationsClick
 }) {
   const hasCompanyNav = Boolean(onAboutClick || onContactClick);
+
+  // Ordre synchronisé avec linksProduct dans LANDING_COPY : Fonctionnalités,
+  // Matching CV, Entretiens, Lettre IA, Négociation, Email Scout, Offres,
+  // Tarifs, FAQ. Tableau explicite plutôt que des `if (index === N)`
+  // égrenés — plus facile à vérifier d'un coup d'œil et moins sujet à
+  // erreur quand on ajoute/retire un lien (un vrai bug de ce type existait
+  // ici : "FAQ" renvoyait par erreur vers "À propos").
+  const productHandlers = [
+    onHomeClick || onBrandClick,
+    onImportClick || onHomeClick,
+    onInterviewsClick || onHomeClick,
+    onLetterClick || onHomeClick,
+    onNegotiationClick || onHomeClick,
+    onEmailScoutClick || onHomeClick,
+    onApplicationsClick || onHomeClick,
+    onPricingClick,
+    // Pas de page FAQ dédiée une fois connecté : Contact reste la
+    // destination la plus utile pour "j'ai une question" (à défaut, À propos).
+    onContactClick || onAboutClick
+  ];
 
   return (
     <footer className="connected-footer">
@@ -2637,15 +2729,7 @@ export function ConnectedFooter({
       <FooterColumn
         title={copy.footerProduct}
         links={copy.linksProduct}
-        onLinkClick={(_link, index) => {
-          // ["Fonctionnalités", "Matching CV", "Entretiens", "Offres", "Tarifs", "FAQ"]
-          if (index === 0) (onHomeClick || onBrandClick)?.();
-          if (index === 1) (onImportClick || onHomeClick)?.();
-          if (index === 2) (onInterviewsClick || onHomeClick)?.();
-          if (index === 3) (onApplicationsClick || onHomeClick)?.();
-          if (index === 4) onPricingClick?.();
-          if (index === 5) onAboutClick?.();
-        }}
+        onLinkClick={(_link, index) => productHandlers[index]?.()}
       />
       <FooterColumn
         title={copy.footerCompany}
