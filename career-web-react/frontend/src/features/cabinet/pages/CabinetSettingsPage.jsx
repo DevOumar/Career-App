@@ -78,7 +78,7 @@ export default function CabinetSettingsPage({ user, language }) {
         </div>
       </div>
 
-      <form className="card block" onSubmit={submit}>
+      <form className="card block application-form" onSubmit={submit}>
         <input value={form.organizationName} onChange={(event) => setForm((prev) => ({ ...prev, organizationName: event.target.value }))} placeholder={copy.organizationName} />
         <input value={form.website} onChange={(event) => setForm((prev) => ({ ...prev, website: event.target.value }))} placeholder={copy.website} />
         <input value={form.address} onChange={(event) => setForm((prev) => ({ ...prev, address: event.target.value }))} placeholder={copy.address} />

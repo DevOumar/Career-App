@@ -79,7 +79,7 @@ export default function CabinetAnnouncementsPage({ user, language }) {
         </div>
       </div>
 
-      <form className="card block" onSubmit={submit}>
+      <form className="card block application-form" onSubmit={submit}>
         <input required minLength={2} value={subject} onChange={(event) => setSubject(event.target.value)} placeholder={copy.subjectLabel} />
         <textarea required rows={5} value={message} onChange={(event) => setMessage(event.target.value)} placeholder={copy.messageLabel} />
         <button type="submit" className="btn-main ready" disabled={sending}>

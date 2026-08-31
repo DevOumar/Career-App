@@ -127,7 +127,7 @@ export default function CabinetInvitationsPage({ user, language }) {
         </div>
       </div>
 
-      <form className="card block" onSubmit={submit}>
+      <form className="card block application-form" onSubmit={submit}>
         <input type="email" required value={email} onChange={(event) => setEmail(event.target.value)} placeholder={copy.emailLabel} />
         <button type="submit" className="btn-main ready" disabled={sending}>
           {sending ? copy.sending : copy.send}
