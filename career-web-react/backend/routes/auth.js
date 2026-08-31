@@ -518,7 +518,10 @@ app.post("/api/auth/request-code", async (req, res) => {
     const purpose = coerceString(req.body?.purpose) === "signup" ? "signup" : "login";
     const user = await getUserRowByIdentifier(identifier);
     if (!user) {
-      return res.status(404).json({ error: "Aucun compte ne correspond à cet identifiant." });
+      // Message générique volontairement — même formulation que l'échec de
+      // mot de passe, pour ne pas révéler si un compte existe ou non pour
+      // cet identifiant (énumération de comptes).
+      return res.status(401).json({ error: "Identifiants incorrects, veuillez réessayer." });
     }
     ensureUserCanAuthenticate(user);
 
