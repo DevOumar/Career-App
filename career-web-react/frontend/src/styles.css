@@ -307,16 +307,15 @@ select:focus-visible {
 }
 
 .flag.france {
-  background: linear-gradient(90deg, #b83309 0 33.33%, #fff 33.33% 66.66%, #f5222d 66.66%);
+  background: linear-gradient(90deg, #002654 0 33.33%, #fff 33.33% 66.66%, #f5222d 66.66%);
 }
 
-.flag.uk {
-  background:
-    linear-gradient(90deg, transparent 42%, #fff 42% 58%, transparent 58%),
-    linear-gradient(0deg, transparent 38%, #fff 38% 62%, transparent 62%),
-    linear-gradient(90deg, transparent 45%, #cf1322 45% 55%, transparent 55%),
-    linear-gradient(0deg, transparent 43%, #cf1322 43% 57%, transparent 57%),
-    #b83309;
+/* .flag.uk n'a plus de background dégradé : le drapeau est un vrai SVG
+   Union Jack rendu par UkFlagIcon (LanguageSwitch.jsx), qui dessine son
+   propre fond marine. display:block évite le petit espace parasite sous
+   le SVG (par défaut inline, aligné sur la ligne de base du texte). */
+.flag.uk svg {
+  display: block;
 }
 
 .landing-link {
@@ -5794,17 +5793,16 @@ input[aria-invalid="true"] {
   position: relative;
   width: 100%;
   min-height: 42px;
-  border: 1px solid #e4e1db;
-  border-radius: 8px;
+  border: 1px solid #747775;
+  border-radius: 4px;
   background: #fff;
-  color: #48464d;
+  color: #1f1f1f;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.8rem;
-  font-weight: 800;
+  font-weight: 500;
   cursor: pointer;
-  box-shadow: 0 2px 5px rgba(12, 12, 16, 0.06);
 }
 
 .google-login-btn:disabled {
@@ -5849,8 +5847,7 @@ input[aria-invalid="true"] {
 }
 
 .google-login-btn:hover {
-  border-color: #d5d1c9;
-  background: #f5f3ee;
+  background: #f8f9fa;
 }
 
 .google-login-btn small {
