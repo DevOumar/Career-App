@@ -6,6 +6,7 @@ import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { createCabinetCandidate, updateCabinetCandidate, deleteCabinetCandidate, getCabinetCandidates, extractCabinetCandidateCv } from "../../../lib/inMemoryDb.js";
 import { fileToBase64 } from "../../../lib/cvService.js";
 import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
+import { cabinetToast } from "./cabinetToast.js";
 
 const STATUSES = ["sourced", "contacted", "interviewing", "placed", "rejected"];
 
@@ -190,6 +191,7 @@ export default function CabinetCandidatesPage({ user, language }) {
             setFormOpen(false);
             setEditingItem(null);
             reload();
+            cabinetToast({ title: language === "en" ? "Candidate saved." : "Candidat enregistré." });
           }}
         />
       ) : null}

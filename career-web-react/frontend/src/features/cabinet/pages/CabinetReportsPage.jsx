@@ -1,11 +1,11 @@
 import React from "react";
 import { useState, useEffect } from "react";
-import Swal from "sweetalert2";
 import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDate } from "../../../lib/format.js";
 import { getCabinetReports, generateCabinetReport } from "../../../lib/inMemoryDb.js";
 import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
+import { cabinetToast } from "./cabinetToast.js";
 
 export default function CabinetReportsPage({ user, language }) {
   const copy =
@@ -55,7 +55,7 @@ export default function CabinetReportsPage({ user, language }) {
     try {
       await generateCabinetReport(user.id, missionId);
       reload();
-      Swal.fire({ icon: "success", title: language === "en" ? "Report generated." : "Rapport généré.", timer: 1800, showConfirmButton: false });
+      cabinetToast({ title: language === "en" ? "Report generated." : "Rapport généré." });
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));
     } finally {

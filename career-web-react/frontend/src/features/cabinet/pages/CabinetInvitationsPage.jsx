@@ -5,6 +5,7 @@ import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDate } from "../../../lib/format.js";
 import { getCabinetInvitations, sendCabinetInvitation, sendCabinetInvitationsBulk } from "../../../lib/inMemoryDb.js";
 import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
+import { cabinetToast } from "./cabinetToast.js";
 
 export default function CabinetInvitationsPage({ user, language }) {
   const copy =
@@ -76,6 +77,7 @@ export default function CabinetInvitationsPage({ user, language }) {
       await sendCabinetInvitation(user.id, email);
       setEmail("");
       reload();
+      cabinetToast({ title: language === "en" ? "Invitation sent." : "Invitation envoyée." });
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));
     } finally {

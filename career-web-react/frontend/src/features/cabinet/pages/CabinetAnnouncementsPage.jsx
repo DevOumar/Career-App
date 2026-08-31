@@ -1,11 +1,11 @@
 import React from "react";
 import { useState, useEffect } from "react";
-import Swal from "sweetalert2";
 import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDate } from "../../../lib/format.js";
 import { getCabinetAnnouncements, sendCabinetAnnouncement } from "../../../lib/inMemoryDb.js";
 import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
+import { cabinetToast } from "./cabinetToast.js";
 
 export default function CabinetAnnouncementsPage({ user, language }) {
   const copy =
@@ -57,7 +57,10 @@ export default function CabinetAnnouncementsPage({ user, language }) {
       setSubject("");
       setMessage("");
       reload();
-      Swal.fire({ icon: "success", title: language === "en" ? "Announcement sent." : "Annonce envoyée.", text: copy.recipients(result.recipientCount), timer: 2200, showConfirmButton: false });
+      cabinetToast({
+        title: language === "en" ? "Announcement sent." : "Annonce envoyée.",
+        text: copy.recipients(result.recipientCount)
+      });
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));
     } finally {

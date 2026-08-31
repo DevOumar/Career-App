@@ -1,10 +1,10 @@
 import React from "react";
 import { useState, useEffect } from "react";
-import Swal from "sweetalert2";
 import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { getCabinetProfile, updateCabinetProfile } from "../../../lib/inMemoryDb.js";
 import { fileToBase64 } from "../../../lib/cvService.js";
+import { cabinetToast } from "./cabinetToast.js";
 
 export default function CabinetSettingsPage({ user, language }) {
   const copy =
@@ -84,16 +84,7 @@ export default function CabinetSettingsPage({ user, language }) {
     setSaving(true);
     try {
       await updateCabinetProfile(user.id, form);
-      Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "success",
-        title: copy.saved,
-        showConfirmButton: false,
-        timer: 2600,
-        timerProgressBar: true,
-        customClass: { popup: "career-toast", title: "career-toast-title" }
-      });
+      cabinetToast({ title: copy.saved });
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));
     } finally {

@@ -12,6 +12,7 @@ import {
   getCabinetCandidates
 } from "../../../lib/inMemoryDb.js";
 import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
+import { cabinetToast } from "./cabinetToast.js";
 
 const STATUSES = ["open", "in_progress", "closed"];
 const STAGES = ["sourced", "contacted", "interviewing", "placed", "rejected"];
@@ -217,6 +218,7 @@ export default function CabinetMissionsPage({ user, language }) {
             await createCabinetMission(user.id, payload);
             setFormOpen(false);
             reload();
+            cabinetToast({ title: language === "en" ? "Mission created." : "Mission créée." });
           }}
         />
       ) : null}

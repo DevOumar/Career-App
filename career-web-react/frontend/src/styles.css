@@ -2110,6 +2110,10 @@ input[aria-invalid="true"] {
   margin-top: 1.4rem;
 }
 
+.cabinet-page {
+  margin-bottom: 2rem;
+}
+
 .cabinet-home-grid {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)) !important;
 }
