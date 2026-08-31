@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@700;900&family=Instrument+Sans:wght@400;500;600;700&display=swap");
 
 /* Taille par défaut de toutes les icônes UiIcon : sans cette règle, un SVG
    sans width/height explicite s'affiche à sa taille intrinsèque (énorme)
@@ -84,7 +84,7 @@ body,
 }
 
 body {
-  font-family: "Manrope", sans-serif;
+  font-family: "Instrument Sans", sans-serif;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -102,7 +102,7 @@ strong,
 .btn-main,
 .btn-secondary,
 .btn-ghost {
-  font-family: "Sora", sans-serif;
+  font-family: "Cabinet Grotesk", sans-serif;
   letter-spacing: -0.01em;
 }
 
@@ -172,7 +172,7 @@ select:focus-visible {
 }
 
 .landing-brand strong {
-  font-family: "Sora", sans-serif;
+  font-family: "Cabinet Grotesk", sans-serif;
   font-size: 1.08rem;
   font-weight: 800;
 }
@@ -339,7 +339,7 @@ select:focus-visible {
   border-radius: 999px;
   background: #0c0c10;
   color: #fff;
-  font-family: "Sora", sans-serif;
+  font-family: "Cabinet Grotesk", sans-serif;
   font-weight: 800;
   cursor: pointer;
   box-shadow: 0 14px 30px rgba(12, 12, 16, 0.2);
@@ -471,7 +471,7 @@ select:focus-visible {
 .next-action-card strong {
   display: block;
   margin-top: 0.28rem;
-  font-family: "Sora", sans-serif;
+  font-family: "Cabinet Grotesk", sans-serif;
   font-size: 1.08rem;
 }
 
@@ -543,7 +543,7 @@ select:focus-visible {
 .insight-grid strong {
   display: block;
   margin-top: 0.7rem;
-  font-family: "Sora", sans-serif;
+  font-family: "Cabinet Grotesk", sans-serif;
   font-size: 0.9rem;
   line-height: 1.35;
 }
@@ -748,7 +748,7 @@ select:focus-visible {
 
 .diagnostic-score-row b {
   display: block;
-  font-family: "Sora", sans-serif;
+  font-family: "Cabinet Grotesk", sans-serif;
 }
 
 .diagnostic-score-row small {
@@ -6330,7 +6330,7 @@ input[aria-invalid="true"] {
   background: var(--surface);
   color: var(--text);
   padding: 0.85rem 1.3rem;
-  font-family: "Sora", sans-serif;
+  font-family: "Cabinet Grotesk", sans-serif;
   font-weight: 700;
   font-size: 0.92rem;
   cursor: pointer;
@@ -6351,7 +6351,7 @@ input[aria-invalid="true"] {
   display: inline-flex;
   gap: 0.6rem;
   align-items: center;
-  font-family: "Sora", sans-serif;
+  font-family: "Cabinet Grotesk", sans-serif;
   font-weight: 700;
   cursor: pointer;
 }
