@@ -1,5 +1,6 @@
 import React from "react";
 import { useState, useEffect } from "react";
+import Swal from "sweetalert2";
 import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { getCabinetProfile, updateCabinetProfile } from "../../../lib/inMemoryDb.js";
@@ -49,7 +50,6 @@ export default function CabinetSettingsPage({ user, language }) {
 
   const [form, setForm] = useState(null);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -81,11 +81,19 @@ export default function CabinetSettingsPage({ user, language }) {
   async function submit(event) {
     event.preventDefault();
     setError("");
-    setMessage("");
     setSaving(true);
     try {
       await updateCabinetProfile(user.id, form);
-      setMessage(copy.saved);
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: copy.saved,
+        showConfirmButton: false,
+        timer: 2600,
+        timerProgressBar: true,
+        customClass: { popup: "career-toast", title: "career-toast-title" }
+      });
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));
     } finally {
@@ -137,7 +145,6 @@ export default function CabinetSettingsPage({ user, language }) {
         <input value={form.contactPhone} onChange={(event) => setForm((prev) => ({ ...prev, contactPhone: event.target.value }))} placeholder={copy.contactPhone} />
         <input value={form.primaryContactName} onChange={(event) => setForm((prev) => ({ ...prev, primaryContactName: event.target.value }))} placeholder={copy.primaryContactName} />
         {error ? <p className="field-error">{error}</p> : null}
-        {message ? <p className="field-hint success">{message}</p> : null}
         <button type="submit" className="btn-main ready" disabled={saving}>{copy.save}</button>
       </form>
     </section>
