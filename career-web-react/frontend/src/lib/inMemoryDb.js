@@ -664,6 +664,16 @@ export async function getAdminSchoolAnnouncements(adminUserId) {
   return data.items;
 }
 
+export async function getAdminCabinets(adminUserId, language = "fr") {
+  const params = new URLSearchParams({ adminUserId, language });
+  return request(`/admin/cabinets?${params.toString()}`);
+}
+
+export async function getAdminCabinetAnnouncements(adminUserId) {
+  const data = await request(`/admin/cabinet-announcements?adminUserId=${encodeURIComponent(adminUserId)}`);
+  return data.items;
+}
+
 export async function updateAdminUser(payload) {
   return request("/admin/users/update", {
     method: "POST",
@@ -993,6 +1003,11 @@ export async function deleteCabinetCandidate(userId, candidateId) {
   });
 }
 
+export async function getCabinetMissionsCompare(userId) {
+  const data = await request(`/cabinet/missions/compare?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
 export async function getCabinetMissions(userId) {
   const data = await request(`/cabinet/missions?userId=${encodeURIComponent(userId)}`);
   return data.items;
@@ -1012,6 +1027,13 @@ export async function updateCabinetMission(userId, missionId, payload) {
 export async function deleteCabinetMission(userId, missionId) {
   return request(`/cabinet/missions/${encodeURIComponent(missionId)}?userId=${encodeURIComponent(userId)}`, {
     method: "DELETE"
+  });
+}
+
+export async function duplicateCabinetMission(userId, missionId) {
+  return request(`/cabinet/missions/${encodeURIComponent(missionId)}/duplicate`, {
+    method: "POST",
+    body: { userId }
   });
 }
 

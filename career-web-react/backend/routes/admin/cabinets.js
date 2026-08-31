@@ -1,6 +1,6 @@
-// Sous-groupe de routes extrait de backend/routes/cabinet.js
+// Sous-groupe de routes extrait de backend/routes/admin.js
 // (voir ARCHITECTURE.md). Dépendances lues depuis app.locals.ctx.
-export function registerCabinetOverviewRoutes(app) {
+export function registerAdminCabinetsRoutes(app) {
   const {
     requireMatchingSession,
     cors,
@@ -196,6 +196,7 @@ export function registerCabinetOverviewRoutes(app) {
     getUserRowById,
     getEffectivePlanById,
     requireAdmin,
+    requireAdminModule,
     PLATFORM_SETTING_DEFAULTS,
     platformSettingsCache,
     loadPlatformSettings,
@@ -243,138 +244,102 @@ export function registerCabinetOverviewRoutes(app) {
     probeSmtp,
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
-    requireCabinetOwner,
-    getCabinetLicenseCodeRows,
-    getCabinetRecruiterRows,
     buildCabinetMetrics,
-    buildCabinetAlerts,
-    resolveAccountSegments
+    buildCabinetAlerts
   } = app.locals.ctx;
 
-app.get("/api/cabinet/overview", async (req, res) => {
+// Vue plateforme des cabinets — miroir de /api/admin/schools : l'Admin ne
+// pouvait piloter les cabinets qu'un par un via Comptes/Licences.
+app.get("/api/admin/cabinets", async (req, res) => {
   try {
-    const userId = coerceString(req.query?.userId);
-    if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
+    await requireAdminModule(adminUserId, "cabinets");
 
-    const metrics = await buildCabinetMetrics(userId);
-    const alerts = buildCabinetAlerts(metrics, coerceString(req.query?.language || "fr"));
+    const { rows: cabinetRows } = await db.query(
+      "SELECT id, first_name, last_name, email, created_at FROM users WHERE role_type = 'recruiter_firm' ORDER BY created_at DESC"
+    );
+    const { rows: profileRows } = cabinetRows.length
+      ? await db.query("SELECT user_id, organization_name FROM user_recruiter_profiles WHERE user_id = ANY($1)", [
+          cabinetRows.map((row) => row.id)
+        ])
+      : { rows: [] };
+    const orgNameByUser = Object.fromEntries(profileRows.map((row) => [row.user_id, row.organization_name]));
 
-    const { rows: recentCandidates } = await db.query(
-      "SELECT id, first_name, last_name, status, created_at FROM cabinet_candidates WHERE cabinet_user_id = $1 ORDER BY created_at DESC LIMIT 5",
-      [userId]
-    );
+    const items = [];
+    let totalSeats = 0;
+    let totalSeatsUsed = 0;
+    let totalCandidates = 0;
+    let totalMissions = 0;
 
-    // Missions ouvertes depuis 3j+ sans aucun candidat affecté et candidats
-    // encore "sourcés" (jamais contactés) — les deux segments concrets pour
-    // une relance ciblée depuis le dashboard (voir panneau "Relances").
-    const { rows: staleMissionRows } = await db.query(
-      `SELECT m.id FROM cabinet_missions m
-       WHERE m.cabinet_user_id = $1 AND m.status != 'closed' AND m.created_at < $2
-         AND NOT EXISTS (SELECT 1 FROM cabinet_mission_candidates mc WHERE mc.mission_id = m.id)`,
-      [userId, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()]
-    );
-    const { rows: uncontactedRows } = await db.query(
-      "SELECT COUNT(*)::int AS count FROM cabinet_candidates WHERE cabinet_user_id = $1 AND status = 'sourced'",
-      [userId]
-    );
-    const { rows: placementRows } = await db.query(
-      "SELECT COALESCE(SUM(placement_amount), 0) AS total FROM cabinet_missions WHERE cabinet_user_id = $1",
-      [userId]
-    );
+    for (const cabinet of cabinetRows) {
+      const metrics = await buildCabinetMetrics(cabinet.id);
+      const alerts = buildCabinetAlerts(metrics, coerceString(req.query?.language || "fr"));
+      totalSeats += metrics.seatsTotal;
+      totalSeatsUsed += metrics.seatsUsed;
+      totalCandidates += metrics.candidateCount;
+      totalMissions += metrics.missionCount;
+      items.push({
+        id: cabinet.id,
+        name: orgNameByUser[cabinet.id] || `${cabinet.first_name} ${cabinet.last_name}`.trim(),
+        email: cabinet.email,
+        createdAt: cabinet.created_at,
+        seatsTotal: metrics.seatsTotal,
+        seatsUsed: metrics.seatsUsed,
+        recruiterCount: metrics.recruiters.length,
+        candidateCount: metrics.candidateCount,
+        missionCount: metrics.missionCount,
+        openMissionCount: metrics.openMissionCount,
+        alertCount: alerts.length
+      });
+    }
+
+    // Cabinets les plus proches de la saturation de sièges en premier —
+    // même logique actionnable que pour les écoles.
+    items.sort((a, b) => {
+      const remainingA = a.seatsTotal ? (a.seatsTotal - a.seatsUsed) / a.seatsTotal : 1;
+      const remainingB = b.seatsTotal ? (b.seatsTotal - b.seatsUsed) / b.seatsTotal : 1;
+      return remainingA - remainingB;
+    });
 
     return res.json({
-      recruiterCount: metrics.recruiters.length,
-      seatsTotal: metrics.seatsTotal,
-      seatsUsed: metrics.seatsUsed,
-      candidateCount: metrics.candidateCount,
-      missionCount: metrics.missionCount,
-      openMissionCount: metrics.openMissionCount,
-      staleMissionCount: staleMissionRows.length,
-      uncontactedCandidateCount: uncontactedRows[0]?.count || 0,
-      totalPlacementRevenue: Number(placementRows[0]?.total || 0),
-      alerts,
-      recentCandidates: recentCandidates.map((row) => ({
-        id: row.id,
-        firstName: row.first_name,
-        lastName: row.last_name,
-        status: row.status,
-        createdAt: row.created_at
-      }))
+      items,
+      totalCabinets: cabinetRows.length,
+      totalSeats,
+      totalSeatsUsed,
+      totalCandidates,
+      totalMissions
     });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
 
-// Cloche de notifications — même principe que GET /api/notifications côté
-// candidat : rien n'est stocké, tout est recalculé à la volée à partir
-// d'événements réels (jamais de contenu fabriqué), avec des ids stables
-// pour que le "lu" (géré en local côté client) reste cohérent d'un appel à
-// l'autre.
-app.get("/api/cabinet/notifications", async (req, res) => {
+// Vue modération : toutes les annonces envoyées par tous les cabinets.
+app.get("/api/admin/cabinet-announcements", async (req, res) => {
   try {
-    const userId = coerceString(req.query?.userId);
-    if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
-    const language = coerceString(req.query?.language || "fr");
+    const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
+    await requireAdminModule(adminUserId, "cabinets");
 
-    const metrics = await buildCabinetMetrics(userId);
-    const alerts = buildCabinetAlerts(metrics, language);
-    const items = alerts.map((alert) => ({
-      id: `alert-${alert.type}`,
-      type: alert.type,
-      title: alert.title,
-      body: alert.body,
-      createdAt: null
-    }));
-
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-
-    // Nouveaux recruteurs ayant rejoint récemment (invitation acceptée).
-    const { rows: redeemedInvites } = await db.query(
-      `SELECT id, email, redeemed_at FROM cabinet_invitations
-       WHERE cabinet_user_id = $1 AND status = 'redeemed' AND redeemed_at >= $2
-       ORDER BY redeemed_at DESC LIMIT 10`,
-      [userId, sevenDaysAgo]
+    const { rows } = await db.query(
+      `SELECT ca.id, ca.subject, ca.message, ca.recipient_count, ca.failed_count, ca.created_at, u.first_name AS cabinet_name, u.email AS cabinet_email
+       FROM cabinet_announcements ca
+       JOIN users u ON u.id = ca.cabinet_user_id
+       ORDER BY ca.created_at DESC LIMIT 100`
     );
-    for (const row of redeemedInvites) {
-      items.push({
-        id: `recruiter-joined-${row.id}`,
-        type: "recruiter_joined",
-        title: language === "en" ? "A recruiter joined your firm" : "Un recruteur a rejoint votre cabinet",
-        body: row.email,
-        createdAt: row.redeemed_at
-      });
-    }
-
-    // Missions ouvertes depuis plus de 3 jours sans aucun candidat affecté —
-    // signal actionnable, pas juste un compteur.
-    const { rows: staleMissions } = await db.query(
-      `SELECT m.id, m.title, m.created_at FROM cabinet_missions m
-       WHERE m.cabinet_user_id = $1 AND m.status != 'closed' AND m.created_at < $2
-         AND NOT EXISTS (SELECT 1 FROM cabinet_mission_candidates mc WHERE mc.mission_id = m.id)
-       ORDER BY m.created_at ASC LIMIT 10`,
-      [userId, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()]
-    );
-    for (const row of staleMissions) {
-      items.push({
-        id: `mission-no-candidate-${row.id}`,
-        type: "mission_no_candidate",
-        title: language === "en" ? "Mission without any candidate" : "Mission sans candidat affecté",
-        body: row.title,
-        createdAt: row.created_at
-      });
-    }
-
-    items.sort((a, b) => {
-      if (!a.createdAt && !b.createdAt) return 0;
-      if (!a.createdAt) return -1;
-      if (!b.createdAt) return 1;
-      return new Date(b.createdAt) - new Date(a.createdAt);
+    return res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        subject: row.subject,
+        message: row.message,
+        recipientCount: row.recipient_count,
+        failedCount: row.failed_count,
+        createdAt: row.created_at,
+        cabinetName: row.cabinet_name,
+        cabinetEmail: row.cabinet_email
+      }))
     });
-
-    return res.json({ items: items.slice(0, 30) });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

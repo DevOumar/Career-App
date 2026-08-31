@@ -3,8 +3,9 @@ import { useState, useEffect } from "react";
 import { UiIcon } from "../../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDate } from "../../../lib/format.js";
-import { getCabinetOverview } from "../../../lib/inMemoryDb.js";
+import { getCabinetOverview, sendCabinetAnnouncement } from "../../../lib/inMemoryDb.js";
 import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
+import { cabinetToast } from "./cabinetToast.js";
 
 export default function CabinetHomePage({ user, language, onGoTo }) {
   const copy =
@@ -17,6 +18,7 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
           candidates: "Candidates in pool",
           missions: "Missions",
           openMissions: "Open missions",
+          revenue: "Revenue generated",
           alerts: "Alerts",
           noAlerts: "Nothing to report.",
           noAlertsHint: "You'll be notified here about seats, missions and new team members.",
@@ -26,7 +28,16 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
           addedOn: "Added on",
           goCandidates: "Add a candidate",
           goMissions: "Create a mission",
-          goInvitations: "Invite a recruiter"
+          goInvitations: "Invite a recruiter",
+          relanceTitle: "Targeted follow-up",
+          relanceHint: "Nudge your team about what's stalling in the pipeline.",
+          relanceStaleMissions: (n) => `${n} mission(s) without a candidate`,
+          relanceUncontacted: (n) => `${n} candidate(s) never contacted`,
+          relanceStaleMissionsSubject: "Missions waiting for candidates",
+          relanceStaleMissionsMessage: "Some open missions still have no candidate assigned — take a look at the pipeline when you can.",
+          relanceUncontactedSubject: "Candidates still uncontacted",
+          relanceUncontactedMessage: "Some candidates in the pool haven't been contacted yet — worth a follow-up.",
+          relanceSent: "Reminder sent to the team."
         }
       : {
           title: "Dashboard cabinet",
@@ -36,6 +47,7 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
           candidates: "Candidats en vivier",
           missions: "Missions",
           openMissions: "Missions ouvertes",
+          revenue: "CA généré",
           alerts: "Alertes",
           noAlerts: "Rien à signaler.",
           noAlertsHint: "Vous serez alerté ici pour les sièges, les missions et les nouveaux membres.",
@@ -45,7 +57,16 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
           addedOn: "Ajouté le",
           goCandidates: "Ajouter un candidat",
           goMissions: "Créer une mission",
-          goInvitations: "Inviter un recruteur"
+          goInvitations: "Inviter un recruteur",
+          relanceTitle: "Relances ciblées",
+          relanceHint: "Signalez à votre équipe ce qui bloque dans le pipeline.",
+          relanceStaleMissions: (n) => `${n} mission(s) sans candidat`,
+          relanceUncontacted: (n) => `${n} candidat(s) jamais contacté(s)`,
+          relanceStaleMissionsSubject: "Missions en attente de candidats",
+          relanceStaleMissionsMessage: "Certaines missions ouvertes n'ont toujours aucun candidat affecté — un coup d'œil au pipeline serait utile.",
+          relanceUncontactedSubject: "Candidats encore non contactés",
+          relanceUncontactedMessage: "Certains candidats du vivier n'ont pas encore été contactés — ça vaut le coup de relancer.",
+          relanceSent: "Relance envoyée à l'équipe."
         };
 
   const [data, setData] = useState(null);
@@ -57,8 +78,41 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
       .catch((err) => setError(getFriendlyErrorMessage(err, language)));
   }, [user.id, language]);
 
+  const [relanceBusy, setRelanceBusy] = useState("");
+
+  async function launchRelance(key, subject, message) {
+    setRelanceBusy(key);
+    try {
+      await sendCabinetAnnouncement(user.id, { subject, message });
+      cabinetToast({ title: copy.relanceSent });
+    } catch (err) {
+      cabinetToast({ title: getFriendlyErrorMessage(err, language), icon: "error" });
+    } finally {
+      setRelanceBusy("");
+    }
+  }
+
   if (error) return <p className="field-error">{error}</p>;
   if (!data) return <div className="extracting-state"><div className="loader-ring" /></div>;
+
+  const relanceSegments = [
+    data.staleMissionCount > 0
+      ? {
+          key: "staleMissions",
+          label: copy.relanceStaleMissions(data.staleMissionCount),
+          subject: copy.relanceStaleMissionsSubject,
+          message: copy.relanceStaleMissionsMessage
+        }
+      : null,
+    data.uncontactedCandidateCount > 0
+      ? {
+          key: "uncontacted",
+          label: copy.relanceUncontacted(data.uncontactedCandidateCount),
+          subject: copy.relanceUncontactedSubject,
+          message: copy.relanceUncontactedMessage
+        }
+      : null
+  ].filter(Boolean);
 
   return (
     <section className="cv-history-page cabinet-page">
@@ -95,6 +149,11 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
           <strong>{data.openMissionCount}/{data.missionCount}</strong>
           <span className="muted">{copy.openMissions}</span>
         </div>
+        <div className="cabinet-stat-card">
+          <span className="cabinet-stat-icon"><UiIcon name="scale" /></span>
+          <strong>{Math.round(data.totalPlacementRevenue || 0).toLocaleString(language === "en" ? "en-GB" : "fr-FR")} €</strong>
+          <span className="muted">{copy.revenue}</span>
+        </div>
       </div>
 
       <div className="cabinet-quick-actions">
@@ -108,6 +167,27 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
           <UiIcon name="mail" /> {copy.goInvitations}
         </button>
       </div>
+
+      {relanceSegments.length ? (
+        <div className="card block">
+          <h3>{copy.relanceTitle}</h3>
+          <p className="muted">{copy.relanceHint}</p>
+          <div className="cabinet-quick-actions">
+            {relanceSegments.map((segment) => (
+              <button
+                type="button"
+                key={segment.key}
+                className="btn-secondary"
+                disabled={relanceBusy === segment.key}
+                onClick={() => launchRelance(segment.key, segment.subject, segment.message)}
+              >
+                {relanceBusy === segment.key ? <span className="btn-spinner dark" /> : <UiIcon name="mail" />}
+                {segment.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div className="admin-panel-grid cabinet-home-grid">
         <div className="card block">

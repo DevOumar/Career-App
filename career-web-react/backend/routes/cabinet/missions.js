@@ -254,6 +254,50 @@ export function registerCabinetMissionsRoutes(app) {
 const CABINET_MISSION_STATUSES = new Set(["open", "in_progress", "closed"]);
 const CABINET_MISSION_STAGES = new Set(["sourced", "contacted", "interviewing", "placed", "rejected"]);
 
+// Comparaison de missions — même principe que /api/school/promotions/compare
+// : indicateurs clés côte à côte pour repérer la mission qui décroche.
+app.get("/api/cabinet/missions/compare", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    await requireCabinetOwner(userId);
+
+    const { rows: missionRows } = await db.query(
+      "SELECT * FROM cabinet_missions WHERE cabinet_user_id = $1 ORDER BY created_at DESC",
+      [userId]
+    );
+    const missionIds = missionRows.map((row) => row.id);
+    const { rows: linkRows } = missionIds.length
+      ? await db.query(
+          `SELECT mc.mission_id, mc.stage FROM cabinet_mission_candidates mc WHERE mc.mission_id = ANY($1)`,
+          [missionIds]
+        )
+      : { rows: [] };
+
+    const items = missionRows.map((row) => {
+      const links = linkRows.filter((link) => link.mission_id === row.id);
+      const stageCounts = {};
+      for (const link of links) stageCounts[link.stage] = (stageCounts[link.stage] || 0) + 1;
+      return {
+        id: row.id,
+        title: row.title,
+        clientName: row.client_name,
+        location: row.location,
+        status: row.status,
+        candidateCount: links.length,
+        placedCount: stageCounts.placed || 0,
+        interviewingCount: stageCounts.interviewing || 0,
+        rejectedCount: stageCounts.rejected || 0,
+        createdAt: row.created_at
+      };
+    });
+
+    return res.json({ items });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.get("/api/cabinet/missions", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
@@ -282,6 +326,7 @@ app.get("/api/cabinet/missions", async (req, res) => {
         clientName: row.client_name,
         location: row.location,
         status: row.status,
+        placementAmount: row.placement_amount != null ? Number(row.placement_amount) : null,
         createdAt: row.created_at,
         candidates: linkRows
           .filter((link) => link.mission_id === row.id)
@@ -339,14 +384,23 @@ app.put("/api/cabinet/missions/:id", async (req, res) => {
     ]);
     if (!rows.length) return res.status(404).json({ error: "Mission introuvable." });
     const existing = rows[0];
+    // Le montant facturé n'a de sens qu'une fois une mission clôturée — on
+    // le garde nullable ailleurs et on n'écrase la valeur existante que si
+    // le champ a explicitement été envoyé.
+    let placementAmount = existing.placement_amount;
+    if (req.body?.placementAmount !== undefined) {
+      const parsed = Number(req.body.placementAmount);
+      placementAmount = Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    }
     await db.query(
-      `UPDATE cabinet_missions SET title = $1, client_name = $2, location = $3, status = $4, updated_at = $5
-       WHERE id = $6 AND cabinet_user_id = $7`,
+      `UPDATE cabinet_missions SET title = $1, client_name = $2, location = $3, status = $4, placement_amount = $5, updated_at = $6
+       WHERE id = $7 AND cabinet_user_id = $8`,
       [
         coerceString(req.body?.title ?? existing.title).trim() || existing.title,
         coerceString(req.body?.clientName ?? existing.client_name).trim(),
         coerceString(req.body?.location ?? existing.location).trim(),
         status || existing.status,
+        placementAmount,
         nowIso(),
         missionId,
         userId
@@ -367,6 +421,35 @@ app.delete("/api/cabinet/missions/:id", async (req, res) => {
     await db.query("DELETE FROM cabinet_mission_candidates WHERE mission_id = $1", [missionId]);
     await db.query("DELETE FROM cabinet_missions WHERE id = $1 AND cabinet_user_id = $2", [missionId, userId]);
     return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Dupliquer une mission — un cabinet traite souvent des postes similaires
+// (ex. "Data Engineer") pour plusieurs clients. Copie le titre/lieu, jamais
+// les candidats déjà affectés ni le montant facturé (nouvelle mission =
+// nouveau pipeline vierge, nouveau statut "open").
+app.post("/api/cabinet/missions/:id/duplicate", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    await requireCabinetOwner(userId);
+    const missionId = coerceString(req.params.id);
+    const { rows } = await db.query("SELECT * FROM cabinet_missions WHERE id = $1 AND cabinet_user_id = $2", [
+      missionId,
+      userId
+    ]);
+    if (!rows.length) return res.status(404).json({ error: "Mission introuvable." });
+    const source = rows[0];
+    const id = `cmis-${crypto.randomUUID()}`;
+    const now = nowIso();
+    await db.query(
+      `INSERT INTO cabinet_missions (id, cabinet_user_id, title, client_name, location, status, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,'open',$6,$6)`,
+      [id, userId, `${source.title} (copie)`, source.client_name, source.location, now]
+    );
+    return res.status(201).json({ ok: true, id });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

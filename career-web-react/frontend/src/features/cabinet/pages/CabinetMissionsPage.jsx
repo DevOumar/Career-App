@@ -8,6 +8,7 @@ import {
   createCabinetMission,
   updateCabinetMission,
   deleteCabinetMission,
+  duplicateCabinetMission,
   updateCabinetMissionCandidate,
   getCabinetCandidates
 } from "../../../lib/inMemoryDb.js";
@@ -41,6 +42,8 @@ export default function CabinetMissionsPage({ user, language }) {
           assign: "Assign a candidate",
           addCandidate: "Add",
           removeCandidate: "Remove",
+          duplicate: "Duplicate",
+          placementAmount: "Amount billed to client (€)",
           formError: "Position title required (min 2 characters)."
         }
       : {
@@ -64,6 +67,8 @@ export default function CabinetMissionsPage({ user, language }) {
           assign: "Affecter un candidat",
           addCandidate: "Ajouter",
           removeCandidate: "Retirer",
+          duplicate: "Dupliquer",
+          placementAmount: "Montant facturé au client (€)",
           formError: "Titre du poste requis (2 caractères min)."
         };
 
@@ -120,6 +125,18 @@ export default function CabinetMissionsPage({ user, language }) {
     reload();
   }
 
+  async function handlePlacementAmountChange(mission, value) {
+    const amount = value === "" ? null : Number(value);
+    await updateCabinetMission(user.id, mission.id, { placementAmount: amount });
+    reload();
+  }
+
+  async function handleDuplicate(mission) {
+    await duplicateCabinetMission(user.id, mission.id);
+    reload();
+    cabinetToast({ title: language === "en" ? "Mission duplicated." : "Mission dupliquée." });
+  }
+
   return (
     <section className="cv-history-page cabinet-page">
       <div className="card block history-head">
@@ -165,10 +182,24 @@ export default function CabinetMissionsPage({ user, language }) {
 
                 <div className="history-card-stats">
                   <span className="history-card-stat">{copy.candidatesCount(mission.candidates.length)}</span>
+                  <button type="button" className="btn-ghost" onClick={() => handleDuplicate(mission)}>
+                    <UiIcon name="upload" /> {copy.duplicate}
+                  </button>
                   <button type="button" className="btn-ghost" onClick={() => handleDelete(mission)}>
                     <UiIcon name="trash" /> {copy.delete}
                   </button>
                 </div>
+
+                {mission.status === "closed" ? (
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    defaultValue={mission.placementAmount ?? ""}
+                    placeholder={copy.placementAmount}
+                    onBlur={(event) => handlePlacementAmountChange(mission, event.target.value)}
+                  />
+                ) : null}
 
                 <div className="cabinet-mission-assign">
                   <select

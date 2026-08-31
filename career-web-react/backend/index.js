@@ -79,7 +79,8 @@ const ADMIN_MODULE_IDS = new Set([
   "announcements",
   "pricing",
   "satisfaction",
-  "schools"
+  "schools",
+  "cabinets"
 ]);
 
 function sanitizeAdminModules(input) {
@@ -809,6 +810,11 @@ await db.exec(`
     created_at TEXT NOT NULL
   );
 
+  CREATE TABLE IF NOT EXISTS cabinet_digest_log (
+    cabinet_user_id TEXT PRIMARY KEY,
+    last_sent_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS school_notifications (
     id TEXT PRIMARY KEY,
     school_user_id TEXT NOT NULL,
@@ -933,6 +939,7 @@ await db.exec(`
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS contact_phone TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS primary_contact_name TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS logo_data_url TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS placement_amount NUMERIC;
 `);
 
 // Sessions déjà expirées avant l'ajout de la colonne expires_at (créées
@@ -4479,6 +4486,70 @@ async function runSchoolWeeklyDigests() {
   }
 }
 
+// Digest hebdomadaire Cabinet — miroir de runSchoolWeeklyDigests, mêmes
+// garanties (best-effort, une fois par semaine max par cabinet).
+async function runCabinetWeeklyDigests() {
+  try {
+    const { rows: cabinets } = await db.query(
+      "SELECT id, first_name, email FROM users WHERE role_type = 'recruiter_firm'"
+    );
+    if (!cabinets.length) return;
+    const { rows: logRows } = await db.query("SELECT cabinet_user_id, last_sent_at FROM cabinet_digest_log");
+    const lastSentByUser = Object.fromEntries(logRows.map((row) => [row.cabinet_user_id, new Date(row.last_sent_at).getTime()]));
+    const transporter = getMailTransporter();
+    if (!transporter) return;
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+
+    for (const cabinet of cabinets) {
+      const lastSent = lastSentByUser[cabinet.id];
+      if (lastSent && now - lastSent < sevenDaysMs) continue;
+      try {
+        const metrics = await buildCabinetMetrics(cabinet.id);
+        const alerts = buildCabinetAlerts(metrics, "fr");
+        if (alerts.length) {
+          const { rows: profileRows } = await db.query(
+            "SELECT organization_name FROM user_recruiter_profiles WHERE user_id = $1",
+            [cabinet.id]
+          );
+          const organizationName = profileRows[0]?.organization_name || cabinet.first_name || "votre cabinet";
+          const html = `
+            <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
+              <h2 style="color:#b83309;margin:0 0 18px;">Career CV — Résumé hebdomadaire</h2>
+              <p style="margin:0 0 14px;color:#1f2634;">Bonjour,</p>
+              <p style="margin:0 0 14px;color:#1f2634;">Voici les points d'attention pour <strong>${escapeHtml(organizationName)}</strong> cette semaine :</p>
+              <ul style="margin:0 0 18px;padding-left:20px;color:#1f2634;line-height:1.7;">
+                ${alerts.map((alert) => `<li><strong>${escapeHtml(alert.title)}</strong> — ${escapeHtml(alert.body)}</li>`).join("")}
+              </ul>
+              <p style="margin:0 0 14px;color:#1f2634;">Connectez-vous à votre espace Cabinet pour plus de détails.</p>
+              <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career CV</p>
+            </div>`;
+          const text = `Résumé hebdomadaire Career CV pour ${organizationName} :\n\n${alerts
+            .map((alert) => `- ${alert.title} : ${alert.body}`)
+            .join("\n")}\n\n— L'équipe Career CV`;
+          const recipient = AUTH_EMAIL_TO || cabinet.email;
+          await transporter.sendMail({
+            from: MAIL_FROM,
+            to: recipient,
+            subject: `Career CV — Résumé hebdomadaire (${alerts.length} point${alerts.length > 1 ? "s" : ""} d'attention)`,
+            html,
+            text
+          });
+        }
+        await db.query(
+          `INSERT INTO cabinet_digest_log (cabinet_user_id, last_sent_at) VALUES ($1, $2)
+           ON CONFLICT (cabinet_user_id) DO UPDATE SET last_sent_at = EXCLUDED.last_sent_at`,
+          [cabinet.id, new Date().toISOString()]
+        );
+      } catch (_perCabinetError) {
+        // Une erreur sur un cabinet ne doit pas bloquer les autres.
+      }
+    }
+  } catch (_error) {
+    // Le digest est une amélioration best-effort, jamais bloquante pour l'API.
+  }
+}
+
 
 
 
@@ -4992,6 +5063,8 @@ if (serverStart.status === "existing") {
   // démarrage pour ne pas dépendre d'un cron externe.
   setTimeout(() => runSchoolWeeklyDigests(), 60_000);
   setInterval(() => runSchoolWeeklyDigests(), 6 * 60 * 60 * 1000);
+  setTimeout(() => runCabinetWeeklyDigests(), 90_000);
+  setInterval(() => runCabinetWeeklyDigests(), 6 * 60 * 60 * 1000);
 }
 
 

@@ -19,6 +19,7 @@ import CabinetRecruitersPage from "./pages/CabinetRecruitersPage.jsx";
 import CabinetInvitationsPage from "./pages/CabinetInvitationsPage.jsx";
 import CabinetCandidatesPage from "./pages/CabinetCandidatesPage.jsx";
 import CabinetMissionsPage from "./pages/CabinetMissionsPage.jsx";
+import CabinetComparePage from "./pages/CabinetComparePage.jsx";
 import CabinetReportsPage from "./pages/CabinetReportsPage.jsx";
 import CabinetAnnouncementsPage from "./pages/CabinetAnnouncementsPage.jsx";
 import CabinetLicensePage from "./pages/CabinetLicensePage.jsx";
@@ -32,7 +33,14 @@ import CabinetSettingsPage from "./pages/CabinetSettingsPage.jsx";
 export const CABINET_NAV_ITEMS = [
   { id: "home", icon: "home" },
   { id: "candidates", icon: "network" },
-  { id: "missions", icon: "briefcase" },
+  {
+    id: "missionsGroup",
+    icon: "briefcase",
+    children: [
+      { id: "missions", icon: "briefcase" },
+      { id: "compare", icon: "scale" }
+    ]
+  },
   { id: "reports", icon: "file" },
   {
     id: "team",
@@ -164,7 +172,9 @@ export default function CabinetApp({
           home: "Home",
           recruiters: "Recruiters",
           candidates: "Candidate pool",
-          missions: "Missions",
+          missionsGroup: "Missions",
+          missions: "All missions",
+          compare: "Compare missions",
           reports: "Reports",
           invitations: "Invitations",
           announcements: "Announcements",
@@ -187,7 +197,9 @@ export default function CabinetApp({
           home: "Accueil",
           recruiters: "Recruteurs",
           candidates: "Vivier de candidats",
-          missions: "Missions",
+          missionsGroup: "Missions",
+          missions: "Toutes les missions",
+          compare: "Comparer les missions",
           reports: "Rapports",
           invitations: "Invitations",
           announcements: "Annonces",
@@ -380,6 +392,7 @@ export default function CabinetApp({
         {tab === "recruiters" ? <CabinetRecruitersPage user={user} language={language} /> : null}
         {tab === "candidates" ? <CabinetCandidatesPage user={user} language={language} /> : null}
         {tab === "missions" ? <CabinetMissionsPage user={user} language={language} /> : null}
+        {tab === "compare" ? <CabinetComparePage user={user} language={language} /> : null}
         {tab === "reports" ? <CabinetReportsPage user={user} language={language} /> : null}
         {tab === "invitations" ? <CabinetInvitationsPage user={user} language={language} /> : null}
         {tab === "announcements" ? <CabinetAnnouncementsPage user={user} language={language} /> : null}

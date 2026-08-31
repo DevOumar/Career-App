@@ -674,6 +674,24 @@ app.delete("/api/account", async (req, res) => {
       await db.query("DELETE FROM license_codes WHERE owner_user_id = $1", [userId]);
     }
 
+    if (user.role_type === "recruiter_firm") {
+      // Nettoyage RGPD spécifique Cabinet : missions (+ affectations
+      // candidats), vivier de candidats, invitations, rapports, annonces et
+      // codes de licence émis par ce cabinet. Comme pour l'École, les
+      // recruteurs déjà rattachés via un code ne sont pas rétrogradés ici.
+      const { rows: missionRows } = await db.query("SELECT id FROM cabinet_missions WHERE cabinet_user_id = $1", [userId]);
+      const missionIds = missionRows.map((row) => row.id);
+      if (missionIds.length) {
+        await db.query("DELETE FROM cabinet_mission_candidates WHERE mission_id = ANY($1)", [missionIds]);
+      }
+      await db.query("DELETE FROM cabinet_missions WHERE cabinet_user_id = $1", [userId]);
+      await db.query("DELETE FROM cabinet_candidates WHERE cabinet_user_id = $1", [userId]);
+      await db.query("DELETE FROM cabinet_invitations WHERE cabinet_user_id = $1", [userId]);
+      await db.query("DELETE FROM cabinet_reports WHERE cabinet_user_id = $1", [userId]);
+      await db.query("DELETE FROM cabinet_announcements WHERE cabinet_user_id = $1", [userId]);
+      await db.query("DELETE FROM license_codes WHERE owner_user_id = $1", [userId]);
+    }
+
     await db.query("DELETE FROM sessions WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM email_verification_codes WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_email_addresses WHERE user_id = $1", [userId]);
