@@ -3585,6 +3585,34 @@ async function getPublicUserById(userId) {
         renewalAt: subscription.renewalAt || null
       };
     }
+  } else if (userRow.role_type === "school" || userRow.role_type === "recruiter_firm") {
+    // Le propriétaire lui-même (école ou cabinet) n'a pas de licenseCode à
+    // résoudre (c'est LUI qui émet les codes) — mais son propre Compte doit
+    // quand même afficher sa fiche établissement sous "Comptes connectés",
+    // pas seulement les comptes qui ont rejoint via son code.
+    const table = userRow.role_type === "school" ? "user_org_profiles" : "user_recruiter_profiles";
+    const { rows } = await db.query(`SELECT * FROM ${table} WHERE user_id = $1`, [userId]);
+    const row = rows[0];
+    if (row && row.organization_name) {
+      publicUser.schoolLicense = {
+        code: "",
+        organizationName: row.organization_name,
+        acronym: row.acronym || "",
+        organizationType: row.organization_type || "",
+        website: row.website || "",
+        logoDataUrl: row.logo_data_url || "",
+        address: row.address || "",
+        city: row.city || "",
+        country: row.country || "",
+        emailDomain: row.email_domain || "",
+        contactEmail: row.contact_email || userRow.email || "",
+        contactPhone: row.contact_phone || "",
+        primaryContactName: row.primary_contact_name || "",
+        planId: null,
+        revoked: false,
+        renewalAt: null
+      };
+    }
   }
 
   return publicUser;
