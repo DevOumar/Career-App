@@ -244,6 +244,7 @@ export function registerCabinetProfileRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     requireCabinetOwner,
+    requireCabinetOwnerRole,
     getCabinetLicenseCodeRows,
     getCabinetRecruiterRows,
     buildCabinetMetrics,
@@ -260,8 +261,10 @@ app.get("/api/cabinet/profile", async (req, res) => {
     // user_recruiter_profiles (rempli dès l'inscription/la création par un
     // admin via upsertRecruiterProfile), PAS dans user_org_profiles qui est
     // réservée aux comptes school — lire la mauvaise table faisait
-    // disparaître le nom de cabinet saisi à l'inscription.
-    const { rows } = await db.query("SELECT * FROM user_recruiter_profiles WHERE user_id = $1", [userId]);
+    // disparaître le nom de cabinet saisi à l'inscription. On lit toujours
+    // le profil du TITULAIRE (cabinetRootId) : un recruteur invité voit la
+    // fiche du cabinet, pas une fiche vide propre à son compte.
+    const { rows } = await db.query("SELECT * FROM user_recruiter_profiles WHERE user_id = $1", [cabinet.cabinetRootId]);
     const row = rows[0] || {};
     return res.json({
       admin: {
@@ -280,7 +283,10 @@ app.get("/api/cabinet/profile", async (req, res) => {
         contactEmail: row.contact_email || "",
         contactPhone: row.contact_phone || "",
         primaryContactName: row.primary_contact_name || "",
-        logoDataUrl: row.logo_data_url || ""
+        logoDataUrl: row.logo_data_url || "",
+        description: row.description || "",
+        publicPageEnabled: Boolean(Number(row.public_page_enabled)),
+        publicSlug: row.public_slug || ""
       }
     });
   } catch (error) {
@@ -292,11 +298,32 @@ app.put("/api/cabinet/profile", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
+    requireCabinetOwnerRole(cabinet);
+    const rootId = cabinet.cabinetRootId;
     const profile = req.body?.profile || {};
+
+    // Slug de la page publique : dérivé du nom de cabinet, garanti unique en
+    // suffixant l'id si besoin (pas de collision possible entre cabinets).
+    let publicSlug = "";
+    if (profile.publicPageEnabled) {
+      const base = coerceString(profile.organizationName)
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[̀-ͯ]/g, "")
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60) || "cabinet";
+      const { rows: existingSlugRows } = await db.query(
+        "SELECT user_id FROM user_recruiter_profiles WHERE public_slug = $1 AND user_id != $2",
+        [base, rootId]
+      );
+      publicSlug = existingSlugRows.length ? `${base}-${rootId.slice(-6)}` : base;
+    }
+
     await db.query(
-      `INSERT INTO user_recruiter_profiles (user_id, organization_name, website, address, city, country, contact_email, contact_phone, primary_contact_name, logo_data_url, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      `INSERT INTO user_recruiter_profiles (user_id, organization_name, website, address, city, country, contact_email, contact_phone, primary_contact_name, logo_data_url, description, public_page_enabled, public_slug, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT (user_id) DO UPDATE SET
          organization_name=EXCLUDED.organization_name,
          website=EXCLUDED.website,
@@ -307,9 +334,12 @@ app.put("/api/cabinet/profile", async (req, res) => {
          contact_phone=EXCLUDED.contact_phone,
          primary_contact_name=EXCLUDED.primary_contact_name,
          logo_data_url=EXCLUDED.logo_data_url,
+         description=EXCLUDED.description,
+         public_page_enabled=EXCLUDED.public_page_enabled,
+         public_slug=EXCLUDED.public_slug,
          updated_at=EXCLUDED.updated_at`,
       [
-        userId,
+        rootId,
         coerceString(profile.organizationName),
         coerceString(profile.website),
         coerceString(profile.address),
@@ -319,11 +349,52 @@ app.put("/api/cabinet/profile", async (req, res) => {
         coerceString(profile.contactPhone),
         coerceString(profile.primaryContactName),
         normalizeAvatarDataUrl(profile.logoDataUrl || ""),
+        coerceString(profile.description).slice(0, 2000),
+        profile.publicPageEnabled ? 1 : 0,
+        publicSlug,
         nowIso()
       ]
     );
     await logSecurityEvent(req, userId, "cabinet_profile_updated", {});
-    return res.json({ ok: true });
+    return res.json({ ok: true, publicSlug });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Page publique du cabinet (visiteur non connecté) — vitrine minimale
+// affichant le cabinet et ses missions ouvertes, uniquement si le cabinet a
+// explicitement activé public_page_enabled (opt-in, pas de fuite par
+// défaut).
+app.get("/api/public/cabinet/:slug", async (req, res) => {
+  try {
+    const slug = coerceString(req.params.slug);
+    const { rows } = await db.query(
+      "SELECT * FROM user_recruiter_profiles WHERE public_slug = $1 AND public_page_enabled = 1",
+      [slug]
+    );
+    if (!rows.length) return res.status(404).json({ error: "Page introuvable." });
+    const row = rows[0];
+
+    const { rows: missionRows } = await db.query(
+      "SELECT id, title, location, created_at FROM cabinet_missions WHERE cabinet_user_id = $1 AND status = 'open' ORDER BY created_at DESC LIMIT 30",
+      [row.user_id]
+    );
+
+    return res.json({
+      organizationName: row.organization_name || "",
+      website: row.website || "",
+      city: row.city || "",
+      country: row.country || "",
+      description: row.description || "",
+      logoDataUrl: row.logo_data_url || "",
+      openMissions: missionRows.map((mission) => ({
+        id: mission.id,
+        title: mission.title,
+        location: mission.location,
+        createdAt: mission.created_at
+      }))
+    });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

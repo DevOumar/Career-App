@@ -244,6 +244,7 @@ export function registerCabinetReportsRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     requireCabinetOwner,
+    requireCabinetOwnerRole,
     getCabinetLicenseCodeRows,
     getCabinetRecruiterRows,
     buildCabinetMetrics,
@@ -255,15 +256,15 @@ app.get("/api/cabinet/reports", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const { rows: missionRows } = await db.query(
       "SELECT id, title FROM cabinet_missions WHERE cabinet_user_id = $1 ORDER BY created_at DESC",
-      [userId]
+      [cabinet.cabinetRootId]
     );
     const { rows } = await db.query(
       "SELECT * FROM cabinet_reports WHERE cabinet_user_id = $1 ORDER BY created_at DESC LIMIT 50",
-      [userId]
+      [cabinet.cabinetRootId]
     );
     return res.json({
       missions: missionRows.map((row) => ({ id: row.id, name: row.title })),
@@ -284,14 +285,14 @@ app.post("/api/cabinet/reports/generate", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const missionId = coerceString(req.body?.missionId);
     if (!missionId) return res.status(400).json({ error: "Mission requise pour générer un rapport." });
 
     const { rows: missionRows } = await db.query(
       "SELECT * FROM cabinet_missions WHERE id = $1 AND cabinet_user_id = $2",
-      [missionId, userId]
+      [missionId, cabinet.cabinetRootId]
     );
     if (!missionRows.length) return res.status(404).json({ error: "Mission introuvable." });
     const mission = missionRows[0];
@@ -324,7 +325,7 @@ app.post("/api/cabinet/reports/generate", async (req, res) => {
     const title = `Rapport de mission — ${mission.title}`;
     await db.query(
       "INSERT INTO cabinet_reports (id, cabinet_user_id, title, mission_id, payload_json, created_at) VALUES ($1,$2,$3,$4,$5,$6)",
-      [id, userId, title, missionId, JSON.stringify(payload), nowIso()]
+      [id, cabinet.cabinetRootId, title, missionId, JSON.stringify(payload), nowIso()]
     );
     return res.status(201).json({ ok: true, id, payload });
   } catch (error) {

@@ -244,6 +244,7 @@ export function registerCabinetOverviewRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     requireCabinetOwner,
+    requireCabinetOwnerRole,
     getCabinetLicenseCodeRows,
     getCabinetRecruiterRows,
     buildCabinetMetrics,
@@ -255,14 +256,15 @@ app.get("/api/cabinet/overview", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
+    const rootId = cabinet.cabinetRootId;
 
-    const metrics = await buildCabinetMetrics(userId);
+    const metrics = await buildCabinetMetrics(rootId);
     const alerts = buildCabinetAlerts(metrics, coerceString(req.query?.language || "fr"));
 
     const { rows: recentCandidates } = await db.query(
       "SELECT id, first_name, last_name, status, created_at FROM cabinet_candidates WHERE cabinet_user_id = $1 ORDER BY created_at DESC LIMIT 5",
-      [userId]
+      [rootId]
     );
 
     // Missions ouvertes depuis 3j+ sans aucun candidat affecté et candidats
@@ -272,15 +274,31 @@ app.get("/api/cabinet/overview", async (req, res) => {
       `SELECT m.id FROM cabinet_missions m
        WHERE m.cabinet_user_id = $1 AND m.status != 'closed' AND m.created_at < $2
          AND NOT EXISTS (SELECT 1 FROM cabinet_mission_candidates mc WHERE mc.mission_id = m.id)`,
-      [userId, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()]
+      [rootId, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()]
     );
     const { rows: uncontactedRows } = await db.query(
       "SELECT COUNT(*)::int AS count FROM cabinet_candidates WHERE cabinet_user_id = $1 AND status = 'sourced'",
-      [userId]
+      [rootId]
     );
     const { rows: placementRows } = await db.query(
       "SELECT COALESCE(SUM(placement_amount), 0) AS total FROM cabinet_missions WHERE cabinet_user_id = $1",
-      [userId]
+      [rootId]
+    );
+
+    // Performance par recruteur — désormais pertinent puisque le vivier est
+    // partagé au sein du cabinet : nombre de candidats sourcés et placés
+    // imputés à chaque compte (created_by), avec le titulaire lui-même
+    // inclus comme un membre de l'équipe parmi d'autres.
+    const { rows: performanceRows } = await db.query(
+      `SELECT c.created_by AS user_id, u.first_name, u.last_name,
+              COUNT(*)::int AS sourced_count,
+              COUNT(*) FILTER (WHERE c.status = 'placed')::int AS placed_count
+       FROM cabinet_candidates c
+       LEFT JOIN users u ON u.id = c.created_by
+       WHERE c.cabinet_user_id = $1 AND c.created_by IS NOT NULL
+       GROUP BY c.created_by, u.first_name, u.last_name
+       ORDER BY placed_count DESC, sourced_count DESC`,
+      [rootId]
     );
 
     return res.json({
@@ -300,6 +318,13 @@ app.get("/api/cabinet/overview", async (req, res) => {
         lastName: row.last_name,
         status: row.status,
         createdAt: row.created_at
+      })),
+      recruiterPerformance: performanceRows.map((row) => ({
+        userId: row.user_id,
+        firstName: row.first_name || "",
+        lastName: row.last_name || "",
+        sourcedCount: row.sourced_count,
+        placedCount: row.placed_count
       }))
     });
   } catch (error) {
@@ -316,10 +341,11 @@ app.get("/api/cabinet/notifications", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
+    const rootId = cabinet.cabinetRootId;
     const language = coerceString(req.query?.language || "fr");
 
-    const metrics = await buildCabinetMetrics(userId);
+    const metrics = await buildCabinetMetrics(rootId);
     const alerts = buildCabinetAlerts(metrics, language);
     const items = alerts.map((alert) => ({
       id: `alert-${alert.type}`,
@@ -336,7 +362,7 @@ app.get("/api/cabinet/notifications", async (req, res) => {
       `SELECT id, email, redeemed_at FROM cabinet_invitations
        WHERE cabinet_user_id = $1 AND status = 'redeemed' AND redeemed_at >= $2
        ORDER BY redeemed_at DESC LIMIT 10`,
-      [userId, sevenDaysAgo]
+      [rootId, sevenDaysAgo]
     );
     for (const row of redeemedInvites) {
       items.push({
@@ -355,7 +381,7 @@ app.get("/api/cabinet/notifications", async (req, res) => {
        WHERE m.cabinet_user_id = $1 AND m.status != 'closed' AND m.created_at < $2
          AND NOT EXISTS (SELECT 1 FROM cabinet_mission_candidates mc WHERE mc.mission_id = m.id)
        ORDER BY m.created_at ASC LIMIT 10`,
-      [userId, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()]
+      [rootId, new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString()]
     );
     for (const row of staleMissions) {
       items.push({
@@ -364,6 +390,23 @@ app.get("/api/cabinet/notifications", async (req, res) => {
         title: language === "en" ? "Mission without any candidate" : "Mission sans candidat affecté",
         body: row.title,
         createdAt: row.created_at
+      });
+    }
+
+    // Rappels de suivi candidats échus (follow_up_date <= aujourd'hui).
+    const { rows: dueFollowUps } = await db.query(
+      `SELECT id, first_name, last_name, follow_up_date FROM cabinet_candidates
+       WHERE cabinet_user_id = $1 AND follow_up_date IS NOT NULL AND follow_up_date <= $2
+       ORDER BY follow_up_date ASC LIMIT 10`,
+      [rootId, nowIso()]
+    );
+    for (const row of dueFollowUps) {
+      items.push({
+        id: `follow-up-${row.id}`,
+        type: "candidate_follow_up",
+        title: language === "en" ? "Follow-up reminder" : "Rappel de relance",
+        body: `${row.first_name} ${row.last_name}`.trim(),
+        createdAt: row.follow_up_date
       });
     }
 

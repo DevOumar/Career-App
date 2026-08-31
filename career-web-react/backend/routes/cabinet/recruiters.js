@@ -244,6 +244,7 @@ export function registerCabinetRecruitersRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     requireCabinetOwner,
+    requireCabinetOwnerRole,
     getCabinetLicenseCodeRows,
     getCabinetRecruiterRows,
     buildCabinetMetrics,
@@ -255,10 +256,13 @@ app.get("/api/cabinet/recruiters", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const search = coerceString(req.query?.search).toLowerCase();
-    const recruiters = await getCabinetRecruiterRows(userId);
+    // getCabinetRecruiterRows attend l'id du titulaire (celui qui a émis les
+    // codes de licence) — un recruteur invité doit voir son équipe complète
+    // lui aussi, pas une liste vide (bug avant résolution de cabinetRootId).
+    const recruiters = await getCabinetRecruiterRows(cabinet.cabinetRootId);
     const filtered = recruiters.filter((row) => {
       if (!search) return true;
       const haystack = `${row.first_name} ${row.last_name} ${row.email}`.toLowerCase();
@@ -288,14 +292,15 @@ app.post("/api/cabinet/recruiters/remove", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
+    requireCabinetOwnerRole(cabinet);
 
     const targetUserId = coerceString(req.body?.targetUserId);
     const target = await getUserRowById(targetUserId);
     if (!target) return res.status(404).json({ error: "Recruteur introuvable." });
 
     const subscription = parseJsonField(target.subscription_json, {});
-    const codeRows = await getCabinetLicenseCodeRows(userId);
+    const codeRows = await getCabinetLicenseCodeRows(cabinet.cabinetRootId);
     const isOwnedCode = codeRows.some((row) => row.code === subscription.licenseCode);
     if (!isOwnedCode) {
       return res.status(403).json({ error: "Ce compte n'est pas rattaché à votre cabinet." });

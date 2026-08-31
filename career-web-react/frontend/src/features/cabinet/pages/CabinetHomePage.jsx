@@ -7,7 +7,7 @@ import { getCabinetOverview, sendCabinetAnnouncement } from "../../../lib/inMemo
 import { CabinetEmptyState } from "./CabinetEmptyState.jsx";
 import { cabinetToast } from "./cabinetToast.js";
 
-export default function CabinetHomePage({ user, language, onGoTo }) {
+export default function CabinetHomePage({ user, language, onGoTo, isCabinetOwner = true }) {
   const copy =
     language === "en"
       ? {
@@ -66,8 +66,18 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
           relanceStaleMissionsMessage: "Certaines missions ouvertes n'ont toujours aucun candidat affecté — un coup d'œil au pipeline serait utile.",
           relanceUncontactedSubject: "Candidats encore non contactés",
           relanceUncontactedMessage: "Certains candidats du vivier n'ont pas encore été contactés — ça vaut le coup de relancer.",
-          relanceSent: "Relance envoyée à l'équipe."
+          relanceSent: "Relance envoyée à l'équipe.",
+          performanceTitle: "Performance de l'équipe",
+          performanceSourced: (n) => `${n} sourcé(s)`,
+          performancePlaced: (n) => `${n} placé(s)`,
+          performanceEmpty: "Pas encore de candidat attribué à un recruteur."
         };
+  if (language === "en") {
+    copy.performanceTitle = "Team performance";
+    copy.performanceSourced = (n) => `${n} sourced`;
+    copy.performancePlaced = (n) => `${n} placed`;
+    copy.performanceEmpty = "No candidate attributed to a recruiter yet.";
+  }
 
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -168,7 +178,7 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
         </button>
       </div>
 
-      {relanceSegments.length ? (
+      {isCabinetOwner && relanceSegments.length ? (
         <div className="card block">
           <h3>{copy.relanceTitle}</h3>
           <p className="muted">{copy.relanceHint}</p>
@@ -184,6 +194,21 @@ export default function CabinetHomePage({ user, language, onGoTo }) {
                 {relanceBusy === segment.key ? <span className="btn-spinner dark" /> : <UiIcon name="mail" />}
                 {segment.label}
               </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+
+      {data.recruiterPerformance?.length ? (
+        <div className="card block">
+          <h3>{copy.performanceTitle}</h3>
+          <div className="cabinet-performance-list">
+            {data.recruiterPerformance.map((row) => (
+              <div className="cabinet-performance-row" key={row.userId}>
+                <span className="cabinet-performance-name">{row.firstName} {row.lastName}</span>
+                <span className="tag">{copy.performanceSourced(row.sourcedCount)}</span>
+                <span className="tag tag-success">{copy.performancePlaced(row.placedCount)}</span>
+              </div>
             ))}
           </div>
         </div>

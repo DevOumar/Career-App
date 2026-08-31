@@ -685,10 +685,12 @@ app.delete("/api/account", async (req, res) => {
         await db.query("DELETE FROM cabinet_mission_candidates WHERE mission_id = ANY($1)", [missionIds]);
       }
       await db.query("DELETE FROM cabinet_missions WHERE cabinet_user_id = $1", [userId]);
+      await db.query("DELETE FROM cabinet_candidate_notes WHERE cabinet_user_id = $1", [userId]);
       await db.query("DELETE FROM cabinet_candidates WHERE cabinet_user_id = $1", [userId]);
       await db.query("DELETE FROM cabinet_invitations WHERE cabinet_user_id = $1", [userId]);
       await db.query("DELETE FROM cabinet_reports WHERE cabinet_user_id = $1", [userId]);
       await db.query("DELETE FROM cabinet_announcements WHERE cabinet_user_id = $1", [userId]);
+      await db.query("DELETE FROM cabinet_message_templates WHERE cabinet_user_id = $1", [userId]);
       await db.query("DELETE FROM license_codes WHERE owner_user_id = $1", [userId]);
     }
 

@@ -244,6 +244,7 @@ export function registerCabinetMissionsRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     requireCabinetOwner,
+    requireCabinetOwnerRole,
     getCabinetLicenseCodeRows,
     getCabinetRecruiterRows,
     buildCabinetMetrics,
@@ -260,11 +261,11 @@ app.get("/api/cabinet/missions/compare", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const { rows: missionRows } = await db.query(
       "SELECT * FROM cabinet_missions WHERE cabinet_user_id = $1 ORDER BY created_at DESC",
-      [userId]
+      [cabinet.cabinetRootId]
     );
     const missionIds = missionRows.map((row) => row.id);
     const { rows: linkRows } = missionIds.length
@@ -298,15 +299,53 @@ app.get("/api/cabinet/missions/compare", async (req, res) => {
   }
 });
 
+app.get("/api/cabinet/missions/export", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const cabinet = await requireCabinetOwner(userId);
+
+    const { rows } = await db.query(
+      "SELECT * FROM cabinet_missions WHERE cabinet_user_id = $1 ORDER BY created_at DESC",
+      [cabinet.cabinetRootId]
+    );
+    const missionIds = rows.map((row) => row.id);
+    const { rows: countRows } = missionIds.length
+      ? await db.query(
+          "SELECT mission_id, COUNT(*)::int AS count FROM cabinet_mission_candidates WHERE mission_id = ANY($1) GROUP BY mission_id",
+          [missionIds]
+        )
+      : { rows: [] };
+    const countByMission = new Map(countRows.map((row) => [row.mission_id, row.count]));
+
+    return sendCsv(
+      res,
+      "missions.csv",
+      ["Poste", "Client", "Localisation", "Statut", "Candidats affectés", "Montant facturé (€)", "Créée le"],
+      rows.map((row) => [
+        row.title,
+        row.client_name,
+        row.location,
+        row.status,
+        countByMission.get(row.id) || 0,
+        row.placement_amount ?? "",
+        row.created_at
+      ])
+    );
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.get("/api/cabinet/missions", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const { rows } = await db.query(
       "SELECT * FROM cabinet_missions WHERE cabinet_user_id = $1 ORDER BY created_at DESC",
-      [userId]
+      [cabinet.cabinetRootId]
     );
     const missionIds = rows.map((row) => row.id);
     const { rows: linkRows } = missionIds.length
@@ -349,7 +388,7 @@ app.post("/api/cabinet/missions", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const title = coerceString(req.body?.title).trim();
     if (title.length < 2) {
@@ -360,7 +399,7 @@ app.post("/api/cabinet/missions", async (req, res) => {
     await db.query(
       `INSERT INTO cabinet_missions (id, cabinet_user_id, title, client_name, location, status, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,'open',$6,$6)`,
-      [id, userId, title, coerceString(req.body?.clientName).trim(), coerceString(req.body?.location).trim(), now]
+      [id, cabinet.cabinetRootId, title, coerceString(req.body?.clientName).trim(), coerceString(req.body?.location).trim(), now]
     );
     return res.status(201).json({ ok: true, id });
   } catch (error) {
@@ -372,7 +411,7 @@ app.put("/api/cabinet/missions/:id", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
     const missionId = coerceString(req.params.id);
     const status = coerceString(req.body?.status);
     if (status && !CABINET_MISSION_STATUSES.has(status)) {
@@ -380,7 +419,7 @@ app.put("/api/cabinet/missions/:id", async (req, res) => {
     }
     const { rows } = await db.query("SELECT * FROM cabinet_missions WHERE id = $1 AND cabinet_user_id = $2", [
       missionId,
-      userId
+      cabinet.cabinetRootId
     ]);
     if (!rows.length) return res.status(404).json({ error: "Mission introuvable." });
     const existing = rows[0];
@@ -403,7 +442,7 @@ app.put("/api/cabinet/missions/:id", async (req, res) => {
         placementAmount,
         nowIso(),
         missionId,
-        userId
+        cabinet.cabinetRootId
       ]
     );
     return res.json({ ok: true });
@@ -416,10 +455,10 @@ app.delete("/api/cabinet/missions/:id", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId || req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
     const missionId = coerceString(req.params.id);
     await db.query("DELETE FROM cabinet_mission_candidates WHERE mission_id = $1", [missionId]);
-    await db.query("DELETE FROM cabinet_missions WHERE id = $1 AND cabinet_user_id = $2", [missionId, userId]);
+    await db.query("DELETE FROM cabinet_missions WHERE id = $1 AND cabinet_user_id = $2", [missionId, cabinet.cabinetRootId]);
     return res.json({ ok: true });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
@@ -434,11 +473,11 @@ app.post("/api/cabinet/missions/:id/duplicate", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
     const missionId = coerceString(req.params.id);
     const { rows } = await db.query("SELECT * FROM cabinet_missions WHERE id = $1 AND cabinet_user_id = $2", [
       missionId,
-      userId
+      cabinet.cabinetRootId
     ]);
     if (!rows.length) return res.status(404).json({ error: "Mission introuvable." });
     const source = rows[0];
@@ -447,7 +486,7 @@ app.post("/api/cabinet/missions/:id/duplicate", async (req, res) => {
     await db.query(
       `INSERT INTO cabinet_missions (id, cabinet_user_id, title, client_name, location, status, created_at, updated_at)
        VALUES ($1,$2,$3,$4,$5,'open',$6,$6)`,
-      [id, userId, `${source.title} (copie)`, source.client_name, source.location, now]
+      [id, cabinet.cabinetRootId, `${source.title} (copie)`, source.client_name, source.location, now]
     );
     return res.status(201).json({ ok: true, id });
   } catch (error) {
@@ -459,19 +498,19 @@ app.post("/api/cabinet/missions/:id/candidates", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
     const missionId = coerceString(req.params.id);
     const candidateId = coerceString(req.body?.candidateId);
     const action = coerceString(req.body?.action || "add");
 
     const { rows: missionRows } = await db.query(
       "SELECT id FROM cabinet_missions WHERE id = $1 AND cabinet_user_id = $2",
-      [missionId, userId]
+      [missionId, cabinet.cabinetRootId]
     );
     if (!missionRows.length) return res.status(404).json({ error: "Mission introuvable." });
     const { rows: candidateRows } = await db.query(
       "SELECT id FROM cabinet_candidates WHERE id = $1 AND cabinet_user_id = $2",
-      [candidateId, userId]
+      [candidateId, cabinet.cabinetRootId]
     );
     if (!candidateRows.length) return res.status(404).json({ error: "Candidat introuvable." });
 

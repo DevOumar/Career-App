@@ -2207,6 +2207,155 @@ input[aria-invalid="true"] {
   flex: 1 1 260px;
 }
 
+.cabinet-checkbox-filter {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted, #5b6478);
+  white-space: nowrap;
+}
+
+.cabinet-checkbox-filter input {
+  flex: none;
+  width: auto;
+}
+
+.public-cabinet-page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+}
+
+.public-cabinet-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.public-cabinet-logo {
+  width: 64px;
+  height: 64px;
+  border-radius: 14px;
+  object-fit: cover;
+  flex: none;
+}
+
+.public-cabinet-header h1 {
+  margin: 0 0 0.2rem;
+}
+
+.public-cabinet-description {
+  white-space: pre-wrap;
+  line-height: 1.6;
+}
+
+.public-cabinet-footer {
+  text-align: center;
+  font-size: 0.85rem;
+}
+
+.cabinet-performance-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.cabinet-performance-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 10px;
+  background: var(--surface-soft, #f6f7fb);
+}
+
+.cabinet-performance-name {
+  flex: 1;
+  font-weight: 600;
+}
+
+.cabinet-template-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.cabinet-template-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cabinet-template-chip button {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 1rem;
+  line-height: 1;
+  color: inherit;
+  padding: 0;
+}
+
+.cabinet-card-badges {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.cabinet-notes-panel {
+  margin-top: 0.8rem;
+  padding-top: 0.8rem;
+  border-top: 1px solid var(--border, #e6e8ef);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cabinet-notes-add {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cabinet-notes-add input {
+  flex: 1;
+}
+
+.cabinet-notes-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cabinet-notes-list li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.6rem;
+  background: var(--surface-soft, #f6f7fb);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+}
+
+.cabinet-notes-list li p {
+  margin: 0.15rem 0 0;
+}
+
+.cabinet-notes-list li button {
+  flex: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  padding: 0.2rem 0.5rem;
+}
+
 .cabinet-mission-assign {
   display: flex;
   flex-wrap: wrap;

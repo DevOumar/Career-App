@@ -244,6 +244,7 @@ export function registerCabinetAnnouncementsRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     requireCabinetOwner,
+    requireCabinetOwnerRole,
     getCabinetLicenseCodeRows,
     getCabinetRecruiterRows,
     buildCabinetMetrics,
@@ -251,15 +252,82 @@ export function registerCabinetAnnouncementsRoutes(app) {
     resolveAccountSegments
   } = app.locals.ctx;
 
+// Modèles de message réutilisables pour les relances ciblées et les
+// annonces — le cabinet définit ses propres formulations au lieu du texte
+// fixe embarqué côté frontend.
+app.get("/api/cabinet/message-templates", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const cabinet = await requireCabinetOwner(userId);
+
+    const { rows } = await db.query(
+      "SELECT * FROM cabinet_message_templates WHERE cabinet_user_id = $1 ORDER BY created_at DESC",
+      [cabinet.cabinetRootId]
+    );
+    return res.json({
+      items: rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        subject: row.subject,
+        message: row.message,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at
+      }))
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/cabinet/message-templates", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const cabinet = await requireCabinetOwner(userId);
+
+    const name = coerceString(req.body?.name).trim();
+    const subject = coerceString(req.body?.subject).trim();
+    const message = coerceString(req.body?.message).trim();
+    if (!name || !message) {
+      return res.status(400).json({ error: "Nom et message requis." });
+    }
+
+    const id = `ctpl-${crypto.randomUUID()}`;
+    const now = nowIso();
+    await db.query(
+      `INSERT INTO cabinet_message_templates (id, cabinet_user_id, name, subject, message, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$6)`,
+      [id, cabinet.cabinetRootId, name, subject, message, now]
+    );
+    return res.status(201).json({ ok: true, id });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.delete("/api/cabinet/message-templates/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const cabinet = await requireCabinetOwner(userId);
+    const templateId = coerceString(req.params.id);
+    await db.query("DELETE FROM cabinet_message_templates WHERE id = $1 AND cabinet_user_id = $2", [templateId, cabinet.cabinetRootId]);
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.get("/api/cabinet/announcements", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const { rows } = await db.query(
       "SELECT * FROM cabinet_announcements WHERE cabinet_user_id = $1 ORDER BY created_at DESC LIMIT 100",
-      [userId]
+      [cabinet.cabinetRootId]
     );
     return res.json({
       items: rows.map((row) => ({
@@ -280,7 +348,8 @@ app.post("/api/cabinet/announcements/send", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
+    requireCabinetOwnerRole(cabinet);
 
     const subject = coerceString(req.body?.subject);
     const message = coerceString(req.body?.message);
@@ -293,7 +362,7 @@ app.post("/api/cabinet/announcements/send", async (req, res) => {
       return res.status(503).json({ error: "SMTP non configuré côté serveur : impossible d'envoyer des emails." });
     }
 
-    const recruiters = await getCabinetRecruiterRows(userId);
+    const recruiters = await getCabinetRecruiterRows(cabinet.cabinetRootId);
     if (!recruiters.length) {
       return res.status(400).json({ error: "Aucun destinataire — aucun recruteur rattaché pour l'instant." });
     }
@@ -319,7 +388,7 @@ app.post("/api/cabinet/announcements/send", async (req, res) => {
     await db.query(
       `INSERT INTO cabinet_announcements (id, cabinet_user_id, subject, message, recipient_count, failed_count, created_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-      [id, userId, subject, message, recruiters.length, failedCount, nowIso()]
+      [id, cabinet.cabinetRootId, subject, message, recruiters.length, failedCount, nowIso()]
     );
 
     return res.json({ ok: true, recipientCount: recruiters.length, failedCount });

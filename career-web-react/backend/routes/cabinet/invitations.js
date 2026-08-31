@@ -244,6 +244,7 @@ export function registerCabinetInvitationsRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     requireCabinetOwner,
+    requireCabinetOwnerRole,
     getCabinetLicenseCodeRows,
     getCabinetRecruiterRows,
     buildCabinetMetrics,
@@ -255,11 +256,11 @@ app.get("/api/cabinet/invitations", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const { rows } = await db.query(
       "SELECT * FROM cabinet_invitations WHERE cabinet_user_id = $1 ORDER BY created_at DESC LIMIT 300",
-      [userId]
+      [cabinet.cabinetRootId]
     );
     return res.json({
       items: rows.map((row) => ({
@@ -302,13 +303,14 @@ app.post("/api/cabinet/invitations/send", async (req, res) => {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
     const cabinet = await requireCabinetOwner(userId);
+    requireCabinetOwnerRole(cabinet);
 
     const email = normalizeEmail(req.body?.email);
     if (!email.includes("@")) {
       return res.status(400).json({ error: "Email invalide." });
     }
 
-    const codeRows = await getCabinetLicenseCodeRows(userId);
+    const codeRows = await getCabinetLicenseCodeRows(cabinet.cabinetRootId);
     const activeCode = codeRows.find((row) => !Number(row.revoked) && Number(row.seats_used) < Number(row.seats_total));
     if (!activeCode) {
       return res.status(400).json({ error: "Aucun siège disponible sur votre licence." });
@@ -320,8 +322,8 @@ app.post("/api/cabinet/invitations/send", async (req, res) => {
     }
 
     const { rows: orgProfileRows } = await db.query(
-      "SELECT organization_name FROM user_org_profiles WHERE user_id = $1",
-      [userId]
+      "SELECT organization_name FROM user_recruiter_profiles WHERE user_id = $1",
+      [cabinet.cabinetRootId]
     );
     const organizationName = orgProfileRows[0]?.organization_name || cabinet.first_name;
 
@@ -329,7 +331,7 @@ app.post("/api/cabinet/invitations/send", async (req, res) => {
     await db.query(
       `INSERT INTO cabinet_invitations (id, cabinet_user_id, email, license_code, status, created_at, redeemed_at)
        VALUES ($1,$2,$3,$4,'pending',$5,NULL)`,
-      [id, userId, email, activeCode.code, nowIso()]
+      [id, cabinet.cabinetRootId, email, activeCode.code, nowIso()]
     );
 
     const transporter = getMailTransporter();
@@ -349,6 +351,7 @@ app.post("/api/cabinet/recruiters/bulk-invite", async (req, res) => {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
     const cabinet = await requireCabinetOwner(userId);
+    requireCabinetOwnerRole(cabinet);
 
     const rawEmails = Array.isArray(req.body?.emails) ? req.body.emails : [];
     const emails = [...new Set(rawEmails.map((value) => normalizeEmail(coerceString(value))).filter((value) => value.includes("@")))].slice(
@@ -359,12 +362,12 @@ app.post("/api/cabinet/recruiters/bulk-invite", async (req, res) => {
       return res.status(400).json({ error: "Aucun email valide fourni." });
     }
 
-    const codeRows = await getCabinetLicenseCodeRows(userId);
+    const codeRows = await getCabinetLicenseCodeRows(cabinet.cabinetRootId);
     let activeCode = codeRows.find((row) => !Number(row.revoked) && Number(row.seats_used) < Number(row.seats_total));
 
     const { rows: orgProfileRows } = await db.query(
-      "SELECT organization_name FROM user_org_profiles WHERE user_id = $1",
-      [userId]
+      "SELECT organization_name FROM user_recruiter_profiles WHERE user_id = $1",
+      [cabinet.cabinetRootId]
     );
     const organizationName = orgProfileRows[0]?.organization_name || cabinet.first_name;
     const transporter = getMailTransporter();
@@ -384,7 +387,7 @@ app.post("/api/cabinet/recruiters/bulk-invite", async (req, res) => {
       await db.query(
         `INSERT INTO cabinet_invitations (id, cabinet_user_id, email, license_code, status, created_at, redeemed_at)
          VALUES ($1,$2,$3,$4,'pending',$5,NULL)`,
-        [id, userId, email, activeCode.code, nowIso()]
+        [id, cabinet.cabinetRootId, email, activeCode.code, nowIso()]
       );
       if (transporter) {
         await sendCabinetInvitationEmail({ transporter, organizationName, code: activeCode.code, email });

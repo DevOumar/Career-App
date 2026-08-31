@@ -815,6 +815,31 @@ await db.exec(`
     last_sent_at TEXT NOT NULL
   );
 
+  -- Fil de notes horodatées par candidat du vivier (suivi des interactions,
+  -- pas de champ libre unique comme cabinet_candidates.notes qui reste la
+  -- "fiche" ; ici c'est un historique cumulatif, jamais écrasé).
+  CREATE TABLE IF NOT EXISTS cabinet_candidate_notes (
+    id TEXT PRIMARY KEY,
+    candidate_id TEXT NOT NULL,
+    cabinet_user_id TEXT NOT NULL,
+    author_name TEXT NOT NULL DEFAULT '',
+    body TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+
+  -- Modèles de message réutilisables pour les relances ciblées et les
+  -- annonces (le cabinet définit ses propres formulations au lieu du texte
+  -- fixe embarqué côté frontend).
+  CREATE TABLE IF NOT EXISTS cabinet_message_templates (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    subject TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
   CREATE TABLE IF NOT EXISTS school_notifications (
     id TEXT PRIMARY KEY,
     school_user_id TEXT NOT NULL,
@@ -940,6 +965,10 @@ await db.exec(`
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS primary_contact_name TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS logo_data_url TEXT NOT NULL DEFAULT '';
   ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS placement_amount NUMERIC;
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS follow_up_date TEXT;
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS public_page_enabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS public_slug TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 `);
 
 // Sessions déjà expirées avant l'ajout de la colonne expires_at (créées
@@ -4168,6 +4197,27 @@ async function requireSchoolOwner(userId) {
   return school;
 }
 
+// Résout l'id "racine" du cabinet (celui utilisé comme cabinet_user_id sur
+// toutes les tables cabinet_*) à partir d'un compte recruteur quelconque :
+// - recruiter_firm (titulaire) : racine = son propre id.
+// - recruiter_internal (recruteur invité) : racine = le titulaire ayant émis
+//   le code de licence qu'il a redeemed (license_codes.owner_user_id).
+// Sans cette résolution, chaque recruteur travaillait sur un vivier/missions
+// cloisonnés à son seul compte — aucune donnée n'était réellement partagée
+// au sein d'une même équipe cabinet, ce qui rendait les rôles internes et
+// les statistiques par recruteur sans objet.
+async function resolveCabinetRootId(userRow) {
+  if (userRow.role_type === "recruiter_firm") return userRow.id;
+  const subscription = parseJsonField(userRow.subscription_json, {});
+  if (subscription.licenseCode) {
+    const { rows } = await db.query("SELECT owner_user_id FROM license_codes WHERE code = $1", [subscription.licenseCode]);
+    if (rows[0]?.owner_user_id) return rows[0].owner_user_id;
+  }
+  // Compte recruiter_internal jamais rattaché à un code (cas résiduel) :
+  // reste maître de ses propres données plutôt que de planter.
+  return userRow.id;
+}
+
 async function requireCabinetOwner(userId) {
   const cabinet = await getUserRowById(userId);
   if (!cabinet || !RECRUITER_TYPES.has(cabinet.role_type)) {
@@ -4175,7 +4225,21 @@ async function requireCabinetOwner(userId) {
     error.statusCode = 403;
     throw error;
   }
+  cabinet.cabinetRootId = await resolveCabinetRootId(cabinet);
+  cabinet.isCabinetOwner = cabinet.role_type === "recruiter_firm";
   return cabinet;
+}
+
+// Certaines actions (licence, invitations, suppression de recruteur,
+// profil/vitrine publique, RGPD) restent réservées au titulaire — un
+// recruteur invité partage désormais le vivier et les missions, mais ne
+// gère ni la facturation ni les accès de l'équipe.
+function requireCabinetOwnerRole(cabinet) {
+  if (!cabinet.isCabinetOwner) {
+    const error = new Error("Action réservée au titulaire du cabinet.");
+    error.statusCode = 403;
+    throw error;
+  }
 }
 
 async function getSchoolLicenseCodeRows(schoolUserId) {
@@ -5014,6 +5078,8 @@ app.locals.ctx = {
   getSchoolLicenseCodeRows,
   getSchoolStudentRows,
   requireCabinetOwner,
+  requireCabinetOwnerRole,
+  resolveCabinetRootId,
   getCabinetLicenseCodeRows,
   getCabinetRecruiterRows,
   buildCabinetMetrics,

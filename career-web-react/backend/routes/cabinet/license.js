@@ -244,6 +244,7 @@ export function registerCabinetLicenseRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     requireCabinetOwner,
+    requireCabinetOwnerRole,
     getCabinetLicenseCodeRows,
     getCabinetRecruiterRows,
     buildCabinetMetrics,
@@ -255,9 +256,10 @@ app.get("/api/cabinet/license", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
+    requireCabinetOwnerRole(cabinet);
 
-    const codeRows = await getCabinetLicenseCodeRows(userId);
+    const codeRows = await getCabinetLicenseCodeRows(cabinet.cabinetRootId);
 
     return res.json({
       items: codeRows.map((row) => ({

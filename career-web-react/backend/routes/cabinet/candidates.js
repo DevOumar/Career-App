@@ -244,6 +244,7 @@ export function registerCabinetCandidatesRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     requireCabinetOwner,
+    requireCabinetOwnerRole,
     getCabinetLicenseCodeRows,
     getCabinetRecruiterRows,
     buildCabinetMetrics,
@@ -254,18 +255,36 @@ export function registerCabinetCandidatesRoutes(app) {
 
 const CABINET_CANDIDATE_STATUSES = new Set(["sourced", "contacted", "interviewing", "placed", "rejected"]);
 
+function normalizeCabinetContact(value) {
+  return coerceString(value).trim().toLowerCase();
+}
+
 app.get("/api/cabinet/candidates", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const search = coerceString(req.query?.search).toLowerCase();
     const statusFilter = coerceString(req.query?.status);
+    const skillFilter = coerceString(req.query?.skill).toLowerCase();
+    const missionFilter = coerceString(req.query?.missionId);
+    const followUpOnly = coerceString(req.query?.followUp) === "1";
     const { rows } = await db.query(
       "SELECT * FROM cabinet_candidates WHERE cabinet_user_id = $1 ORDER BY created_at DESC LIMIT 500",
-      [userId]
+      [cabinet.cabinetRootId]
     );
+
+    let assignedCandidateIds = null;
+    if (missionFilter) {
+      const { rows: assignRows } = await db.query(
+        "SELECT candidate_id FROM cabinet_mission_candidates WHERE mission_id = $1",
+        [missionFilter]
+      );
+      assignedCandidateIds = new Set(assignRows.map((row) => row.candidate_id));
+    }
+
+    const now = nowIso();
     const items = rows
       .map((row) => ({
         id: row.id,
@@ -279,11 +298,16 @@ app.get("/api/cabinet/candidates", async (req, res) => {
         status: row.status,
         cvFileName: row.cv_file_name || "",
         hasCv: Boolean(row.source_text),
+        followUpDate: row.follow_up_date || null,
+        followUpDue: Boolean(row.follow_up_date && row.follow_up_date <= now),
         createdAt: row.created_at,
         updatedAt: row.updated_at
       }))
       .filter((item) => {
         if (statusFilter && item.status !== statusFilter) return false;
+        if (skillFilter && !item.skills.some((skill) => skill.toLowerCase().includes(skillFilter))) return false;
+        if (assignedCandidateIds && !assignedCandidateIds.has(item.id)) return false;
+        if (followUpOnly && !item.followUpDue) return false;
         if (!search) return true;
         const haystack = `${item.firstName} ${item.lastName} ${item.email} ${item.headline} ${item.skills.join(" ")}`.toLowerCase();
         return haystack.includes(search);
@@ -292,7 +316,57 @@ app.get("/api/cabinet/candidates", async (req, res) => {
     const statusCounts = {};
     for (const item of items) statusCounts[item.status] = (statusCounts[item.status] || 0) + 1;
 
-    return res.json({ items, statusCounts });
+    const skillSet = new Set();
+    for (const row of rows) {
+      for (const skill of parseJsonField(row.skills_json, [])) {
+        if (skill) skillSet.add(skill);
+      }
+    }
+
+    return res.json({ items, statusCounts, availableSkills: [...skillSet].sort((a, b) => a.localeCompare(b)) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Export CSV du vivier — même principe que GET /api/school/students/export :
+// respecte les mêmes filtres que la liste (search/status/skill) pour que
+// l'export corresponde exactement à ce que le recruteur a sous les yeux.
+app.get("/api/cabinet/candidates/export", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const cabinet = await requireCabinetOwner(userId);
+
+    const search = coerceString(req.query?.search).toLowerCase();
+    const statusFilter = coerceString(req.query?.status);
+    const { rows } = await db.query(
+      "SELECT * FROM cabinet_candidates WHERE cabinet_user_id = $1 ORDER BY created_at DESC LIMIT 5000",
+      [cabinet.cabinetRootId]
+    );
+    const filtered = rows.filter((row) => {
+      if (statusFilter && row.status !== statusFilter) return false;
+      if (!search) return true;
+      const skills = parseJsonField(row.skills_json, []).join(" ");
+      const haystack = `${row.first_name} ${row.last_name} ${row.email} ${row.headline} ${skills}`.toLowerCase();
+      return haystack.includes(search);
+    });
+
+    return sendCsv(
+      res,
+      "vivier-candidats.csv",
+      ["Prénom", "Nom", "Email", "Téléphone", "Poste ciblé", "Compétences", "Statut", "Ajouté le"],
+      filtered.map((row) => [
+        row.first_name,
+        row.last_name,
+        row.email,
+        row.phone,
+        row.headline,
+        parseJsonField(row.skills_json, []).join("; "),
+        row.status,
+        row.created_at
+      ])
+    );
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
@@ -343,7 +417,7 @@ app.post("/api/cabinet/candidates", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
 
     const firstName = coerceString(req.body?.firstName).trim();
     const lastName = coerceString(req.body?.lastName).trim();
@@ -351,22 +425,48 @@ app.post("/api/cabinet/candidates", async (req, res) => {
       return res.status(400).json({ error: "Le nom du candidat est requis." });
     }
     const skills = Array.isArray(req.body?.skills) ? req.body.skills.map((value) => coerceString(value).trim()).filter(Boolean) : [];
+    const email = coerceString(req.body?.email).trim();
+    const phone = coerceString(req.body?.phone).trim();
+
+    // Détection de doublon (email ou téléphone déjà présents dans le
+    // vivier) : bloquant sauf si le front confirme explicitement vouloir
+    // ajouter quand même (force=true), pour éviter les vivier gonflés par
+    // des imports CV répétés.
+    if (!coerceString(req.body?.force) && (email || phone)) {
+      const { rows: existingRows } = await db.query(
+        "SELECT id, first_name, last_name, email, phone FROM cabinet_candidates WHERE cabinet_user_id = $1",
+        [cabinet.cabinetRootId]
+      );
+      const duplicate = existingRows.find((row) => {
+        const sameEmail = email && normalizeCabinetContact(row.email) === normalizeCabinetContact(email);
+        const samePhone = phone && normalizeCabinetContact(row.phone) === normalizeCabinetContact(phone);
+        return sameEmail || samePhone;
+      });
+      if (duplicate) {
+        return res.status(409).json({
+          error: "Un candidat avec cet email ou ce téléphone existe déjà dans le vivier.",
+          duplicate: { id: duplicate.id, firstName: duplicate.first_name, lastName: duplicate.last_name }
+        });
+      }
+    }
+
     const id = `ccand-${crypto.randomUUID()}`;
     const now = nowIso();
+    const followUpDate = coerceString(req.body?.followUpDate).trim() || null;
     // cvFileName/sourceText/parsedJson : renseignés quand le candidat est
     // créé à partir d'un CV importé (voir POST .../extract) — optionnels,
     // vides pour une fiche saisie manuellement.
     await db.query(
       `INSERT INTO cabinet_candidates
-        (id, cabinet_user_id, first_name, last_name, email, phone, headline, skills_json, notes, status, created_by, cv_file_name, source_text, parsed_json, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$15)`,
+        (id, cabinet_user_id, first_name, last_name, email, phone, headline, skills_json, notes, status, created_by, cv_file_name, source_text, parsed_json, follow_up_date, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$16)`,
       [
         id,
-        userId,
+        cabinet.cabinetRootId,
         firstName,
         lastName,
-        coerceString(req.body?.email).trim(),
-        coerceString(req.body?.phone).trim(),
+        email,
+        phone,
         coerceString(req.body?.headline).trim(),
         JSON.stringify(skills),
         coerceString(req.body?.notes).trim(),
@@ -375,6 +475,7 @@ app.post("/api/cabinet/candidates", async (req, res) => {
         coerceString(req.body?.cvFileName).trim(),
         coerceString(req.body?.sourceText),
         req.body?.parsedJson ? JSON.stringify(req.body.parsedJson) : "{}",
+        followUpDate,
         now
       ]
     );
@@ -389,7 +490,7 @@ app.put("/api/cabinet/candidates/:id", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
     const candidateId = coerceString(req.params.id);
 
     const status = coerceString(req.body?.status);
@@ -399,7 +500,7 @@ app.put("/api/cabinet/candidates/:id", async (req, res) => {
 
     const { rows: existingRows } = await db.query(
       "SELECT * FROM cabinet_candidates WHERE id = $1 AND cabinet_user_id = $2",
-      [candidateId, userId]
+      [candidateId, cabinet.cabinetRootId]
     );
     if (!existingRows.length) return res.status(404).json({ error: "Candidat introuvable." });
     const existing = existingRows[0];
@@ -412,8 +513,8 @@ app.put("/api/cabinet/candidates/:id", async (req, res) => {
       `UPDATE cabinet_candidates SET
         first_name = $1, last_name = $2, email = $3, phone = $4, headline = $5,
         skills_json = $6, notes = $7, status = $8,
-        cv_file_name = $9, source_text = $10, parsed_json = $11, updated_at = $12
-       WHERE id = $13 AND cabinet_user_id = $14`,
+        cv_file_name = $9, source_text = $10, parsed_json = $11, follow_up_date = $12, updated_at = $13
+       WHERE id = $14 AND cabinet_user_id = $15`,
       [
         coerceString(req.body?.firstName ?? existing.first_name).trim(),
         coerceString(req.body?.lastName ?? existing.last_name).trim(),
@@ -426,11 +527,77 @@ app.put("/api/cabinet/candidates/:id", async (req, res) => {
         req.body?.cvFileName !== undefined ? coerceString(req.body.cvFileName).trim() : existing.cv_file_name,
         req.body?.sourceText !== undefined ? coerceString(req.body.sourceText) : existing.source_text,
         req.body?.parsedJson ? JSON.stringify(req.body.parsedJson) : existing.parsed_json,
+        req.body?.followUpDate !== undefined ? (coerceString(req.body.followUpDate).trim() || null) : existing.follow_up_date,
         nowIso(),
         candidateId,
-        userId
+        cabinet.cabinetRootId
       ]
     );
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Fil de notes horodatées par candidat (historique des interactions,
+// distinct de la fiche "notes" libre qui reste un champ unique éditable).
+app.get("/api/cabinet/candidates/:id/notes", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const cabinet = await requireCabinetOwner(userId);
+    const candidateId = coerceString(req.params.id);
+
+    const { rows } = await db.query(
+      "SELECT id, author_name, body, created_at FROM cabinet_candidate_notes WHERE candidate_id = $1 AND cabinet_user_id = $2 ORDER BY created_at DESC LIMIT 200",
+      [candidateId, cabinet.cabinetRootId]
+    );
+    return res.json({
+      items: rows.map((row) => ({ id: row.id, authorName: row.author_name, body: row.body, createdAt: row.created_at }))
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/cabinet/candidates/:id/notes", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const cabinet = await requireCabinetOwner(userId);
+    const candidateId = coerceString(req.params.id);
+
+    const body = coerceString(req.body?.body).trim();
+    if (!body) return res.status(400).json({ error: "Le contenu de la note est requis." });
+
+    const { rows: candidateRows } = await db.query(
+      "SELECT id FROM cabinet_candidates WHERE id = $1 AND cabinet_user_id = $2",
+      [candidateId, cabinet.cabinetRootId]
+    );
+    if (!candidateRows.length) return res.status(404).json({ error: "Candidat introuvable." });
+
+    const id = `ccnote-${crypto.randomUUID()}`;
+    const now = nowIso();
+    // author_name reflète l'auteur réel de la note (le recruteur connecté),
+    // même si cabinet_user_id (partagé) pointe vers le titulaire.
+    await db.query(
+      `INSERT INTO cabinet_candidate_notes (id, candidate_id, cabinet_user_id, author_name, body, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6)`,
+      [id, candidateId, cabinet.cabinetRootId, `${cabinet.first_name} ${cabinet.last_name}`.trim(), body, now]
+    );
+    return res.status(201).json({ ok: true, id, createdAt: now });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.delete("/api/cabinet/candidates/:id/notes/:noteId", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const cabinet = await requireCabinetOwner(userId);
+    const noteId = coerceString(req.params.noteId);
+    await db.query("DELETE FROM cabinet_candidate_notes WHERE id = $1 AND cabinet_user_id = $2", [noteId, cabinet.cabinetRootId]);
     return res.json({ ok: true });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
@@ -441,10 +608,11 @@ app.delete("/api/cabinet/candidates/:id", async (req, res) => {
   try {
     const userId = coerceString(req.query?.userId || req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const cabinet = await requireCabinetOwner(userId);
     const candidateId = coerceString(req.params.id);
     await db.query("DELETE FROM cabinet_mission_candidates WHERE candidate_id = $1", [candidateId]);
-    await db.query("DELETE FROM cabinet_candidates WHERE id = $1 AND cabinet_user_id = $2", [candidateId, userId]);
+    await db.query("DELETE FROM cabinet_candidate_notes WHERE candidate_id = $1", [candidateId]);
+    await db.query("DELETE FROM cabinet_candidates WHERE id = $1 AND cabinet_user_id = $2", [candidateId, cabinet.cabinetRootId]);
     await logSecurityEvent(req, userId, "cabinet_candidate_deleted", { candidateId });
     return res.json({ ok: true });
   } catch (error) {

@@ -2,6 +2,7 @@ import React from "react";
 import { useState, useEffect } from "react";
 import Swal from "sweetalert2";
 import { UiIcon } from "../../../components/UiIcon.jsx";
+import { ExportCsvButton } from "../../../components/AdminExportCsvButton.jsx";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import {
   getCabinetMissions,
@@ -149,9 +150,12 @@ export default function CabinetMissionsPage({ user, language }) {
             <p className="muted">{copy.subtitle}</p>
           </div>
         </div>
-        <button type="button" className="btn-main ready" onClick={() => setFormOpen(true)}>
-          <UiIcon name="plus" /> {copy.add}
-        </button>
+        <div className="cabinet-quick-actions">
+          <ExportCsvButton userId={user.id} path="/cabinet/missions/export" language={language} />
+          <button type="button" className="btn-main ready" onClick={() => setFormOpen(true)}>
+            <UiIcon name="plus" /> {copy.add}
+          </button>
+        </div>
       </div>
 
       {error ? <p className="field-error">{error}</p> : null}

@@ -111,6 +111,24 @@ export default function CabinetApp({
   const [dropdownPos, setDropdownPos] = useState(null);
   const navRef = useRef(null);
 
+  // Le vivier et les missions sont désormais partagés entre tous les
+  // recruteurs d'un même cabinet — seules la licence et les invitations
+  // (facturation, accès de l'équipe) restent réservées au titulaire
+  // (recruiter_firm) ; un recruteur invité (recruiter_internal) ne voit pas
+  // ces entrées, cohérent avec le 403 renvoyé côté backend.
+  const isCabinetOwner = user.roleType !== "recruiter_internal";
+  const visibleNavItems = isCabinetOwner
+    ? CABINET_NAV_ITEMS
+    : CABINET_NAV_ITEMS.map((item) => {
+        if (item.id === "team") {
+          return { ...item, children: item.children.filter((child) => child.id !== "invitations") };
+        }
+        if (item.id === "subscription") {
+          return { ...item, children: item.children.filter((child) => child.id !== "license" && child.id !== "billing") };
+        }
+        return item;
+      }).filter((item) => item.id !== "subscription" || item.children.length);
+
   // .topnav a un overflow-x: auto (défilement horizontal sur petit écran),
   // ce qui force aussi le clipping vertical de tout enfant en position
   // absolute qui en dépasse — le sous-menu était donc invisible. En
@@ -244,7 +262,7 @@ export default function CabinetApp({
         </button>
 
         <nav className="topnav" ref={navRef}>
-          {CABINET_NAV_ITEMS.map((item) => {
+          {visibleNavItems.map((item) => {
             if (!item.children) {
               return (
                 <button
@@ -388,18 +406,18 @@ export default function CabinetApp({
       </header>
 
       <main className="main-wrap">
-        {tab === "home" ? <CabinetHomePage user={user} language={language} onGoTo={goTo} /> : null}
+        {tab === "home" ? <CabinetHomePage user={user} language={language} onGoTo={goTo} isCabinetOwner={isCabinetOwner} /> : null}
         {tab === "recruiters" ? <CabinetRecruitersPage user={user} language={language} /> : null}
         {tab === "candidates" ? <CabinetCandidatesPage user={user} language={language} /> : null}
         {tab === "missions" ? <CabinetMissionsPage user={user} language={language} /> : null}
         {tab === "compare" ? <CabinetComparePage user={user} language={language} /> : null}
         {tab === "reports" ? <CabinetReportsPage user={user} language={language} /> : null}
         {tab === "invitations" ? <CabinetInvitationsPage user={user} language={language} /> : null}
-        {tab === "announcements" ? <CabinetAnnouncementsPage user={user} language={language} /> : null}
+        {tab === "announcements" ? <CabinetAnnouncementsPage user={user} language={language} isCabinetOwner={isCabinetOwner} /> : null}
         {tab === "license" ? <CabinetLicensePage user={user} language={language} currency={currency} /> : null}
         {tab === "billing" ? <CabinetBillingPage user={user} language={language} currency={currency} /> : null}
         {tab === "pricing" ? <CabinetPricingPage user={user} language={language} currency={currency} /> : null}
-        {tab === "settings" ? <CabinetSettingsPage user={user} language={language} /> : null}
+        {tab === "settings" ? <CabinetSettingsPage user={user} language={language} isCabinetOwner={isCabinetOwner} /> : null}
       </main>
 
       <ConnectedFooter
