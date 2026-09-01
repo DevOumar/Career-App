@@ -56,14 +56,21 @@ export function AccountDrawer({
     lastName: user.lastName || "",
     username: user.username || ""
   });
-  // targetRole/sector alimentent le % de complétude du profil (voir
-  // App.jsx) — les proposer ici évite d'obliger l'utilisateur à aller sur
-  // la page Profil complète juste pour ces deux champs. Mêmes listes
+  // targetRole/sector/skills/headline/experienceYears/education alimentent
+  // le % de complétude du profil et le score de matching CV/offre (voir
+  // matchingService.js) — les proposer ici évite d'obliger l'utilisateur à
+  // passer par une page Profil séparée pour ces champs. Mêmes listes
   // d'options que le quiz de bienvenue (roleOptions/sectorOptions), pour
-  // rester cohérent entre inscription et modification ultérieure.
+  // rester cohérent entre inscription et modification ultérieure. skills
+  // reprend le même format "chaîne séparée par des virgules" que l'ancienne
+  // page Profil (converti en liste côté backend, voir normalizeSkillList).
   const [careerForm, setCareerForm] = useState({
     targetRole: user.profile?.targetRole || "",
-    sector: user.profile?.sector || ""
+    sector: user.profile?.sector || "",
+    headline: user.profile?.headline || "",
+    experienceYears: user.profile?.experienceYears || 0,
+    education: user.profile?.education || "",
+    skills: Array.isArray(user.profile?.skills) ? user.profile.skills.join(", ") : ""
   });
   const otherLabel = language === "en" ? "Other" : "Autre";
   const [roleIsOther, setRoleIsOther] = useState(
@@ -125,8 +132,22 @@ export function AccountDrawer({
         lastName: profileForm.lastName,
         username: profileForm.username
       });
-      if (onSaveProfile && (careerForm.targetRole !== (user.profile?.targetRole || "") || careerForm.sector !== (user.profile?.sector || ""))) {
-        await onSaveProfile({ targetRole: careerForm.targetRole, sector: careerForm.sector });
+      const careerChanged =
+        careerForm.targetRole !== (user.profile?.targetRole || "") ||
+        careerForm.sector !== (user.profile?.sector || "") ||
+        careerForm.headline !== (user.profile?.headline || "") ||
+        Number(careerForm.experienceYears || 0) !== (user.profile?.experienceYears || 0) ||
+        careerForm.education !== (user.profile?.education || "") ||
+        careerForm.skills !== (Array.isArray(user.profile?.skills) ? user.profile.skills.join(", ") : "");
+      if (onSaveProfile && careerChanged) {
+        await onSaveProfile({
+          targetRole: careerForm.targetRole,
+          sector: careerForm.sector,
+          headline: careerForm.headline,
+          experienceYears: Number(careerForm.experienceYears || 0),
+          education: careerForm.education,
+          skills: careerForm.skills
+        });
       }
       setEditingProfile(false);
       setEditingUsername(false);
@@ -408,6 +429,7 @@ export function AccountDrawer({
                         </label>
                       </div>
                       {user.roleType === "candidate" || user.roleType === "student" ? (
+                      <>
                       <div className="account-inline-fields two">
                         <label>
                           {language === "en" ? "Target role" : "Poste visé"}
@@ -466,6 +488,43 @@ export function AccountDrawer({
                           ) : null}
                         </label>
                       </div>
+                      <label>
+                        {language === "en" ? "Headline" : "Titre professionnel"}
+                        <input
+                          value={careerForm.headline}
+                          placeholder="Data Scientist - GenAI"
+                          onChange={(event) => setCareerForm((prev) => ({ ...prev, headline: event.target.value }))}
+                        />
+                      </label>
+                      <div className="account-inline-fields two">
+                        <label>
+                          {language === "en" ? "Experience (years)" : "Expérience (années)"}
+                          <input
+                            type="number"
+                            min="0"
+                            value={careerForm.experienceYears}
+                            onChange={(event) => setCareerForm((prev) => ({ ...prev, experienceYears: event.target.value }))}
+                          />
+                        </label>
+                        <label>
+                          {language === "en" ? "Education" : "Formation"}
+                          <input
+                            value={careerForm.education}
+                            placeholder="Bac+5 / Master / Ingénieur"
+                            onChange={(event) => setCareerForm((prev) => ({ ...prev, education: event.target.value }))}
+                          />
+                        </label>
+                      </div>
+                      <label>
+                        {language === "en" ? "Skills" : "Compétences"}
+                        <textarea
+                          rows={3}
+                          value={careerForm.skills}
+                          placeholder="python, sql, llm, rag, azure"
+                          onChange={(event) => setCareerForm((prev) => ({ ...prev, skills: event.target.value }))}
+                        />
+                      </label>
+                      </>
                       ) : null}
                       <div className="account-form-actions">
                         <button type="button" className="btn-secondary" onClick={() => setEditingProfile(false)}>{copy.cancel}</button>
