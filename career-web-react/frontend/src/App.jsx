@@ -18,7 +18,6 @@ import { LandingPage, PRODUCT_SECTION_IDS, InfoPage, AboutPage, ContactPage, Foo
 import { LegalDocPage, PrivacyPolicyPage, TermsOfServicePage } from "./features/legal/LegalPages.jsx";
 import { PublicPricingPage, PricingPage, PRICING_SEGMENTS, allowedPricingSegmentsForRole } from "./features/pricing/PricingPage.jsx";
 import HomePage from "./features/home/HomePage.jsx";
-import ProfilePage from "./features/profile/ProfilePage.jsx";
 import CoverLetterPage from "./features/coverLetter/CoverLetterPage.jsx";
 import EmailFinderPage from "./features/emailScout/EmailFinderPage.jsx";
 import {
@@ -163,7 +162,6 @@ const NAV_ITEMS = [
 const VALID_APP_PAGE_IDS = new Set([
   "home",
   "import",
-  "profil",
   "analyse",
   "offres",
   "candidatures",
@@ -2421,20 +2419,6 @@ export default function App() {
               setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
               setPremium(tokenUpdate.premium);
             }}
-          />
-        ) : null}
-
-        {activePage === "profil" ? (
-          <ProfilePage
-            user={user}
-            premium={premium}
-            profileCompleteness={profileCompleteness}
-            onSaveProfile={handleProfileSave}
-            onSaveAccount={handleAccountSave}
-            onAvatarUpload={handleAvatarUpload}
-            avatarUploading={avatarUploading}
-            onActivatePremium={handlePremiumActivation}
-            language={language}
           />
         ) : null}
 

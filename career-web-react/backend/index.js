@@ -991,13 +991,11 @@ await db.query(
 
 const DEFAULT_PROFILE = {
   headline: "",
-  location: "",
   targetRole: "",
   sector: "",
   experienceYears: 0,
   education: "",
-  skills: [],
-  languages: []
+  skills: []
 };
 
 function nowIso() {
@@ -1500,7 +1498,6 @@ function sanitizeProfilePatch(rawPatch = {}) {
   const patch = {};
 
   if (Object.prototype.hasOwnProperty.call(rawPatch, "headline")) patch.headline = coerceString(rawPatch.headline);
-  if (Object.prototype.hasOwnProperty.call(rawPatch, "location")) patch.location = coerceString(rawPatch.location);
   if (Object.prototype.hasOwnProperty.call(rawPatch, "targetRole")) patch.targetRole = coerceString(rawPatch.targetRole);
   if (Object.prototype.hasOwnProperty.call(rawPatch, "sector")) patch.sector = coerceString(rawPatch.sector);
   if (Object.prototype.hasOwnProperty.call(rawPatch, "experienceYears")) {
@@ -1508,7 +1505,6 @@ function sanitizeProfilePatch(rawPatch = {}) {
   }
   if (Object.prototype.hasOwnProperty.call(rawPatch, "education")) patch.education = coerceString(rawPatch.education);
   if (Object.prototype.hasOwnProperty.call(rawPatch, "skills")) patch.skills = normalizeSkillList(rawPatch.skills);
-  if (Object.prototype.hasOwnProperty.call(rawPatch, "languages")) patch.languages = normalizeSkillList(rawPatch.languages);
   if (Object.prototype.hasOwnProperty.call(rawPatch, "onboardingQuizSeen")) {
     patch.onboardingQuizSeen = Boolean(rawPatch.onboardingQuizSeen);
   }
