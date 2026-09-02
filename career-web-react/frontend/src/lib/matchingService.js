@@ -156,6 +156,12 @@ export function getMatchVerdict(score, language = "fr") {
   return entry.label[language] || entry.label.fr;
 }
 
+// Les 4 libellés FR exacts, dans l'ordre des seuils (du meilleur au pire) —
+// réutilisés côté backend pour contraindre le verdict généré par l'IA
+// (enum du schéma JSON dans analyzeMatchWithAi) à ce même vocabulaire,
+// plutôt que de le dupliquer en dur une 2e fois.
+export const MATCH_VERDICT_LABELS_FR = MATCH_VERDICT_TIERS.map((item) => item.label.fr);
+
 function scoreOffer({ candidate, offer, premiumAccess }) {
   const requiredSkills = unique(offer.skills.map(normalize));
   const candidateSkills = unique(candidate.skills.map(normalize));

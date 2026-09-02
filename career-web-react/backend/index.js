@@ -17,7 +17,7 @@ import { OAuth2Client } from "google-auth-library";
 import Stripe from "stripe";
 import { OFFERS } from "../frontend/src/data/offers.js";
 import { EDUCATION_LEVELS, SKILL_KEYWORDS } from "../frontend/src/data/skills.js";
-import { buildLocalMatchInsights } from "../frontend/src/lib/matchingService.js";
+import { buildLocalMatchInsights, MATCH_VERDICT_LABELS_FR } from "../frontend/src/lib/matchingService.js";
 import { PLANS, getPlanById } from "../frontend/src/data/plans.js";
 import {
   applyStripeWebhookEvent,
@@ -2042,7 +2042,7 @@ const MATCH_ANALYSIS_SCHEMA = {
   additionalProperties: false,
   properties: {
     score: { type: "number" },
-    verdict: { type: "string" },
+    verdict: { type: "string", enum: MATCH_VERDICT_LABELS_FR },
     strengths: { type: "array", items: { type: "string" } },
     missingKeywords: { type: "array", items: { type: "string" } },
     culturalFit: { type: "string" },
@@ -2064,6 +2064,11 @@ const MATCH_ANALYSIS_SCHEMA = {
 };
 
 const RECOMMENDATION_LEVELS = new Set(["critique", "important", "bonus"]);
+// L'enum du schéma JSON (strict: false) et le repli sans schéma
+// (type: "json_object", voir analyzeMatchWithAi) ne garantissent pas tous
+// les deux que le LLM respecte le vocabulaire imposé — on revalide donc
+// ici dans les deux cas plutôt que de faire confiance à l'un ou l'autre.
+const MATCH_VERDICT_LABELS_SET = new Set(MATCH_VERDICT_LABELS_FR);
 
 function sanitizeAiMatchAnalysis(raw, { candidate, offer }) {
   const fallback = buildLocalMatchInsights({ candidate, offer });
@@ -2087,7 +2092,7 @@ function sanitizeAiMatchAnalysis(raw, { candidate, offer }) {
 
   return {
     score,
-    verdict: coerceString(parsed.verdict) || fallback.verdict,
+    verdict: MATCH_VERDICT_LABELS_SET.has(coerceString(parsed.verdict)) ? coerceString(parsed.verdict) : fallback.verdict,
     strengths: strengths.length ? strengths : fallback.strengths,
     missingKeywords,
     culturalFit: culturalFit || fallback.culturalFit,
@@ -2110,7 +2115,7 @@ async function analyzeMatchWithAi(candidate, offer) {
     {
       role: "user",
       content:
-        "Compare ce profil candidat a cette offre. Produis : un score de compatibilite (0-100), un verdict court (ex: Match Excellent, Bon match, Match moyen, A renforcer), 3 a 6 points forts concrets du candidat par rapport a l'offre, les mots-cles/competences demandes par l'offre qui manquent chez le candidat, une analyse du fit culturel en 5 a 7 phrases (adequation entre le parcours, les soft skills et les valeurs du candidat d'une part, et la culture/le contexte/le mode de fonctionnement de l'entreprise d'autre part ; developpe des exemples concrets tires du profil, nuance les points de vigilance eventuels, ne te limite pas a une ou deux phrases), et 3 a 5 recommandations strategiques classees par niveau (critique, important, bonus) pour ameliorer ses chances.\n" +
+        `Compare ce profil candidat a cette offre. Produis : un score de compatibilite (0-100), un verdict qui doit etre exactement l'une de ces 4 valeurs (respecte la casse, aucune autre formulation autorisee) : ${MATCH_VERDICT_LABELS_FR.join(", ")}, 3 a 6 points forts concrets du candidat par rapport a l'offre, les mots-cles/competences demandes par l'offre qui manquent chez le candidat, une analyse du fit culturel en 5 a 7 phrases (adequation entre le parcours, les soft skills et les valeurs du candidat d'une part, et la culture/le contexte/le mode de fonctionnement de l'entreprise d'autre part ; developpe des exemples concrets tires du profil, nuance les points de vigilance eventuels, ne te limite pas a une ou deux phrases), et 3 a 5 recommandations strategiques classees par niveau (critique, important, bonus) pour ameliorer ses chances.\n` +
         (candidateName
           ? `Le candidat s'appelle ${candidateName}. Utilise son prenom (ou prenom + nom) dans le texte, notamment dans le fit culturel et les points forts, plutot que des formules generiques comme "le candidat" ou "la candidate".\n`
           : "") +
