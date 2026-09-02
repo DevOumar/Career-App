@@ -746,20 +746,6 @@ export function recommendationLevelLabel(level, language = "fr") {
   return labels[language]?.[level] || labels.fr[level] || level;
 }
 
-export function ratingLabel(score, language = "fr") {
-  if (language === "en") {
-    if (score >= 80) return "Excellent fit";
-    if (score >= 65) return "Good fit";
-    if (score >= 50) return "Average match";
-    return "Needs work";
-  }
-  if (score >= 80) return "Excellent fit";
-  if (score >= 65) return "Bon fit";
-  if (score >= 50) return "Match moyen";
-  return "À renforcer";
-}
-
-
 // Date + heure (contrairement à formatDate, partagé ailleurs et qui ne
 // montre que la date) : utile ici pour distinguer plusieurs notifications
 // du même jour dans un flux qui se rafraîchit toutes les 60s.

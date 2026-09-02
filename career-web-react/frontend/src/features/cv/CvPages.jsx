@@ -25,7 +25,8 @@ import {
 } from "../../lib/inMemoryDb.js";
 import { APPLICATIONS_COPY } from "../applications/applicationsCopy.js";
 import { CV_COPY } from "./cvCopy.js";
-import { ratingLabel, levelTag, recommendationLevelLabel } from "../../App.jsx";
+import { levelTag, recommendationLevelLabel } from "../../App.jsx";
+import { getMatchVerdict, getMatchVerdictTier } from "../../lib/matchingService.js";
 
 function ImportPage({
   latestCv,
@@ -749,7 +750,7 @@ function MatchResultsStep({
   const title = jobReview?.title || "";
   const searchQuery = [company, title].filter(Boolean).join(" ") || title || company;
   const networkingQueries = buildNetworkingQueries({ title, company, language, copy });
-  const verdictLabel = matchInsights.verdict || ratingLabel(matchInsights.score, language);
+  const verdictLabel = matchInsights.verdict || getMatchVerdict(matchInsights.score, language);
   const cvTextSample =
     cvSourceText ||
     [cvReview?.headline, cvReview?.summary, ...(cvReview?.experiences || []).map((item) => item.description)].filter(Boolean).join(" ");
@@ -807,8 +808,7 @@ function MatchResultsStep({
     });
   }
 
-  const scoreTier =
-    matchInsights.score >= 80 ? "excellent" : matchInsights.score >= 65 ? "good" : matchInsights.score >= 50 ? "average" : "weak";
+  const scoreTier = getMatchVerdictTier(matchInsights.score);
 
   return (
     <div className="match-results-shell" id="match-print-area">
@@ -1547,7 +1547,7 @@ function AnalysisPage({ matchData, language }) {
         </div>
         <div>
           <h2>
-            {ratingLabel(summary.globalScore, language)} · {summary.title}
+            {getMatchVerdict(summary.globalScore, language)} · {summary.title}
           </h2>
           <p>{summary.subtitle}</p>
           <div className="tag-row">
@@ -1630,7 +1630,7 @@ function OffersPage({ matchData, premium, language }) {
             </div>
 
             <div className="tag-row">
-              <span className="tag">{ratingLabel(item.score, language)}</span>
+              <span className="tag">{getMatchVerdict(item.score, language)}</span>
               <span className="tag">{copy.skills} {item.skillCoverage}%</span>
               {item.offer.premium ? <span className="tag premium">Premium</span> : null}
               {item.locked ? <span className="tag crit">{copy.locked}</span> : null}
@@ -1704,7 +1704,7 @@ function CvHistoryPage({ cvHistory, latestMatch, language }) {
         {cvHistory.map((cv) => {
           const skills = cv.parsed?.skills || [];
           const score = latestMatch?.summary?.globalScore ?? null;
-          const scoreTier = score === null ? null : score >= 80 ? "excellent" : score >= 65 ? "good" : score >= 50 ? "average" : "weak";
+          const scoreTier = score === null ? null : getMatchVerdictTier(score);
           const isExpanded = Boolean(expandedIds[cv.id]);
           const collapsedCount = 10;
           const visibleSkills = isExpanded ? skills : skills.slice(0, collapsedCount);

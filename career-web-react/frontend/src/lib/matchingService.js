@@ -127,6 +127,35 @@ export function extractOfferSummary(text) {
   };
 }
 
+// Seuils de verdict partagés par tout le calcul de matching (scoreOffer,
+// ci-dessous) et par l'affichage (ex-ratingLabel dans App.jsx, badges de
+// score dans CvPages.jsx) — une seule table plutôt que plusieurs jeux de
+// seuils qui finissaient par diverger silencieusement les uns des autres.
+const MATCH_VERDICT_TIERS = [
+  { min: 75, tier: "excellent", label: { fr: "Excellent", en: "Excellent" } },
+  { min: 60, tier: "good", label: { fr: "Bon", en: "Good" } },
+  { min: 45, tier: "average", label: { fr: "Moyen", en: "Average" } },
+  { min: 0, tier: "weak", label: { fr: "À renforcer", en: "Needs work" } }
+];
+
+function matchVerdictTierEntry(score) {
+  return MATCH_VERDICT_TIERS.find((item) => score >= item.min) || MATCH_VERDICT_TIERS[MATCH_VERDICT_TIERS.length - 1];
+}
+
+// Slug stable, indépendant de la langue — pour les classes CSS
+// tier-excellent/tier-good/tier-average/tier-weak déjà présentes dans
+// styles.css (.match-score-ring-lg, .match-verdict-pill, .history-card-score).
+export function getMatchVerdictTier(score) {
+  return matchVerdictTierEntry(score).tier;
+}
+
+// Libellé traduit FR/EN pour un score donné, sur les mêmes seuils que
+// scoreOffer() (75/60/45).
+export function getMatchVerdict(score, language = "fr") {
+  const entry = matchVerdictTierEntry(score);
+  return entry.label[language] || entry.label.fr;
+}
+
 function scoreOffer({ candidate, offer, premiumAccess }) {
   const requiredSkills = unique(offer.skills.map(normalize));
   const candidateSkills = unique(candidate.skills.map(normalize));
@@ -153,7 +182,7 @@ function scoreOffer({ candidate, offer, premiumAccess }) {
   const score = Math.min(100, skillScore + experienceScore + educationScore + bonus);
 
   const locked = Boolean(offer.premium && !premiumAccess.hasAccess);
-  const verdict = score >= 75 ? "excellent" : score >= 60 ? "bon" : score >= 45 ? "moyen" : "à renforcer";
+  const verdict = getMatchVerdict(score, "fr");
 
   return {
     offer,
