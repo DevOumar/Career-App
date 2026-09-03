@@ -9329,6 +9329,26 @@ input[aria-invalid="true"] {
     box-shadow: none;
     border: none;
   }
+
+  /* "Télécharger" cible uniquement le document lettre : sans isolation,
+     window.print() imprimait aussi l'en-tête de page, le panneau ton/
+     modèle et la barre latérale d'historique. Même principe que
+     print-cv-only pour le CV (styles.css, section impression CV) — en
+     deux niveaux ici car .letter-document-card est imbriqué sous
+     .cover-letter-page, elle-même sœur de l'aside historique dans
+     .negotiation-layout. */
+  body.print-letter-only .negotiation-layout > *:not(.cover-letter-page) {
+    display: none !important;
+  }
+
+  body.print-letter-only .cover-letter-page > *:not(.letter-document-card) {
+    display: none !important;
+  }
+
+  body.print-letter-only .letter-document-card {
+    background: none;
+    box-shadow: none;
+  }
 }
 
 /* Salary negotiation */

@@ -173,7 +173,13 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   }
 
   function handleDownload() {
+    // Comme pour le CV (voir handleDownloadPdf dans CvPages.jsx) : sans
+    // cette classe, window.print() imprime toute la page (en-tête,
+    // sélecteurs de ton/modèle, historique des lettres) en plus du
+    // document lui-même.
+    document.body.classList.add("print-letter-only");
     window.print();
+    document.body.classList.remove("print-letter-only");
   }
 
   function startEditing() {
