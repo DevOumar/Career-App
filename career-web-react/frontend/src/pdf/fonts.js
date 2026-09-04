@@ -23,6 +23,7 @@ const cabinetGroteskBold = new URL("./fonts/CabinetGrotesk-Bold.ttf", import.met
 const cabinetGroteskBlack = new URL("./fonts/CabinetGrotesk-Black.ttf", import.meta.url).href;
 const instrumentSansRegular = new URL("./fonts/InstrumentSans-Regular.ttf", import.meta.url).href;
 const instrumentSansMedium = new URL("./fonts/InstrumentSans-Medium.ttf", import.meta.url).href;
+const instrumentSansBold = new URL("./fonts/InstrumentSans-Bold.ttf", import.meta.url).href;
 
 Font.register({
   family: "Cabinet Grotesk",
@@ -36,6 +37,11 @@ Font.register({
   family: "Instrument Sans",
   fonts: [
     { src: instrumentSansRegular, fontWeight: 400 },
-    { src: instrumentSansMedium, fontWeight: 500 }
+    { src: instrumentSansMedium, fontWeight: 500 },
+    // Poids 700 nécessaire : .cv-document-contact a (lien LinkedIn) est en
+    // font-weight:700 dans styles.css sans changer de famille — sans ce
+    // fichier, react-pdf n'a pas de synthèse gras (contrairement au
+    // navigateur) et retombe sur le poids 500 le plus proche disponible.
+    { src: instrumentSansBold, fontWeight: 700 }
   ]
 });
