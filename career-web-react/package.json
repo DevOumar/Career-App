@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.4.1",
+    "@react-pdf/renderer": "^4.9.0",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "express-rate-limit": "^8.7.0",
