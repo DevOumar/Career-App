@@ -28,6 +28,46 @@ import { CV_COPY } from "./cvCopy.js";
 import { levelTag, recommendationLevelLabel } from "../../App.jsx";
 import { getMatchVerdict, getMatchVerdictTier } from "../../lib/matchingService.js";
 
+// @react-pdf/renderer + les templates PDF (fonts.js, les .ttf, pdfAutoFit.js)
+// pèsent plusieurs Mo une fois bundlés — en import() dynamique plutôt qu'en
+// import statique pour que ce poids reste dans un chunk séparé, chargé
+// seulement au clic sur "Télécharger PDF", jamais dans le chemin critique
+// du chargement initial de l'app.
+async function loadPdfFitter(templateName) {
+  if (templateName === "sidebar") {
+    const mod = await import("../../pdf/CvDocumentSidebarPdf.jsx");
+    return mod.fitCvDocumentSidebarPdfToOnePage;
+  }
+  const mod = await import("../../pdf/CvDocumentClassicPdf.jsx");
+  return mod.fitCvDocumentClassicPdfToOnePage;
+}
+
+// Nom de fichier suggéré au téléchargement : CV-{nom}-{date}.pdf, sans
+// accents ni caractères spéciaux (compatibilité multi-OS).
+function slugifyForFilename(value) {
+  const diacritics = new RegExp("[\\u0300-\\u036f]", "g");
+  const slug = String(value || "")
+    .normalize("NFD")
+    .replace(diacritics, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return slug || "cv";
+}
+
+// Déclenche un vrai téléchargement de fichier à partir d'un Blob, sans
+// fenêtre d'impression : lien <a download> temporaire, jamais ajouté au
+// DOM visible ni gardé après coup.
+function downloadBlob(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function ImportPage({
   latestCv,
   offerText,
@@ -549,6 +589,18 @@ function MatchResultsStep({
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [networkingState, setNetworkingState] = useState("idle");
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Remonté depuis CvPreviewCard (avant : état local à ce composant) —
+  // handleDownloadPdf a besoin de savoir quel template est actif pour
+  // choisir la bonne fonction d'export PDF.
+  const [template, setTemplate] = useState("classic");
+  // true le temps de fitCvDocument{Classic,Sidebar}PdfToOnePage (peut
+  // prendre jusqu'à quelques secondes sur un CV très dense) — désactive
+  // le bouton pour éviter tout double-clic pendant la génération.
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  // Reflète le flag overflow renvoyé par fitCvDocument*PdfToOnePage :
+  // true si même la réduction (+ troncature pour Sidebar) au plancher
+  // n'a pas suffi à tenir sur 1 page. Message discret sous les boutons.
+  const [cvPrintOverflow, setCvPrintOverflow] = useState(false);
   const [shareStatus, setShareStatus] = useState("idle");
   const [trackerStatus, setTrackerStatus] = useState("idle");
   const [trackerApplicationId, setTrackerApplicationId] = useState(null);
@@ -783,29 +835,40 @@ function MatchResultsStep({
     }
   }
 
-  function handleDownloadPdf() {
+  // Étape 5 : export PDF réel via @react-pdf/renderer (fitCvDocumentClassicPdfToOnePage /
+  // fitCvDocumentSidebarPdfToOnePage), plus de window.print() ni de fenêtre
+  // d'impression — le PDF est généré en mémoire (texte réel, sélectionnable,
+  // pas une capture d'écran) puis téléchargé directement. Ne dépend plus du
+  // DOM de l'aperçu (previewOpen peut rester fermé).
+  //
+  // Le chargement du chunk (loadPdfFitter, import() dynamique) est fait ICI,
+  // dans le try, donc couvert par le même pdfGenerating que la génération du
+  // PDF elle-même : le bouton reste en état "chargement" pendant les deux
+  // phases, y compris le tout premier clic (chunk pas encore en cache
+  // navigateur).
+  async function handleDownloadPdf() {
     if (isFreePlan) {
       onGoToTarifs();
       return;
     }
-    if (!cvReview) {
-      window.print();
+    if (!cvReview || pdfGenerating) {
+      if (!cvReview) fireTrackerToast("error", copy.matchCvPreviewEmpty);
       return;
     }
-    // Le bouton doit imprimer uniquement le CV, pas toute la page de
-    // résultats (score, recommandations, réseautage...). On force l'aperçu
-    // CV à s'ouvrir si besoin, on masque le reste via une classe le temps de
-    // l'impression, puis on restaure l'état initial.
-    const wasPreviewOpen = previewOpen;
-    if (!wasPreviewOpen) setPreviewOpen(true);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        document.body.classList.add("print-cv-only");
-        window.print();
-        document.body.classList.remove("print-cv-only");
-        if (!wasPreviewOpen) setPreviewOpen(false);
-      });
-    });
+    setPdfGenerating(true);
+    setCvPrintOverflow(false);
+    try {
+      const fitToOnePage = await loadPdfFitter(template);
+      const fit = await fitToOnePage(cvReview);
+      const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
+      const fileName = `CV-${slugifyForFilename(fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      downloadBlob(fit.blob, fileName);
+      setCvPrintOverflow(Boolean(fit.overflow));
+    } catch (err) {
+      fireTrackerToast("error", getFriendlyErrorMessage(err, language));
+    } finally {
+      setPdfGenerating(false);
+    }
   }
 
   const scoreTier = getMatchVerdictTier(matchInsights.score);
@@ -1049,7 +1112,15 @@ function MatchResultsStep({
       </article>
 
       {previewOpen ? (
-        <CvPreviewCard cvReview={cvReview} copy={copy} language={language} avatarDataUrl={avatarDataUrl} onClose={() => setPreviewOpen(false)} />
+        <CvPreviewCard
+          cvReview={cvReview}
+          copy={copy}
+          language={language}
+          avatarDataUrl={avatarDataUrl}
+          template={template}
+          onTemplateChange={setTemplate}
+          onClose={() => setPreviewOpen(false)}
+        />
       ) : null}
 
       <div className="match-action-bar no-print">
@@ -1065,10 +1136,12 @@ function MatchResultsStep({
           <button type="button" className="btn-secondary" onClick={handleShare}>
             <UiIcon name="share" /> {shareStatus === "copied" ? copy.matchShareCopied : copy.matchShare}
           </button>
-          <button type="button" className="btn-main ready" onClick={handleDownloadPdf}>
-            <UiIcon name="download" /> {copy.matchDownloadPdf}
+          <button type="button" className="btn-main ready" onClick={handleDownloadPdf} disabled={pdfGenerating}>
+            {pdfGenerating ? <span className="btn-spinner" /> : <UiIcon name="download" />}{" "}
+            {pdfGenerating ? copy.matchDownloadPdfGenerating : copy.matchDownloadPdf}
           </button>
         </div>
+        {cvPrintOverflow ? <p className="muted">{copy.matchCvOverflowNotice}</p> : null}
       </div>
     </div>
   );
@@ -1095,9 +1168,10 @@ function CvEntryDescription({ text }) {
   );
 }
 
-function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, onClose }) {
-  const [template, setTemplate] = useState("classic");
-
+// template/onTemplateChange remontés dans MatchResultsStep (avant : état
+// local ici) — handleDownloadPdf y a besoin du template actif pour choisir
+// la bonne fonction d'export PDF.
+function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTemplateChange, onClose }) {
   if (!cvReview) {
     return (
       <article className="card block cv-preview-card no-print">
@@ -1116,10 +1190,10 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, onClose }) {
           <UiIcon name="profile" /> {copy.matchCvPreviewTitle}
         </h3>
         <div className="cv-template-switch">
-          <button type="button" className={template === "classic" ? "active" : ""} onClick={() => setTemplate("classic")}>
+          <button type="button" className={template === "classic" ? "active" : ""} onClick={() => onTemplateChange("classic")}>
             {copy.cvTemplateClassic}
           </button>
-          <button type="button" className={template === "sidebar" ? "active" : ""} onClick={() => setTemplate("sidebar")}>
+          <button type="button" className={template === "sidebar" ? "active" : ""} onClick={() => onTemplateChange("sidebar")}>
             {copy.cvTemplateSidebar}
           </button>
         </div>

@@ -87,6 +87,9 @@ export const CV_COPY = {
       matchShare: "Partager",
       matchShareCopied: "Résumé copié dans le presse-papiers.",
       matchDownloadPdf: "Télécharger PDF",
+      matchDownloadPdfGenerating: "Génération du PDF...",
+      matchCvOverflowNotice:
+        "Ce CV est trop dense pour tenir sur 1 page malgré la mise en page resserrée : le PDF téléchargé fait plusieurs pages. Raccourcissez certaines descriptions pour revenir à 1 page.",
       matchCvPreviewTitle: "Aperçu CV Optimisé",
       matchCvPreviewEmpty: "Importez et révisez votre CV pour voir un aperçu ici.",
       cvPreviewSummary: "Résumé professionnel",
@@ -241,6 +244,9 @@ export const CV_COPY = {
       matchShare: "Share",
       matchShareCopied: "Summary copied to clipboard.",
       matchDownloadPdf: "Download PDF",
+      matchDownloadPdfGenerating: "Generating PDF...",
+      matchCvOverflowNotice:
+        "This CV is too dense to fit on 1 page even with the tightened layout: the downloaded PDF spans multiple pages. Shorten some descriptions to get back to 1 page.",
       matchCvPreviewTitle: "Optimized CV Preview",
       matchCvPreviewEmpty: "Import and review your CV to see a preview here.",
       cvPreviewSummary: "Professional summary",

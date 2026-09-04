@@ -4028,20 +4028,15 @@ input[aria-invalid="true"] {
     max-width: 100%;
   }
 
-  /* "Télécharger PDF" cible uniquement l'aperçu CV : quand cette classe est
-     posée sur le body (juste le temps de l'impression), tout le reste du
-     bloc résultats (score, recommandations, réseautage...) est masqué pour
-     n'imprimer que le document CV lui-même. Le footer du site (hors de
-     #match-print-area) est déjà masqué plus haut via .connected-footer. */
-  body.print-cv-only #match-print-area > *:not(.cv-preview-card) {
-    display: none !important;
-  }
-
-  body.print-cv-only .cv-preview-card {
-    background: none;
-    box-shadow: none;
-  }
-
+  /* Étape 5 : le bouton "Télécharger PDF" utilise désormais
+     @react-pdf/renderer (plus de window.print()), donc la classe
+     body.print-cv-only n'est plus jamais posée par l'app — les 2 règles
+     qui la ciblaient ont été retirées (mortes). Le reste de ce bloc
+     (@page, .no-print, #match-print-area, les règles cv-document et
+     cv-sidebar ci-dessous) reste utile : CoverLetterPage.jsx a son propre
+     window.print() qui dépend de @page/.no-print, et un Ctrl+P manuel du
+     navigateur sur cette page (aperçu CV visible) passe encore par ces
+     règles. */
   #match-print-area .card {
     box-shadow: none;
     break-inside: avoid;
