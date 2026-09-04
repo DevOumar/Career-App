@@ -1,4 +1,11 @@
-@import url("https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@700;900&family=Instrument+Sans:wght@400;500;600;700&display=swap");
+/* Cabinet Grotesk n'est PAS une police Google Fonts (vérifié : une requête
+   sur fonts.googleapis.com pour "Cabinet Grotesk" renvoie 400 "Missing font
+   family") — c'est une police Fontshare, distribuée depuis cdn.fontshare.com.
+   L'import combiné ci-dessous échouait donc silencieusement pour Cabinet
+   Grotesk : tous les titres/boutons retombaient sur le sans-serif système
+   depuis la Phase 2 typographie, sans erreur visible dans la console. */
+@import url("https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@700,900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&display=swap");
 
 /* Taille par défaut de toutes les icônes UiIcon : sans cette règle, un SVG
    sans width/height explicite s'affiche à sa taille intrinsèque (énorme)
