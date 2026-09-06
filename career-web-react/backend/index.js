@@ -303,6 +303,7 @@ async function startServer(app) {
 const { db, dataDirectory } = await openDatabase();
 
 const app = express();
+app.set("trust proxy", 1);
 app.use(
   cors({
     origin(origin, callback) {
@@ -1256,6 +1257,7 @@ function getMailTransporter() {
       host: SMTP_HOST,
       port: SMTP_PORT,
       secure: SMTP_SECURE,
+      family: 4,
       connectionTimeout: SMTP_TIMEOUT_MS,
       greetingTimeout: SMTP_TIMEOUT_MS,
       socketTimeout: SMTP_TIMEOUT_MS,
@@ -1311,6 +1313,7 @@ async function sendVerificationEmail({ to, code, firstName, purpose = "login" })
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
+    family: 4,
     connectionTimeout: SMTP_TIMEOUT_MS,
     greetingTimeout: SMTP_TIMEOUT_MS,
     socketTimeout: SMTP_TIMEOUT_MS,
