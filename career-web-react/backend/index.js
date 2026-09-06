@@ -47,6 +47,7 @@ import { registerInterviewRoutes } from "./routes/interview.js";
 const BASE_PORT = Number(process.env.PORT || 8787);
 const SESSION_LIFETIME_MINUTES = 30 * 24 * 60; // 30 jours
 const PORT_RETRY_COUNT = Number(process.env.PORT_RETRY_COUNT || 4);
+const SERVER_HOST = String(process.env.HOST || (process.env.NODE_ENV === "production" ? "0.0.0.0" : "127.0.0.1")).trim();
 const LOCAL_ORIGIN_PATTERN = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i;
 
 const ACCOUNT_TYPES = new Set([
@@ -126,6 +127,16 @@ const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || "").trim();
 const STRIPE_WEBHOOK_SECRET = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
 const APP_URL = String(process.env.APP_URL || "http://127.0.0.1:5174").trim();
 const stripe = STRIPE_SECRET_KEY ? new Stripe(STRIPE_SECRET_KEY) : null;
+const ALLOWED_ORIGINS = uniquePaths(
+  [
+    APP_URL,
+    ...String(process.env.CORS_ORIGINS || "")
+      .split(",")
+      .map((origin) => origin.trim())
+  ]
+    .filter(Boolean)
+    .map((origin) => origin.replace(/\/+$/, ""))
+);
 
 function loadLocalEnv() {
   const envPath = path.join(PROJECT_ROOT, ".env");
@@ -257,7 +268,7 @@ async function startServer(app) {
     const port = BASE_PORT + step;
 
     const result = await new Promise((resolve, reject) => {
-      const server = app.listen(port, "127.0.0.1");
+      const server = app.listen(port, SERVER_HOST);
 
       server.once("listening", () => {
         resolve({ status: "ok", server, port });
@@ -271,7 +282,7 @@ async function startServer(app) {
 
         const healthy = await isCareerApiRunning(port);
         if (healthy) {
-          console.warn(`API deja active sur http://127.0.0.1:${port} (processus existant conserve).`);
+          console.warn(`API deja active sur http://${SERVER_HOST}:${port} (processus existant conserve).`);
           resolve({ status: "existing", server: null, port });
           return;
         }
@@ -294,7 +305,8 @@ const app = express();
 app.use(
   cors({
     origin(origin, callback) {
-      if (!origin || LOCAL_ORIGIN_PATTERN.test(origin)) {
+      const normalizedOrigin = String(origin || "").replace(/\/+$/, "");
+      if (!origin || LOCAL_ORIGIN_PATTERN.test(origin) || ALLOWED_ORIGINS.includes(normalizedOrigin)) {
         callback(null, true);
         return;
       }
@@ -5122,11 +5134,11 @@ registerInterviewRoutes(app);
 const serverStart = await startServer(app);
 
 if (serverStart.status === "existing") {
-  console.log(`Career API detectee deja active sur http://127.0.0.1:${serverStart.port}`);
+  console.log(`Career API detectee deja active sur http://${SERVER_HOST}:${serverStart.port}`);
   console.log("Ce processus API reste en veille pour ne pas dupliquer le service.");
   setInterval(() => {}, 60_000);
 } else {
-  console.log(`Career API (PostgreSQL embarque) sur http://127.0.0.1:${serverStart.port}`);
+  console.log(`Career API (PostgreSQL embarque) sur http://${SERVER_HOST}:${serverStart.port}`);
   console.log(`Donnees PostgreSQL: ${dataDirectory}`);
 
   // Digest hebdomadaire École : vérifié toutes les 6h, chaque établissement
