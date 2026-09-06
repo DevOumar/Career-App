@@ -1,5 +1,10 @@
 const explicitApiBase = String(import.meta?.env?.VITE_API_URL || "").trim();
+const hostedApiBase =
+  typeof window !== "undefined" && window.location.hostname === "career-cv-henna.vercel.app"
+    ? "https://career-app-api-mlk9.onrender.com/api"
+    : "";
 const fallbackApiBases = [
+  hostedApiBase,
   "http://127.0.0.1:8787/api",
   "http://127.0.0.1:8788/api",
   "http://127.0.0.1:8789/api",
