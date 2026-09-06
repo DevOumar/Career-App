@@ -4,6 +4,7 @@ import express from "express";
 import { rateLimit, ipKeyGenerator } from "express-rate-limit";
 import fs from "node:fs";
 import { promises as fsPromises } from "node:fs";
+import dnsCore from "node:dns";
 import dns from "node:dns/promises";
 import net from "node:net";
 import mammoth from "mammoth";
@@ -43,6 +44,8 @@ import { registerCoverLetterRoutes } from "./routes/coverLetter.js";
 import { registerNegotiationRoutes } from "./routes/negotiation.js";
 import { registerApplicationsRoutes } from "./routes/applications.js";
 import { registerInterviewRoutes } from "./routes/interview.js";
+
+dnsCore.setDefaultResultOrder("ipv4first");
 
 const BASE_PORT = Number(process.env.PORT || 8787);
 const SESSION_LIFETIME_MINUTES = 30 * 24 * 60; // 30 jours
