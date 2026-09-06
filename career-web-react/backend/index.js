@@ -103,6 +103,7 @@ loadLocalEnv();
 const SMTP_HOST = String(process.env.SMTP_HOST || "smtp.gmail.com").trim();
 const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
 const SMTP_SECURE = String(process.env.SMTP_SECURE || "false").toLowerCase() === "true";
+const SMTP_TIMEOUT_MS = Number(process.env.SMTP_TIMEOUT_MS || 10000);
 const AI_PROVIDER = String(process.env.AI_PROVIDER || "none").trim().toLowerCase();
 const AI_MODEL = String(process.env.AI_MODEL || "").trim();
 const XAI_API_KEY = String(process.env.XAI_API_KEY || "").trim();
@@ -1255,6 +1256,9 @@ function getMailTransporter() {
       host: SMTP_HOST,
       port: SMTP_PORT,
       secure: SMTP_SECURE,
+      connectionTimeout: SMTP_TIMEOUT_MS,
+      greetingTimeout: SMTP_TIMEOUT_MS,
+      socketTimeout: SMTP_TIMEOUT_MS,
       auth: { user: SMTP_USER, pass: SMTP_PASS }
     });
   }
@@ -1307,6 +1311,9 @@ async function sendVerificationEmail({ to, code, firstName, purpose = "login" })
     host: SMTP_HOST,
     port: SMTP_PORT,
     secure: SMTP_SECURE,
+    connectionTimeout: SMTP_TIMEOUT_MS,
+    greetingTimeout: SMTP_TIMEOUT_MS,
+    socketTimeout: SMTP_TIMEOUT_MS,
     auth: {
       user: SMTP_USER,
       pass: SMTP_PASS
