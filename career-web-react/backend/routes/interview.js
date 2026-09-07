@@ -68,6 +68,7 @@ export function registerInterviewRoutes(app) {
     aiActionRateLimiter,
     aiConversationRateLimiter,
     AI_PROVIDER,
+    AI_MODEL,
     GROQ_API_KEY,
     OPENAI_API_KEY,
     XAI_API_KEY,
@@ -105,28 +106,34 @@ export function registerInterviewRoutes(app) {
   async function callLlmMessages(messages) {
     const apiKey = GROQ_API_KEY || OPENAI_API_KEY || XAI_API_KEY;
     const provider = GROQ_API_KEY ? "groq" : OPENAI_API_KEY ? "openai" : XAI_API_KEY ? "xai" : "none";
+    const preferredGroqModel = String(AI_MODEL || "").trim() || "openai/gpt-oss-120b";
+    const groqModels = [...new Set([preferredGroqModel, "openai/gpt-oss-20b"])];
 
     if (provider === "groq" && GROQ_API_KEY) {
-      try {
-        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${GROQ_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: "llama-3.3-70b-versatile",
-            messages,
-            temperature: 0.7,
-            max_tokens: 1500
-          })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          return data.choices?.[0]?.message?.content || "";
+      for (const model of groqModels) {
+        try {
+          const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${GROQ_API_KEY}`
+            },
+            body: JSON.stringify({
+              model,
+              messages,
+              temperature: 0.7,
+              max_tokens: 1500
+            })
+          });
+          if (response.ok) {
+            const data = await response.json();
+            return data.choices?.[0]?.message?.content || "";
+          }
+          const errorText = await response.text().catch(() => "");
+          console.warn(`Erreur Groq LLM (${model}): ${response.status} ${errorText.slice(0, 240)}`);
+        } catch (err) {
+          console.warn(`Erreur Groq LLM (${model}):`, err.message);
         }
-      } catch (err) {
-        console.warn("Erreur Groq LLM:", err.message);
       }
     }
 

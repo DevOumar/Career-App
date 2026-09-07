@@ -231,6 +231,18 @@ export function UiIcon({ name, className = "" }) {
         d="M10 2.75a.75.75 0 01.72.54l.3 1.03c.38.12.74.27 1.08.45l.95-.52a.75.75 0 01.9.13l1.67 1.67a.75.75 0 01.13.9l-.52.95c.18.34.33.7.45 1.08l1.03.3a.75.75 0 01.54.72v2.36a.75.75 0 01-.54.72l-1.03.3c-.12.38-.27.74-.45 1.08l.52.95a.75.75 0 01-.13.9l-1.67 1.67a.75.75 0 01-.9.13l-.95-.52c-.34.18-.7.33-1.08.45l-.3 1.03a.75.75 0 01-.72.54H7.64a.75.75 0 01-.72-.54l-.3-1.03a6.3 6.3 0 01-1.08-.45l-.95.52a.75.75 0 01-.9-.13L2.02 16.3a.75.75 0 01-.13-.9l.52-.95a6.3 6.3 0 01-.45-1.08l-1.03-.3a.75.75 0 01-.54-.72V10a.75.75 0 01.54-.72l1.03-.3c.12-.38.27-.74.45-1.08l-.52-.95a.75.75 0 01.13-.9l1.67-1.67a.75.75 0 01.9-.13l.95.52c.34-.18.7-.33 1.08-.45l.3-1.03a.75.75 0 01.72-.54H10zm-1.18 6.07a2.5 2.5 0 103.54 3.54 2.5 2.5 0 00-3.54-3.54z"
         fill="currentColor"
       />
+    ),
+    // Agent IA (recruteur virtuel) : tête de robot, distincte de "profile"
+    // (silhouette humaine) pour bien identifier l'interlocuteur artificiel
+    // dans le chat d'entretien.
+    aiAgent: (
+      <>
+        <path d="M10 2.5a1 1 0 011 1v1.1h2.25A2.75 2.75 0 0116 7.35v5.4a2.75 2.75 0 01-2.75 2.75H6.75A2.75 2.75 0 014 12.75v-5.4a2.75 2.75 0 012.75-2.75H9V3.5a1 1 0 011-1z" fill="currentColor" />
+        <circle cx="7.75" cy="10" r="1.15" fill="var(--surface, #fff)" />
+        <circle cx="12.25" cy="10" r="1.15" fill="var(--surface, #fff)" />
+        <path d="M8 13h4" stroke="var(--surface, #fff)" strokeWidth="1.1" strokeLinecap="round" />
+        <path d="M2.5 9v2M17.5 9v2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      </>
     )
   };
 

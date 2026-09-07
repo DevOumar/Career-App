@@ -92,7 +92,7 @@ function InterviewAssistantIllustration() {
   );
 }
 
-function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) {
+function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, avatarDataUrl }) {
   // Élan et Trajectoire Pro débloquent le simulateur d'entretiens (voir
   // data/plans.js) — seul Essentiel (gratuit) en est exclu.
   const isFreePlan = !getPlanById(subscription?.planId)?.unlocksInterviews;
@@ -633,25 +633,134 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
     );
   }
 
+  // Rendu Markdown léger (pas de dépendance externe) — le backend RAG
+  // (Python) renvoie du Markdown complet pour le bilan final (titres,
+  // tableaux, citations), pas juste des **gras** : sans ce parseur, tous ces
+  // symboles s'affichaient tels quels (##, |---|, etc.) au lieu d'être mis
+  // en forme. Volontairement minimal : ne couvre que ce que le LLM produit
+  // réellement (titres, gras, tableaux, citations, séparateurs, paragraphes).
+  function isTableSeparatorLine(line) {
+    return /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line);
+  }
+
+  function splitTableRow(line) {
+    const trimmed = line.trim().replace(/^\|/, "").replace(/\|$/, "");
+    return trimmed.split("|").map((cell) => cell.trim());
+  }
+
+  function renderMarkdown(text) {
+    const lines = text.split("\n");
+    const blocks = [];
+    let i = 0;
+    let key = 0;
+
+    while (i < lines.length) {
+      const line = lines[i];
+
+      if (line.trim() === "") {
+        i++;
+        continue;
+      }
+
+      const headingMatch = line.match(/^(#{1,6})\s+(.*)$/);
+      if (headingMatch) {
+        const level = headingMatch[1].length;
+        const Tag = level <= 2 ? "h4" : "h5";
+        blocks.push(
+          <Tag className="interview-md-heading" key={key++}>
+            {parseBold(headingMatch[2].trim())}
+          </Tag>
+        );
+        i++;
+        continue;
+      }
+
+      if (/^\s*>\s?/.test(line)) {
+        const quoteLines = [];
+        while (i < lines.length && /^\s*>\s?/.test(lines[i])) {
+          quoteLines.push(lines[i].replace(/^\s*>\s?/, ""));
+          i++;
+        }
+        blocks.push(
+          <blockquote className="interview-md-quote" key={key++}>
+            {parseBold(quoteLines.join(" "))}
+          </blockquote>
+        );
+        continue;
+      }
+
+      if (line.includes("|") && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1])) {
+        const headerCells = splitTableRow(line);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && lines[i].includes("|") && lines[i].trim() !== "") {
+          rows.push(splitTableRow(lines[i]));
+          i++;
+        }
+        blocks.push(
+          <div className="interview-md-table-wrap" key={key++}>
+            <table className="interview-md-table">
+              <thead>
+                <tr>
+                  {headerCells.map((cell, ci) => (
+                    <th key={ci}>{parseBold(cell)}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, ri) => (
+                  <tr key={ri}>
+                    {row.map((cell, ci) => (
+                      <td key={ci}>{parseBold(cell)}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        continue;
+      }
+
+      if (/^\s*-{2,}\s*$/.test(line)) {
+        blocks.push(<hr className="interview-md-hr" key={key++} />);
+        i++;
+        continue;
+      }
+
+      const paraLines = [];
+      while (
+        i < lines.length &&
+        lines[i].trim() !== "" &&
+        !/^#{1,6}\s+/.test(lines[i]) &&
+        !/^\s*>\s?/.test(lines[i]) &&
+        !(lines[i].includes("|") && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1])) &&
+        !/^\s*-{2,}\s*$/.test(lines[i])
+      ) {
+        paraLines.push(lines[i]);
+        i++;
+      }
+      blocks.push(
+        <p className="interview-message-paragraph" key={key++}>
+          {paraLines.map((l, li) => (
+            <React.Fragment key={li}>
+              {parseBold(l)}
+              {li < paraLines.length - 1 && <br />}
+            </React.Fragment>
+          ))}
+        </p>
+      );
+    }
+
+    return blocks;
+  }
+
   function renderMessageText(text) {
     const cleanText = text.replace(DISCLAIMER, "").trim();
     const hasDisclaimer = text.includes(DISCLAIMER);
     const bilanCard = renderBilanCard(cleanText);
 
-    const body = bilanCard || (
-      <>
-        {cleanText.split("\n\n").map((p, i) => (
-          <p className="interview-message-paragraph" key={i}>
-            {p.split("\n").map((line, j) => (
-              <React.Fragment key={j}>
-                {parseBold(line)}
-                {j < p.split("\n").length - 1 && <br />}
-              </React.Fragment>
-            ))}
-          </p>
-        ))}
-      </>
-    );
+    const body = bilanCard || <>{renderMarkdown(cleanText)}</>;
 
     return (
       <>
@@ -870,7 +979,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
           <div className="interview-call-timer">{formatTime(callSeconds)}</div>
 
           <div className={`interview-call-avatar ${isRecordingCall ? "recording" : ""}`}>
-            <UiIcon name={isRecordingCall ? "chat" : "profile"} className="interview-call-avatar-icon" />
+            <UiIcon name={isRecordingCall ? "chat" : "aiAgent"} className="interview-call-avatar-icon" />
           </div>
 
           <p className="interview-call-status">{callStatus}</p>
@@ -907,7 +1016,19 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
               const isRecruiter = msg.role === "recruiter";
               return (
                 <div key={msg.id} className={`interview-message ${isRecruiter ? "recruiter" : "candidate"}`}>
-                  <span className="interview-message-role">{isRecruiter ? "Recruteur IA" : "Vous"}</span>
+                  <div className="interview-message-header">
+                    {isRecruiter ? (
+                      <span className="interview-message-avatar recruiter">
+                        <UiIcon name="aiAgent" />
+                      </span>
+                    ) : null}
+                    <span className="interview-message-role">{isRecruiter ? "Recruteur IA" : "Vous"}</span>
+                    {!isRecruiter ? (
+                      <span className="interview-message-avatar candidate">
+                        {avatarDataUrl ? <img src={avatarDataUrl} alt="" /> : <UiIcon name="profile" />}
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="interview-message-bubble">{renderMessageText(msg.text)}</div>
                 </div>
               );

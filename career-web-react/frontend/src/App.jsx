@@ -2428,7 +2428,13 @@ export default function App() {
         {activePage === "offres" ? <OffersPage matchData={latestMatch} premium={premium} language={language} /> : null}
         {activePage === "candidatures" ? <ApplicationsPage language={language} userId={user?.id} cvHistory={cvHistory} /> : null}
         {activePage === "entretiens" ? (
-          <InterviewPage language={language} subscription={user?.subscription} onGoToTarifs={() => goTo("tarifs")} userId={user?.id} />
+          <InterviewPage
+            language={language}
+            subscription={user?.subscription}
+            onGoToTarifs={() => goTo("tarifs")}
+            userId={user?.id}
+            avatarDataUrl={user?.avatarDataUrl}
+          />
         ) : null}
         {activePage === "lettre" ? (
           <CoverLetterPage
@@ -3010,10 +3016,12 @@ function AuthScreen({
   const signupUsernameError = signupForm.username ? getUsernameValidation(signupForm.username, language) : "";
 
   function updateLoginField(key, value) {
+    onClearError();
     setLoginForm((prev) => ({ ...prev, [key]: value }));
   }
 
   function updateSignupField(key, value) {
+    onClearError();
     setSignupForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -3284,10 +3292,24 @@ function AuthScreen({
       />
 
       {!showLanding ? (
-        <div className="auth-modal-backdrop" onMouseDown={() => setShowLanding(true)}>
+        <div
+          className="auth-modal-backdrop"
+          onMouseDown={() => {
+            onClearError();
+            setShowLanding(true);
+          }}
+        >
           <div className="auth-modal-card login-style" onMouseDown={(event) => event.stopPropagation()}>
             <div className="auth-modal-close-sticky">
-              <button className="auth-modal-close" type="button" onClick={() => setShowLanding(true)} aria-label="Fermer">
+              <button
+                className="auth-modal-close"
+                type="button"
+                onClick={() => {
+                  onClearError();
+                  setShowLanding(true);
+                }}
+                aria-label="Fermer"
+              >
                 ×
               </button>
             </div>
@@ -3347,7 +3369,7 @@ function AuthScreen({
                     <br />
                     <strong>{forgotIdentifier}</strong>
                     <button type="button" onClick={() => setForgotStep("identifier")} aria-label="Modifier l'adresse">
-                      ?
+                      {language === "en" ? "Change" : "Modifier"}
                     </button>
                   </>
                 ) : (loginStep === "code" && mode === "login") || (signupPhase === "code" && mode === "signup") ? (
@@ -3356,7 +3378,7 @@ function AuthScreen({
                     <strong>{verificationEmail}</strong>
                     {mode === "login" ? (
                       <button type="button" onClick={() => setLoginStep("identifier")} aria-label="Modifier l'adresse">
-                        ?
+                        {language === "en" ? "Change" : "Modifier"}
                       </button>
                     ) : null}
                   </>
@@ -3372,7 +3394,10 @@ function AuthScreen({
                 {language === "en" ? "Email or username" : "Adresse e-mail ou nom d'utilisateur"}
                 <input
                   value={forgotIdentifier}
-                  onChange={(event) => setForgotIdentifier(event.target.value)}
+                  onChange={(event) => {
+                    onClearError();
+                    setForgotIdentifier(event.target.value);
+                  }}
                   placeholder={language === "en" ? "Username or email address" : "Nom d'utilisateur ou adresse e-mail"}
                   autoFocus
                   required
@@ -3386,7 +3411,10 @@ function AuthScreen({
                       key={index}
                       data-forgot-code-index={index}
                       value={digit}
-                      onChange={(event) => updateForgotCodeDigit(index, event.target.value)}
+                      onChange={(event) => {
+                        onClearError();
+                        updateForgotCodeDigit(index, event.target.value);
+                      }}
                       onKeyDown={(event) => {
                         if (event.key === "Backspace" && !forgotCode[index] && index > 0) {
                           document.querySelector(`[data-forgot-code-index="${index - 1}"]`)?.focus();
@@ -3422,7 +3450,10 @@ function AuthScreen({
                     <input
                       type={showNewPassword ? "text" : "password"}
                       value={newPassword}
-                      onChange={(event) => setNewPassword(event.target.value)}
+                      onChange={(event) => {
+                        onClearError();
+                        setNewPassword(event.target.value);
+                      }}
                       minLength={8}
                       autoFocus
                       required
@@ -3437,7 +3468,10 @@ function AuthScreen({
                   <input
                     type={showNewPassword ? "text" : "password"}
                     value={confirmNewPassword}
-                    onChange={(event) => setConfirmNewPassword(event.target.value)}
+                    onChange={(event) => {
+                      onClearError();
+                      setConfirmNewPassword(event.target.value);
+                    }}
                     minLength={8}
                     required
                   />
@@ -3487,7 +3521,10 @@ function AuthScreen({
                           key={index}
                           data-code-index={index}
                           value={digit}
-                          onChange={(event) => updateCodeDigit(index, event.target.value)}
+                          onChange={(event) => {
+                            onClearError();
+                            updateCodeDigit(index, event.target.value);
+                          }}
                           onKeyDown={(event) => {
                             if (event.key === "Backspace" && !loginCode[index] && index > 0) {
                               document.querySelector(`[data-code-index="${index - 1}"]`)?.focus();
