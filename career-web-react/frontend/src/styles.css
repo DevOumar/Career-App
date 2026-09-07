@@ -8913,7 +8913,8 @@ input[aria-invalid="true"] {
   color: #fff;
 }
 
-.interview-message-bubble:has(.interview-bilan) {
+.interview-message-bubble:has(.interview-bilan),
+.interview-message-bubble:has(.interview-md-table-wrap) {
   max-width: 100%;
 }
 
@@ -8924,6 +8925,66 @@ input[aria-invalid="true"] {
 
 .interview-message-paragraph:last-child {
   margin-bottom: 0;
+}
+
+/* Rendu Markdown générique du bilan (titres, tableaux, citations) — voir
+   renderMarkdown() dans InterviewPage.jsx. */
+.interview-md-heading {
+  margin: 0.9rem 0 0.4rem;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-1);
+}
+
+.interview-md-heading:first-child {
+  margin-top: 0;
+}
+
+.interview-md-quote {
+  margin: 0.5rem 0;
+  padding: 0.5rem 0.9rem;
+  border-left: 3px solid var(--primary);
+  background: var(--bg-accent);
+  border-radius: 0 8px 8px 0;
+  font-style: italic;
+  color: var(--text-2);
+}
+
+.interview-md-hr {
+  border: none;
+  border-top: 1px dashed var(--line);
+  margin: 0.8rem 0;
+}
+
+.interview-md-table-wrap {
+  overflow-x: auto;
+  margin: 0.6rem 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.interview-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.interview-md-table th,
+.interview-md-table td {
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.interview-md-table thead th {
+  background: var(--bg-accent);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.interview-md-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .interview-message-disclaimer {
