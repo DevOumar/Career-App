@@ -2458,7 +2458,13 @@ export default function App() {
         {activePage === "offres" ? <OffersPage matchData={latestMatch} premium={premium} language={language} /> : null}
         {activePage === "candidatures" ? <ApplicationsPage language={language} userId={user?.id} cvHistory={cvHistory} /> : null}
         {activePage === "entretiens" ? (
-          <InterviewPage language={language} subscription={user?.subscription} onGoToTarifs={() => goTo("tarifs")} userId={user?.id} />
+          <InterviewPage
+            language={language}
+            subscription={user?.subscription}
+            onGoToTarifs={() => goTo("tarifs")}
+            userId={user?.id}
+            avatarDataUrl={user?.avatarDataUrl}
+          />
         ) : null}
         {activePage === "lettre" ? (
           <CoverLetterPage

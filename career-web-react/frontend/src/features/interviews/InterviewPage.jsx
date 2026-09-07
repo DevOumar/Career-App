@@ -92,7 +92,7 @@ function InterviewAssistantIllustration() {
   );
 }
 
-function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) {
+function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, avatarDataUrl }) {
   // Élan et Trajectoire Pro débloquent le simulateur d'entretiens (voir
   // data/plans.js) — seul Essentiel (gratuit) en est exclu.
   const isFreePlan = !getPlanById(subscription?.planId)?.unlocksInterviews;
@@ -979,7 +979,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
           <div className="interview-call-timer">{formatTime(callSeconds)}</div>
 
           <div className={`interview-call-avatar ${isRecordingCall ? "recording" : ""}`}>
-            <UiIcon name={isRecordingCall ? "chat" : "profile"} className="interview-call-avatar-icon" />
+            <UiIcon name={isRecordingCall ? "chat" : "aiAgent"} className="interview-call-avatar-icon" />
           </div>
 
           <p className="interview-call-status">{callStatus}</p>
@@ -1016,7 +1016,19 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId }) 
               const isRecruiter = msg.role === "recruiter";
               return (
                 <div key={msg.id} className={`interview-message ${isRecruiter ? "recruiter" : "candidate"}`}>
-                  <span className="interview-message-role">{isRecruiter ? "Recruteur IA" : "Vous"}</span>
+                  <div className="interview-message-header">
+                    {isRecruiter ? (
+                      <span className="interview-message-avatar recruiter">
+                        <UiIcon name="aiAgent" />
+                      </span>
+                    ) : null}
+                    <span className="interview-message-role">{isRecruiter ? "Recruteur IA" : "Vous"}</span>
+                    {!isRecruiter ? (
+                      <span className="interview-message-avatar candidate">
+                        {avatarDataUrl ? <img src={avatarDataUrl} alt="" /> : <UiIcon name="profile" />}
+                      </span>
+                    ) : null}
+                  </div>
                   <div className="interview-message-bubble">{renderMessageText(msg.text)}</div>
                 </div>
               );
