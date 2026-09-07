@@ -68,6 +68,7 @@ export function registerInterviewRoutes(app) {
     aiActionRateLimiter,
     aiConversationRateLimiter,
     AI_PROVIDER,
+    AI_MODEL,
     GROQ_API_KEY,
     OPENAI_API_KEY,
     XAI_API_KEY,
