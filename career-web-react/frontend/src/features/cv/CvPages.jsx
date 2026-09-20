@@ -13,7 +13,7 @@ import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { Placeholder } from "../../components/Placeholder.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
-import { formatDate } from "../../lib/format.js";
+import { fillTemplate, formatDate } from "../../lib/format.js";
 import { getPlanById } from "../../data/plans.js";
 import {
   submitMatchFeedback,
@@ -532,6 +532,23 @@ const CV_LANGUAGE_MARKERS = {
   en: ["the ", "and ", "with ", "for ", "experience", "skills", "education", "degree", "years", "project", "responsible", "company", "team"]
 };
 
+function linkedinSearchUrl(query) {
+  return `https://www.linkedin.com/search/results/people/?keywords=${encodeURIComponent(query)}`;
+}
+
+function buildNetworkingQueries({ title, company, language, copy }) {
+  if (!company) return [];
+  const roleWord = title ? title.split(/[\/,|-]/)[0].trim() : "";
+  const recruiterWord = language === "en" ? "Recruiter" : "Recruteur";
+  const hrWord = language === "en" ? "Talent Acquisition" : "RH Ressources Humaines";
+
+  return [
+    { label: copy.matchNetworkingRoleLabel, query: [roleWord, company].filter(Boolean).join(" ") },
+    { label: copy.matchNetworkingRecruiterLabel, query: `${recruiterWord} ${company}` },
+    { label: copy.matchNetworkingHrLabel, query: `${hrWord} ${company}` }
+  ].filter((item) => item.query.trim().length > company.length);
+}
+
 function detectCvLanguage(text) {
   const normalized = ` ${String(text || "").toLowerCase()} `;
   if (!normalized.trim()) return "";
@@ -570,6 +587,7 @@ function MatchResultsStep({
 }) {
   const [feedback, setFeedback] = useState(null);
   const [feedbackSaving, setFeedbackSaving] = useState(false);
+  const [networkingState, setNetworkingState] = useState("idle");
   const [previewOpen, setPreviewOpen] = useState(false);
   // Remonté depuis CvPreviewCard (avant : état local à ce composant) —
   // handleDownloadPdf a besoin de savoir quel template est actif pour
@@ -782,12 +800,19 @@ function MatchResultsStep({
   const missingKeywords = matchInsights.missingKeywords || [];
   const company = jobReview?.company || "";
   const title = jobReview?.title || "";
+  const searchQuery = [company, title].filter(Boolean).join(" ") || title || company;
+  const networkingQueries = buildNetworkingQueries({ title, company, language, copy });
   const verdictLabel = matchInsights.verdict || getMatchVerdict(matchInsights.score, language);
   const cvTextSample =
     cvSourceText ||
     [cvReview?.headline, cvReview?.summary, ...(cvReview?.experiences || []).map((item) => item.description)].filter(Boolean).join(" ");
   const detectedCvLanguage = detectCvLanguage(cvTextSample) || language;
   const languageLabel = detectedCvLanguage === "en" ? "English" : "Français";
+
+  function handleFindContacts() {
+    setNetworkingState("searching");
+    setTimeout(() => setNetworkingState("done"), 700);
+  }
 
   const isFreePlan = !getPlanById(subscription?.planId)?.grantsPremium;
 
@@ -1056,6 +1081,32 @@ function MatchResultsStep({
               )}
             </button>
             {atsApplied ? <p className="ats-applied-hint">{cvCopy.atsApplied}</p> : null}
+          </div>
+        ) : null}
+      </article>
+
+      <article className="card block match-networking-card no-print">
+        <h3>
+          <UiIcon name="briefcase" /> {copy.matchNetworkingTitle}
+        </h3>
+        <p className="muted">{fillTemplate(copy.matchNetworkingText, { company: company || "cette entreprise" })}</p>
+        <button type="button" className="btn-main ready" onClick={handleFindContacts} disabled={networkingState === "searching"}>
+          {networkingState === "searching" ? copy.matchNetworkingSearching : copy.matchNetworkingButton}
+        </button>
+        {networkingState === "done" ? (
+          <div className="match-networking-result">
+            <p>{copy.matchNetworkingEmpty}</p>
+            <div className="match-networking-links">
+              {(networkingQueries.length ? networkingQueries : [{ label: copy.matchNetworkingOpenLinkedin, query: searchQuery }]).map(
+                (item) => (
+                  <a key={item.label} href={linkedinSearchUrl(item.query)} target="_blank" rel="noreferrer">
+                    <UiIcon name="briefcase" />
+                    <span>{item.label}</span>
+                    <UiIcon name="chevron" className="match-networking-arrow" />
+                  </a>
+                )
+              )}
+            </div>
           </div>
         ) : null}
       </article>

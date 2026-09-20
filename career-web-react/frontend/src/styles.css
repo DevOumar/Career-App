@@ -3268,6 +3268,7 @@ input[aria-invalid="true"] {
 .match-results-card h3,
 .match-block h3,
 .cultural-fit-card h3,
+.match-networking-card h3,
 .cv-preview-card h3 {
   display: flex;
   align-items: center;
@@ -3304,6 +3305,7 @@ input[aria-invalid="true"] {
 .match-subblock h4 svg,
 .match-block h3 svg,
 .cultural-fit-card h3 svg,
+.match-networking-card h3 svg,
 .cv-preview-card h3 svg {
   width: 1.1rem;
   height: 1.1rem;
@@ -3493,6 +3495,67 @@ input[aria-invalid="true"] {
 .match-feedback-thanks {
   font-weight: 700;
   color: var(--success);
+}
+
+.match-networking-card p {
+  margin: 0.3rem 0 0.9rem;
+}
+
+.match-networking-result {
+  margin-top: 1rem;
+  padding: 0.9rem 1rem;
+  border-radius: 12px;
+  border: 1px dashed var(--line-strong);
+  background: var(--surface-2);
+}
+
+.match-networking-result p {
+  margin: 0 0 0.85rem;
+  color: var(--text-3);
+  font-size: 0.82rem;
+}
+
+.match-networking-links {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.match-networking-links a {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-weight: 700;
+  font-size: 0.86rem;
+  color: var(--text);
+  text-decoration: none;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.match-networking-links a:hover {
+  border-color: var(--primary);
+  background: var(--bg-accent);
+}
+
+.match-networking-links a svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  color: var(--primary);
+  flex: 0 0 auto;
+}
+
+.match-networking-links a span:first-of-type {
+  flex: 1;
+}
+
+.match-networking-arrow {
+  width: 1rem;
+  height: 1rem;
+  color: var(--primary);
+  flex: 0 0 auto;
 }
 
 .cv-preview-card {
