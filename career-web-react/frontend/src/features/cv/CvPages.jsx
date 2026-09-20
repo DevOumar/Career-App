@@ -15,6 +15,8 @@ import { Placeholder } from "../../components/Placeholder.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
 import { fillTemplate, formatDate } from "../../lib/format.js";
 import { getPlanById } from "../../data/plans.js";
+import { mergeCvAtsOptimization } from "../../lib/cvOptimization.js";
+import { loadPdfFitter, slugifyForFilename, downloadBlob } from "../../lib/pdfDownload.js";
 import {
   submitMatchFeedback,
   getMatchFeedback,
@@ -27,46 +29,6 @@ import { APPLICATIONS_COPY } from "../applications/applicationsCopy.js";
 import { CV_COPY } from "./cvCopy.js";
 import { levelTag, recommendationLevelLabel } from "../../App.jsx";
 import { getMatchVerdict, getMatchVerdictTier } from "../../lib/matchingService.js";
-
-// @react-pdf/renderer + les templates PDF (fonts.js, les .ttf, pdfAutoFit.js)
-// pèsent plusieurs Mo une fois bundlés — en import() dynamique plutôt qu'en
-// import statique pour que ce poids reste dans un chunk séparé, chargé
-// seulement au clic sur "Télécharger PDF", jamais dans le chemin critique
-// du chargement initial de l'app.
-async function loadPdfFitter(templateName) {
-  if (templateName === "sidebar") {
-    const mod = await import("../../pdf/CvDocumentSidebarPdf.jsx");
-    return mod.fitCvDocumentSidebarPdfToOnePage;
-  }
-  const mod = await import("../../pdf/CvDocumentClassicPdf.jsx");
-  return mod.fitCvDocumentClassicPdfToOnePage;
-}
-
-// Nom de fichier suggéré au téléchargement : CV-{nom}-{date}.pdf, sans
-// accents ni caractères spéciaux (compatibilité multi-OS).
-function slugifyForFilename(value) {
-  const diacritics = new RegExp("[\\u0300-\\u036f]", "g");
-  const slug = String(value || "")
-    .normalize("NFD")
-    .replace(diacritics, "")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-  return slug || "cv";
-}
-
-// Déclenche un vrai téléchargement de fichier à partir d'un Blob, sans
-// fenêtre d'impression : lien <a download> temporaire, jamais ajouté au
-// DOM visible ni gardé après coup.
-function downloadBlob(blob, fileName) {
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
-  URL.revokeObjectURL(url);
-}
 
 function ImportPage({
   latestCv,
@@ -637,18 +599,7 @@ function MatchResultsStep({
 
   async function handleAtsApply() {
     if (!atsOptimization || atsSaving) return;
-    const compact = (value) => String(value || "").toLowerCase().trim();
-    const nextExperiences = (cvReview.experiences || []).map((exp) => {
-      const match = atsOptimization.experiences.find((item) => compact(item.company) === compact(exp.company));
-      return match ? { ...exp, description: match.optimizedDescription } : exp;
-    });
-    const nextReview = {
-      ...cvReview,
-      headline: atsOptimization.optimizedHeadline || cvReview.headline,
-      summary: atsOptimization.optimizedSummary || cvReview.summary,
-      skills: atsOptimization.prioritizedSkills?.length ? atsOptimization.prioritizedSkills : cvReview.skills,
-      experiences: nextExperiences
-    };
+    const nextReview = mergeCvAtsOptimization(cvReview, atsOptimization);
     onApplyOptimization(nextReview);
     setAtsSaving(true);
     setAtsError("");
@@ -1085,32 +1036,6 @@ function MatchResultsStep({
         ) : null}
       </article>
 
-      <article className="card block match-networking-card no-print">
-        <h3>
-          <UiIcon name="briefcase" /> {copy.matchNetworkingTitle}
-        </h3>
-        <p className="muted">{fillTemplate(copy.matchNetworkingText, { company: company || "cette entreprise" })}</p>
-        <button type="button" className="btn-main ready" onClick={handleFindContacts} disabled={networkingState === "searching"}>
-          {networkingState === "searching" ? copy.matchNetworkingSearching : copy.matchNetworkingButton}
-        </button>
-        {networkingState === "done" ? (
-          <div className="match-networking-result">
-            <p>{copy.matchNetworkingEmpty}</p>
-            <div className="match-networking-links">
-              {(networkingQueries.length ? networkingQueries : [{ label: copy.matchNetworkingOpenLinkedin, query: searchQuery }]).map(
-                (item) => (
-                  <a key={item.label} href={linkedinSearchUrl(item.query)} target="_blank" rel="noreferrer">
-                    <UiIcon name="briefcase" />
-                    <span>{item.label}</span>
-                    <UiIcon name="chevron" className="match-networking-arrow" />
-                  </a>
-                )
-              )}
-            </div>
-          </div>
-        ) : null}
-      </article>
-
       {previewOpen ? (
         <CvPreviewCard
           cvReview={cvReview}
@@ -1143,6 +1068,32 @@ function MatchResultsStep({
         </div>
         {cvPrintOverflow ? <p className="muted">{copy.matchCvOverflowNotice}</p> : null}
       </div>
+
+      <article className="card block match-networking-card no-print">
+        <h3>
+          <UiIcon name="briefcase" /> {copy.matchNetworkingTitle}
+        </h3>
+        <p className="muted">{fillTemplate(copy.matchNetworkingText, { company: company || "cette entreprise" })}</p>
+        <button type="button" className="btn-main ready" onClick={handleFindContacts} disabled={networkingState === "searching"}>
+          {networkingState === "searching" ? copy.matchNetworkingSearching : copy.matchNetworkingButton}
+        </button>
+        {networkingState === "done" ? (
+          <div className="match-networking-result">
+            <p>{copy.matchNetworkingEmpty}</p>
+            <div className="match-networking-links">
+              {(networkingQueries.length ? networkingQueries : [{ label: copy.matchNetworkingOpenLinkedin, query: searchQuery }]).map(
+                (item) => (
+                  <a key={item.label} href={linkedinSearchUrl(item.query)} target="_blank" rel="noreferrer">
+                    <UiIcon name="briefcase" />
+                    <span>{item.label}</span>
+                    <UiIcon name="chevron" className="match-networking-arrow" />
+                  </a>
+                )
+              )}
+            </div>
+          </div>
+        ) : null}
+      </article>
     </div>
   );
 }
@@ -1152,7 +1103,10 @@ function MatchResultsStep({
 // dès qu'il y a plusieurs missions. Le texte source peut arriver déjà
 // découpé par \n (heuristique et prompt IA) ou en un seul bloc plus ancien ;
 // dans ce dernier cas on retombe sur un découpage par phrase.
-function CvEntryDescription({ text }) {
+// Exporté : réutilisé par la page CV + Lettre pour afficher les
+// expériences reformulées par l'optimisation ATS (même rendu que celui
+// utilisé dans l'aperçu CV et le résultat ATS d'Import CV).
+export function CvEntryDescription({ text }) {
   if (!text) return null;
   const rawLines = text.includes("\n") ? text.split("\n") : text.split(/(?<=[.!?])\s+(?=[A-ZÀ-Ý])/);
   const lines = rawLines.map((line) => line.trim()).filter(Boolean);
@@ -1211,7 +1165,9 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTe
   );
 }
 
-function CvDocumentClassic({ cvReview, copy }) {
+// Exporté : réutilisé tel quel par la page CV + Lettre (aperçu écran
+// instantané pendant le choix de template, cf. features/cvLetter/).
+export function CvDocumentClassic({ cvReview, copy }) {
   const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
   const contactItems = [cvReview.email, cvReview.phone, cvReview.location].filter(Boolean);
 
@@ -1359,7 +1315,9 @@ function CvSidebarInitials({ firstName, lastName }) {
   return <span className="cv-sidebar-avatar-initials">{initials || "?"}</span>;
 }
 
-function CvDocumentSidebar({ cvReview, copy, avatarDataUrl }) {
+// Exporté : réutilisé tel quel par la page CV + Lettre (aperçu écran
+// instantané pendant le choix de template, cf. features/cvLetter/).
+export function CvDocumentSidebar({ cvReview, copy, avatarDataUrl }) {
   const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
   const socialLinks = [
     cvReview.linkedinUrl ? { label: "LinkedIn", url: cvReview.linkedinUrl } : null,
