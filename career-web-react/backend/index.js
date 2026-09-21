@@ -44,6 +44,7 @@ import { registerCoverLetterRoutes } from "./routes/coverLetter.js";
 import { registerNegotiationRoutes } from "./routes/negotiation.js";
 import { registerApplicationsRoutes } from "./routes/applications.js";
 import { registerInterviewRoutes } from "./routes/interview.js";
+import { registerCodingRoutes } from "./routes/coding.js";
 
 dnsCore.setDefaultResultOrder("ipv4first");
 
@@ -673,6 +674,18 @@ await db.exec(`
     updated_at TEXT NOT NULL,
     payload_json TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS coding_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    title TEXT NOT NULL,
+    language TEXT NOT NULL,
+    level TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    payload_json TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_coding_sessions_user ON coding_sessions(user_id, updated_at DESC);
 
   CREATE TABLE IF NOT EXISTS match_feedback (
     id TEXT PRIMARY KEY,
@@ -5143,6 +5156,7 @@ registerCoverLetterRoutes(app);
 registerNegotiationRoutes(app);
 registerApplicationsRoutes(app);
 registerInterviewRoutes(app);
+registerCodingRoutes(app);
 
 const serverStart = await startServer(app);
 
