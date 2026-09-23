@@ -3800,7 +3800,13 @@ input[aria-invalid="true"] {
 .cv-document-sidebar {
   display: grid;
   grid-template-columns: 220px 1fr;
-  align-items: start;
+  /* stretch (explicite, valeur par défaut mais volontairement écrite
+     ici) : aside et main doivent s'étirer sur toute la hauteur de la
+     ligne de grille, déterminée par le plus grand des deux — sinon
+     (align-items: start) chacun ne prend que sa propre hauteur de
+     contenu, et le fond de l'aside (posé sur .cv-sidebar-aside) s'arrête
+     avant la fin de main si main est plus long. */
+  align-items: stretch;
   gap: 0;
   padding: 0;
   overflow: hidden;
