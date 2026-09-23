@@ -95,6 +95,7 @@ export const CV_COPY = {
       cvPreviewSummary: "Résumé professionnel",
       cvPreviewExperience: "Expérience",
       cvPreviewEducation: "Formation",
+      cvPreviewSkillsTitle: "Compétences",
       cvPreviewTechnicalSkills: "Compétences techniques",
       cvPreviewSoftSkills: "Compétences comportementales",
       cvPreviewLanguages: "Langues",
@@ -104,7 +105,8 @@ export const CV_COPY = {
       cvPreviewSocial: "Réseaux sociaux",
       cvPreviewPortfolio: "Portfolio",
       cvTemplateClassic: "Classique",
-      cvTemplateSidebar: "Colonne latérale"
+      cvTemplateSidebar: "Colonne latérale",
+      cvPreviewDownloadOnly: "Pas d'aperçu à l'écran pour ce modèle — téléchargez le PDF pour le voir.",
     },
 
     analysis: {
@@ -252,6 +254,7 @@ export const CV_COPY = {
       cvPreviewSummary: "Professional summary",
       cvPreviewExperience: "Experience",
       cvPreviewEducation: "Education",
+      cvPreviewSkillsTitle: "Skills",
       cvPreviewTechnicalSkills: "Technical skills",
       cvPreviewSoftSkills: "Soft skills",
       cvPreviewLanguages: "Languages",
@@ -261,7 +264,8 @@ export const CV_COPY = {
       cvPreviewSocial: "Social links",
       cvPreviewPortfolio: "Portfolio",
       cvTemplateClassic: "Classic",
-      cvTemplateSidebar: "Sidebar"
+      cvTemplateSidebar: "Sidebar",
+      cvPreviewDownloadOnly: "No on-screen preview for this template yet — download the PDF to see it.",
     },
 
     analysis: {

@@ -7,13 +7,24 @@
 // import statique pour que ce poids reste dans un chunk séparé, chargé
 // seulement au clic sur "Télécharger", jamais dans le chemin critique du
 // chargement initial de l'app.
+//
+// 3 templates au total : les 2 historiques (classic/sidebar) + Linear
+// (notre propre design, branché sur le mécanisme de thème). Les 3
+// prototypes indépendants inspirés de templates MIT/Apache (zichy,
+// startbootstrap, mnjul) ont été abandonnés (bug Courier bloquant sur
+// Mnjul, colonnes déséquilibrées sur Zichy) et retirés. Toutes les
+// fonctions fit* ont la même signature (cvReview, theme, avatarDataUrl,
+// options), donc handleDownloadPdf n'a pas besoin de logique spécifique
+// par template.
+const PDF_FITTERS = {
+  sidebar: () => import("../pdf/CvDocumentSidebarPdf.jsx").then((mod) => mod.fitCvDocumentSidebarPdfToOnePage),
+  linear: () => import("../pdf/CvDocumentLinearPdf.jsx").then((mod) => mod.fitCvDocumentLinearPdfToOnePage),
+  classic: () => import("../pdf/CvDocumentClassicPdf.jsx").then((mod) => mod.fitCvDocumentClassicPdfToOnePage)
+};
+
 export async function loadPdfFitter(templateName) {
-  if (templateName === "sidebar") {
-    const mod = await import("../pdf/CvDocumentSidebarPdf.jsx");
-    return mod.fitCvDocumentSidebarPdfToOnePage;
-  }
-  const mod = await import("../pdf/CvDocumentClassicPdf.jsx");
-  return mod.fitCvDocumentClassicPdfToOnePage;
+  const load = PDF_FITTERS[templateName] || PDF_FITTERS.classic;
+  return load();
 }
 
 // Nom de fichier suggéré au téléchargement : CV-{nom}-{date}.pdf, sans

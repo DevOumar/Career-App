@@ -1167,20 +1167,43 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTe
   // les redéfinir localement ici. L'export PDF n'en dépend pas (il lit
   // cvColor directement dans handleDownloadPdf).
   const cvColorVars = cvThemeColorsFromPresetId(cvColor);
+  // Classic/Sidebar gardent leurs libellés traduits existants ; Linear
+  // (module-level, pas de traduction dédiée) complète la liste. Zichy/
+  // StartBootstrap/Mnjul ont été abandonnés et retirés (bug Courier
+  // bloquant sur Mnjul, colonnes déséquilibrées sur Zichy).
+  const templateOptions = [
+    { id: "classic", label: copy.cvTemplateClassic },
+    { id: "sidebar", label: copy.cvTemplateSidebar },
+    ...CV_TEMPLATE_PROTOTYPE_OPTIONS
+  ];
+
+  // Classic/Sidebar/Linear ont chacun leur composant d'aperçu écran
+  // HTML/CSS (Classic/Sidebar partagés avec l'étape "review" du wizard,
+  // Linear dédié — cf. CvDocumentLinear plus bas).
+  const hasScreenPreview = template === "classic" || template === "sidebar" || template === "linear";
 
   return (
     <article className="card block cv-preview-card">
       <div className="cv-preview-toolbar no-print">
-        <h3>
-          <UiIcon name="profile" /> {copy.matchCvPreviewTitle}
-        </h3>
+        <div className="cv-preview-toolbar-top">
+          <h3>
+            <UiIcon name="profile" /> {copy.matchCvPreviewTitle}
+          </h3>
+          <button type="button" className="cv-preview-close" onClick={onClose}>
+            {copy.matchHidePreview}
+          </button>
+        </div>
         <div className="cv-template-switch">
-          <button type="button" className={template === "classic" ? "active" : ""} onClick={() => onTemplateChange("classic")}>
-            {copy.cvTemplateClassic}
-          </button>
-          <button type="button" className={template === "sidebar" ? "active" : ""} onClick={() => onTemplateChange("sidebar")}>
-            {copy.cvTemplateSidebar}
-          </button>
+          {templateOptions.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              className={template === option.id ? "active" : ""}
+              onClick={() => onTemplateChange(option.id)}
+            >
+              {option.label}
+            </button>
+          ))}
         </div>
         <div className="cv-color-switch">
           {THEME_PRESETS.map((preset) => (
@@ -1196,27 +1219,37 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTe
             />
           ))}
         </div>
-        <button type="button" className="cv-preview-close" onClick={onClose}>
-          {copy.matchHidePreview}
-        </button>
       </div>
 
-      <div
-        style={{
-          "--primary": cvColorVars.primary,
-          "--primary-ink": cvColorVars.primaryInk,
-          "--bg-accent": cvColorVars.bgAccent
-        }}
-      >
-        {template === "sidebar" ? (
-          <CvDocumentSidebar cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
-        ) : (
-          <CvDocumentClassic cvReview={cvReview} copy={copy} />
-        )}
-      </div>
+      {hasScreenPreview ? (
+        <div
+          style={{
+            "--primary": cvColorVars.primary,
+            "--primary-ink": cvColorVars.primaryInk,
+            "--bg-accent": cvColorVars.bgAccent
+          }}
+        >
+          {template === "sidebar" ? (
+            <CvDocumentSidebar cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
+          ) : template === "linear" ? (
+            <CvDocumentLinear cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
+          ) : (
+            <CvDocumentClassic cvReview={cvReview} copy={copy} />
+          )}
+        </div>
+      ) : (
+        <p className="muted cv-preview-no-screen-preview">{copy.cvPreviewDownloadOnly}</p>
+      )}
     </article>
   );
 }
+
+// 6 templates au total : id (utilisé par loadPdfFitter, cf. lib/pdfDownload.js)
+// + libellé affiché dans le switch. Classic/Sidebar gardent leurs libellés
+// traduits existants (copy.cvTemplateClassic/Sidebar) ; les 4 prototypes
+// n'ont pas de traduction dédiée pour l'instant (noms propres/courts,
+// identiques FR/EN) — cf. consigne "garde ça simple vu l'échéance".
+const CV_TEMPLATE_PROTOTYPE_OPTIONS = [{ id: "linear", label: "Linear" }];
 
 // Exporté : réutilisé tel quel par la page CV + Lettre (aperçu écran
 // instantané pendant le choix de template, cf. features/cvLetter/).
@@ -1356,6 +1389,138 @@ export function CvDocumentClassic({ cvReview, copy }) {
         ) : null}
       </div>
     </>
+  );
+}
+
+// Aperçu écran de Linear (features/pdf/CvDocumentLinearPdf.jsx) — même
+// structure que la version PDF : en-tête 3 zones (photo optionnelle à
+// gauche, bloc centré, colonne vide à droite pour garder le centrage),
+// nom en 2 graisses, titres de section teintés sans bordure/fond (déjà le
+// comportement par défaut de `.cv-document-section h4`, partagé avec
+// Classic/Sidebar — pas de nouvelle classe nécessaire pour ça), entrées en
+// tableau 2 lignes (réutilise .cv-document-entry/-entry-head/-entry-org,
+// identiques à Classic), compétences en 2 colonnes texte brut (nouvelles
+// classes .cv-linear-skill-*, pas de chips ici contrairement à Classic).
+export function CvDocumentLinear({ cvReview, copy, avatarDataUrl }) {
+  const contactItems = [cvReview.email, cvReview.phone, cvReview.location].filter(Boolean);
+  const skillRows = [
+    // Libellés courts identiques à ceux codés en dur dans la version PDF
+    // (CvDocumentLinearPdf.jsx, SkillRow) — pas de traduction dédiée là-bas
+    // non plus, on reste fidèle plutôt que de réutiliser les libellés plus
+    // longs cvPreviewTechnicalSkills/cvPreviewSoftSkills (qui passaient sur
+    // 2 lignes dans la colonne étroite du libellé).
+    { label: "Technique", value: (cvReview.skills || []).filter(Boolean).join(", ") },
+    { label: "Savoir-être", value: (cvReview.softSkills || []).filter(Boolean).join(", ") },
+    { label: copy.cvPreviewLanguages, value: (cvReview.languages || []).filter(Boolean).join(", ") }
+  ].filter((row) => row.value);
+
+  return (
+    <div className="cv-document cv-document-linear" id="cv-preview-document">
+      <header className="cv-linear-header">
+        <div className="cv-linear-header-side">
+          {avatarDataUrl ? <img className="cv-linear-avatar" src={avatarDataUrl} alt="" /> : null}
+        </div>
+        <div className="cv-linear-header-center">
+          <div className="cv-linear-name">
+            {cvReview.firstName ? <span className="cv-linear-name-first">{cvReview.firstName}</span> : null}
+            {cvReview.lastName ? <span className="cv-linear-name-last">{cvReview.lastName}</span> : null}
+          </div>
+          {cvReview.headline ? <p className="cv-linear-headline">{cvReview.headline}</p> : null}
+          {contactItems.length || cvReview.linkedinUrl ? (
+            <div className="cv-linear-contact">
+              {contactItems.map((item, index) => (
+                <span key={item}>
+                  {index > 0 ? "· " : ""}
+                  {item}
+                </span>
+              ))}
+              {cvReview.linkedinUrl ? (
+                <a href={cvReview.linkedinUrl} target="_blank" rel="noreferrer">
+                  {contactItems.length ? "· LinkedIn" : "LinkedIn"}
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <div className="cv-linear-header-side" />
+      </header>
+
+      {cvReview.summary ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewSummary}</h4>
+          <p>{cvReview.summary}</p>
+        </section>
+      ) : null}
+
+      {(cvReview.experiences || []).length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewExperience}</h4>
+          {cvReview.experiences.slice(0, 6).map((experience, index) => (
+            <div className="cv-document-entry" key={`${experience.company}-${index}`}>
+              <div className="cv-document-entry-head">
+                <strong>{experience.role}</strong>
+                {experience.dates ? <span>{experience.dates}</span> : null}
+              </div>
+              {experience.company ? <p className="cv-document-entry-org">{experience.company}</p> : null}
+              <CvEntryDescription text={experience.description} />
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {(cvReview.educationItems || []).length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewEducation}</h4>
+          {cvReview.educationItems.slice(0, 4).map((item, index) => (
+            <div className="cv-document-entry" key={`${item.school}-${index}`}>
+              <div className="cv-document-entry-head">
+                <strong>{item.school}</strong>
+                {item.dates ? <span>{item.dates}</span> : null}
+              </div>
+              {item.degree ? <p className="cv-document-entry-org">{item.degree}</p> : null}
+              <CvEntryDescription text={item.description} />
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {skillRows.length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewSkillsTitle}</h4>
+          <div className="cv-linear-skills">
+            {skillRows.map((row) => (
+              <div className="cv-linear-skill-row" key={row.label}>
+                <span className="cv-linear-skill-label">{row.label}</span>
+                <span className="cv-linear-skill-value">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {(cvReview.certifications || []).length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewCertifications}</h4>
+          {cvReview.certifications
+            .filter((item) => item?.name || item?.issuer)
+            .map((item, index) => (
+              <div className="cv-document-entry" key={`${item.name}-${index}`}>
+                <div className="cv-document-entry-head">
+                  <strong>{item.name}</strong>
+                </div>
+                {item.issuer ? <p className="cv-document-entry-org">{item.issuer}</p> : null}
+              </div>
+            ))}
+        </section>
+      ) : null}
+
+      {(cvReview.interests || []).length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewInterests}</h4>
+          <p>{cvReview.interests.filter(Boolean).join(", ")}</p>
+        </section>
+      ) : null}
+    </div>
   );
 }
 

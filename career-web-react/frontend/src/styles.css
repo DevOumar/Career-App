@@ -3562,12 +3562,23 @@ input[aria-invalid="true"] {
   background: var(--surface-2);
 }
 
+/* 6 templates + 6 couleurs ne tiennent plus sur une seule ligne avec le
+   titre et le bouton fermer (2 gabarits d'origine) — la barre passe en
+   colonne : titre/fermer sur une ligne, puis le switch de template (qui
+   wrap si besoin), puis les pastilles de couleur, chacun sur sa propre
+   ligne. Reste simple : pas de galerie, juste un empilement de rangées. */
 .cv-preview-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+}
+
+.cv-preview-toolbar-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1rem;
 }
 
 .cv-preview-close {
@@ -3585,11 +3596,17 @@ input[aria-invalid="true"] {
 
 .cv-template-switch {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.3rem;
   background: var(--surface-3, var(--surface-2));
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  padding: 0.2rem;
+  padding: 0.3rem;
+}
+
+.cv-preview-no-screen-preview {
+  padding: 2rem 1rem;
+  text-align: center;
 }
 
 .cv-template-switch button {
@@ -3793,6 +3810,141 @@ input[aria-invalid="true"] {
   .cv-document-skill-chip {
     white-space: normal;
   }
+}
+
+/* CV — modèle "Linear" (aperçu écran de CvDocumentLinearPdf.jsx) —
+   .cv-document-section/h4, .cv-document-entry*, .cv-document-skill-chip*
+   déjà déclarés plus haut sont réutilisés tels quels (section/entrée
+   structurellement identiques à Classic) ; seuls l'en-tête 3 zones et la
+   grille de compétences 2 colonnes texte brut sont propres à ce modèle. */
+
+.cv-linear-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.3rem;
+}
+
+.cv-linear-header-side {
+  flex: 0 0 4.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+.cv-linear-avatar {
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.cv-linear-header-center {
+  flex: 1;
+  text-align: center;
+}
+
+.cv-linear-name {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.cv-linear-name-first {
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: var(--text);
+}
+
+.cv-linear-name-last {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.cv-linear-headline {
+  margin: 0.3rem 0 0;
+  color: var(--primary);
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cv-linear-contact {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+
+.cv-linear-contact a {
+  color: var(--text-3);
+  text-decoration: none;
+}
+
+.cv-linear-skills {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cv-linear-skill-row {
+  display: flex;
+  gap: 0.9rem;
+  align-items: baseline;
+}
+
+.cv-linear-skill-label {
+  flex: 0 0 8rem;
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.cv-linear-skill-value {
+  flex: 1;
+  font-size: 0.84rem;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+@media (max-width: 720px) {
+  .cv-linear-header {
+    flex-direction: column;
+  }
+
+  .cv-linear-header-side {
+    flex: 0 0 auto;
+  }
+
+  .cv-linear-header-side:last-child {
+    display: none;
+  }
+
+  .cv-linear-skill-row {
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .cv-linear-skill-label {
+    flex: 0 0 auto;
+  }
+}
+
+/* Trait fin neutre sous les titres de section — scopé à .cv-document-linear
+   uniquement (le sélecteur .cv-document-section h4 de base, partagé avec
+   Classic/Sidebar, reste sans bordure). Couleur de bordure neutre
+   existante (var(--line)), pas la couleur d'accent : sépare les grandes
+   parties du CV sans dupliquer la teinte déjà portée par le texte du
+   titre. */
+.cv-document-linear .cv-document-section h4 {
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--line);
 }
 
 /* CV — modèle "colonne latérale" */
