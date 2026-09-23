@@ -27,8 +27,22 @@ import {
 } from "../../lib/inMemoryDb.js";
 import { APPLICATIONS_COPY } from "../applications/applicationsCopy.js";
 import { CV_COPY } from "./cvCopy.js";
-import { levelTag, recommendationLevelLabel } from "../../App.jsx";
+import { levelTag, recommendationLevelLabel, THEME_PRESETS } from "../../App.jsx";
 import { getMatchVerdict, getMatchVerdictTier } from "../../lib/matchingService.js";
+
+// Reprend les 3 champs de couleur déjà utilisés par cvTemplateThemes.js
+// (theme.colors : primary/primaryInk/bgAccent) à partir d'un id THEME_PRESETS
+// (App.jsx) — même palette que le thème global de l'app, --primary-2 ignoré
+// (pas utilisé par les templates PDF). Retombe sur Corail ("orange") si
+// l'id ne correspond à aucun preset connu.
+function cvThemeColorsFromPresetId(presetId) {
+  const preset = THEME_PRESETS.find((item) => item.id === presetId) || THEME_PRESETS.find((item) => item.id === "orange");
+  return {
+    primary: preset.vars["--primary"],
+    primaryInk: preset.vars["--primary-ink"],
+    bgAccent: preset.vars["--bg-accent"]
+  };
+}
 
 function ImportPage({
   latestCv,
@@ -555,6 +569,11 @@ function MatchResultsStep({
   // handleDownloadPdf a besoin de savoir quel template est actif pour
   // choisir la bonne fonction d'export PDF.
   const [template, setTemplate] = useState("classic");
+  // Couleur du CV téléchargé (id THEME_PRESETS, "orange" = Corail =
+  // défaut du thème actuel de l'app). Même mécanique de "remontée" que
+  // template : handleDownloadPdf en a besoin pour construire le theme
+  // passé à fitCvDocument*PdfToOnePage.
+  const [cvColor, setCvColor] = useState("orange");
   // true le temps de fitCvDocument{Classic,Sidebar}PdfToOnePage (peut
   // prendre jusqu'à quelques secondes sur un CV très dense) — désactive
   // le bouton pour éviter tout double-clic pendant la génération.
@@ -810,7 +829,8 @@ function MatchResultsStep({
     setCvPrintOverflow(false);
     try {
       const fitToOnePage = await loadPdfFitter(template);
-      const fit = await fitToOnePage(cvReview);
+      const theme = { colors: cvThemeColorsFromPresetId(cvColor) };
+      const fit = await fitToOnePage(cvReview, theme);
       const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
       const fileName = `CV-${slugifyForFilename(fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`;
       downloadBlob(fit.blob, fileName);
@@ -1044,6 +1064,8 @@ function MatchResultsStep({
           avatarDataUrl={avatarDataUrl}
           template={template}
           onTemplateChange={setTemplate}
+          cvColor={cvColor}
+          onColorChange={setCvColor}
           onClose={() => setPreviewOpen(false)}
         />
       ) : null}
@@ -1125,7 +1147,7 @@ export function CvEntryDescription({ text }) {
 // template/onTemplateChange remontés dans MatchResultsStep (avant : état
 // local ici) — handleDownloadPdf y a besoin du template actif pour choisir
 // la bonne fonction d'export PDF.
-function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTemplateChange, onClose }) {
+function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTemplateChange, cvColor, onColorChange, onClose }) {
   if (!cvReview) {
     return (
       <article className="card block cv-preview-card no-print">
@@ -1136,6 +1158,15 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTe
       </article>
     );
   }
+
+  // Vars CSS custom scopées à ce seul wrapper (pas à toute la carte, qui
+  // contient aussi la barre d'outils) : .cv-document-* utilise déjà
+  // var(--primary)/var(--primary-ink)/var(--bg-accent) partout (mêmes
+  // variables que le thème global de l'app), donc réutiliser la couleur
+  // choisie pour l'aperçu écran ne demande aucun changement de CSS — juste
+  // les redéfinir localement ici. L'export PDF n'en dépend pas (il lit
+  // cvColor directement dans handleDownloadPdf).
+  const cvColorVars = cvThemeColorsFromPresetId(cvColor);
 
   return (
     <article className="card block cv-preview-card">
@@ -1151,16 +1182,38 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTe
             {copy.cvTemplateSidebar}
           </button>
         </div>
+        <div className="cv-color-switch">
+          {THEME_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              className={`cv-color-swatch ${cvColor === preset.id ? "active" : ""}`}
+              style={{ "--swatch-color": preset.vars["--primary"] }}
+              title={preset.label[language] || preset.label.fr}
+              aria-label={preset.label[language] || preset.label.fr}
+              aria-pressed={cvColor === preset.id}
+              onClick={() => onColorChange(preset.id)}
+            />
+          ))}
+        </div>
         <button type="button" className="cv-preview-close" onClick={onClose}>
           {copy.matchHidePreview}
         </button>
       </div>
 
-      {template === "sidebar" ? (
-        <CvDocumentSidebar cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
-      ) : (
-        <CvDocumentClassic cvReview={cvReview} copy={copy} />
-      )}
+      <div
+        style={{
+          "--primary": cvColorVars.primary,
+          "--primary-ink": cvColorVars.primaryInk,
+          "--bg-accent": cvColorVars.bgAccent
+        }}
+      >
+        {template === "sidebar" ? (
+          <CvDocumentSidebar cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
+        ) : (
+          <CvDocumentClassic cvReview={cvReview} copy={copy} />
+        )}
+      </div>
     </article>
   );
 }

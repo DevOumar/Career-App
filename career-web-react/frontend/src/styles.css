@@ -3609,6 +3609,27 @@ input[aria-invalid="true"] {
   box-shadow: var(--shadow-sm);
 }
 
+.cv-color-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.cv-color-swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid var(--surface);
+  background: var(--swatch-color);
+  box-shadow: 0 0 0 1px var(--line);
+  padding: 0;
+  cursor: pointer;
+}
+
+.cv-color-swatch.active {
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
 .cv-document {
   max-width: 760px;
   margin: 0 auto;
