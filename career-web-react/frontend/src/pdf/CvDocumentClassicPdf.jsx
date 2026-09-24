@@ -11,29 +11,17 @@
 // et un onRender optionnel forwardé à <Document>, pour être piloté par
 // le moteur de mesure/réduction de pdfAutoFit.js (fitCvDocumentClassicPdfToOnePage,
 // exporté plus bas). Rien de tout ça n'est branché à l'app pour l'instant.
+//
+// Templates paramétrables — le composant accepte maintenant un prop
+// `theme` (cvTemplateThemes.js) au lieu de couleurs figées : couleur
+// d'accent, police (fixe en v1) et decoration (line/block/bracket)
+// viennent de cet objet. Sans prop `theme`, comportement strictement
+// identique à avant (DEFAULT_CV_THEME = les valeurs qui étaient en dur).
 import React from "react";
-import { Document, Page, View, Text, Link, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Link, Image, StyleSheet } from "@react-pdf/renderer";
 import "./fonts.js";
 import { shrinkToOnePage } from "./pdfAutoFit.js";
-
-// var(--primary) etc. n'existent pas dans ce système (pas de DOM, pas de
-// variables CSS) : valeurs figées, reprises du preset "orange" (Corail),
-// le thème réellement appliqué par défaut par l'app (THEME_PRESETS dans
-// App.jsx) — pas la valeur littérale de :root (#b83309), qui n'est jamais
-// vraiment affichée à l'écran (toujours écrasée en JS au chargement).
-// Si on veut un jour que le PDF suive le thème choisi par l'utilisateur,
-// il faudra passer ces couleurs en prop depuis App.jsx plutôt que les
-// figer ici.
-const COLORS = {
-  primary: "#ea580c",
-  primaryInk: "#431407",
-  text: "#0c0c10",
-  text2: "#48464d",
-  text3: "#6f6c74",
-  line: "#e8e5dd",
-  surface2: "#faf8f3",
-  bgAccent: "#fff7ed"
-};
+import { CV_NEUTRAL_COLORS, resolveCvTheme } from "./cvTemplateThemes.js";
 
 // Équivalent JS du pattern CSS calc(Xrem * var(--cv-font-scale,1)) /
 // calc(Xrem * var(--cv-space-scale,1)) du chantier "auto-fit" CSS :
@@ -43,36 +31,92 @@ const COLORS = {
 // bordure, border-radius) restent fixes — seuls le texte (fontScale) et
 // les espacements internes (spaceScale) bougent, comme décidé pour le
 // chantier CSS (Option B : deux échelles séparées).
-function makeStyles(fontScale = 1, spaceScale = 1) {
+function makeStyles(fontScale = 1, spaceScale = 1, theme) {
   const f = (value) => value * fontScale;
   const s = (value) => value * spaceScale;
+  const resolved = resolveCvTheme(theme);
+  const colors = { ...CV_NEUTRAL_COLORS, ...resolved.colors };
+  const fonts = resolved.fonts;
+  const decoration = resolved.decoration;
+
+  // Seule l'en-tête varie par décoration pour Classic — le reste du
+  // document reste identique quel que soit le choix, pour limiter la
+  // surface de risque visuel tant que les 10 templates ne sont pas
+  // validés. "line" reproduit exactement le traitement historique.
+  const headerDecoration =
+    decoration === "block"
+      ? {
+          backgroundColor: colors.bgAccent,
+          borderRadius: 6,
+          padding: 12,
+          marginBottom: s(14)
+        }
+      : decoration === "bracket"
+        ? {
+            borderLeftWidth: 4,
+            borderLeftColor: colors.primary,
+            borderLeftStyle: "solid",
+            paddingLeft: 12,
+            paddingBottom: s(8),
+            marginBottom: s(14)
+          }
+        : {
+            borderBottomWidth: 2,
+            borderBottomColor: colors.text,
+            borderBottomStyle: "solid",
+            paddingBottom: s(8),
+            marginBottom: s(14)
+          };
 
   return StyleSheet.create({
     page: {
       padding: 40,
-      fontFamily: "Instrument Sans",
+      fontFamily: fonts.bodyFamily,
       fontSize: f(9.5),
-      color: COLORS.text2
+      color: colors.text2
     },
-    header: {
-      borderBottomWidth: 2,
-      borderBottomColor: COLORS.text,
-      borderBottomStyle: "solid",
-      paddingBottom: s(8),
-      marginBottom: s(14)
+    // headerBanner : bande pleine largeur BORD À BORD — marges négatives
+    // égales au padding de page pour "sortir" du cadre de 40pt et couvrir
+    // toute la largeur A4, contrairement à decoration="block" qui reste
+    // un aplat contenu à l'intérieur du padding. Purement décoratif pour
+    // Classic (pas de texte dupliqué avec le bloc `header` juste en
+    // dessous, qui garde son propre traitement `decoration`).
+    banner: {
+      backgroundColor: colors.primary,
+      marginTop: -40,
+      marginHorizontal: -40,
+      marginBottom: s(20),
+      height: 16
     },
+    // hasPhoto : header passe d'un empilement vertical (nom/accroche/
+    // contact) à une ligne [avatar, bloc texte] — headerTextBlock reprend
+    // exactement ce qui était directement dans `header` auparavant.
+    headerRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      columnGap: s(14)
+    },
+    headerAvatar: {
+      width: 56,
+      height: 56,
+      borderRadius: 999
+    },
+    headerTextBlock: {
+      flex: 1
+    },
+    header: headerDecoration,
     name: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(20),
-      color: COLORS.text,
+      color: decoration === "block" ? colors.primaryInk : colors.text,
       letterSpacing: f(0.5)
     },
     headline: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(9),
-      color: COLORS.primary,
+      color: colors.primary,
       textTransform: "uppercase",
       marginTop: s(3),
       letterSpacing: f(0.5)
@@ -82,13 +126,13 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       flexWrap: "wrap",
       marginTop: s(6),
       fontSize: f(8.5),
-      color: COLORS.text3
+      color: colors.text3
     },
     contactItem: {
       marginRight: s(12)
     },
     contactLink: {
-      color: COLORS.primary,
+      color: colors.primary,
       fontWeight: 700,
       textDecoration: "none",
       fontSize: f(8.5)
@@ -97,17 +141,17 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       marginBottom: s(14)
     },
     sectionTitle: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(9),
-      color: COLORS.primary,
+      color: colors.primary,
       textTransform: "uppercase",
       letterSpacing: f(0.8),
       marginBottom: s(6)
     },
     sectionText: {
       fontSize: f(9.5),
-      color: COLORS.text2,
+      color: colors.text2,
       lineHeight: 1.5
     },
     entry: {
@@ -119,25 +163,25 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       alignItems: "baseline"
     },
     entryRole: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(10),
-      color: COLORS.text
+      color: colors.text
     },
     entryDates: {
       fontSize: f(8.5),
-      color: COLORS.text3
+      color: colors.text3
     },
     entryOrg: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(9),
-      color: COLORS.text2,
+      color: colors.text2,
       marginTop: s(1)
     },
     entryDesc: {
       fontSize: f(9),
-      color: COLORS.text2,
+      color: colors.text2,
       lineHeight: 1.45,
       marginTop: s(3)
     },
@@ -150,12 +194,12 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
     },
     entryDescBullet: {
       fontSize: f(9),
-      color: COLORS.primary,
+      color: colors.primary,
       width: s(10)
     },
     entryDescListText: {
       fontSize: f(9),
-      color: COLORS.text2,
+      color: colors.text2,
       lineHeight: 1.45,
       flex: 1
     },
@@ -170,11 +214,11 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
     },
     chip: {
       borderWidth: 1,
-      borderColor: COLORS.line,
+      borderColor: colors.line,
       borderStyle: "solid",
       borderRadius: 999,
-      backgroundColor: COLORS.surface2,
-      color: COLORS.text2,
+      backgroundColor: colors.surface2,
+      color: colors.text2,
       fontSize: f(8.5),
       paddingVertical: s(3),
       paddingHorizontal: s(7),
@@ -182,9 +226,9 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       marginBottom: s(5)
     },
     chipSoft: {
-      backgroundColor: COLORS.bgAccent,
-      borderColor: COLORS.line,
-      color: COLORS.primaryInk
+      backgroundColor: colors.bgAccent,
+      borderColor: colors.line,
+      color: colors.primaryInk
     }
   });
 }
@@ -226,31 +270,51 @@ function ChipRow({ items, soft, styles }) {
   );
 }
 
-export function CvDocumentClassicPdf({ cvReview, fontScale = 1, spaceScale = 1, onRender }) {
-  const styles = makeStyles(fontScale, spaceScale);
+export function CvDocumentClassicPdf({ cvReview, theme, avatarDataUrl, fontScale = 1, spaceScale = 1, onRender }) {
+  const styles = makeStyles(fontScale, spaceScale, theme);
+  const resolvedTheme = resolveCvTheme(theme);
   const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
   const contactItems = [cvReview.email, cvReview.phone, cvReview.location].filter(Boolean);
+  const showPhoto = resolvedTheme.hasPhoto && Boolean(avatarDataUrl);
+
+  const headerText = (
+    <>
+      {fullName ? <Text style={styles.name}>{fullName.toUpperCase()}</Text> : null}
+      {cvReview.headline ? <Text style={styles.headline}>{cvReview.headline}</Text> : null}
+      {contactItems.length || cvReview.linkedinUrl ? (
+        <View style={styles.contactRow}>
+          {contactItems.map((item) => (
+            <Text key={item} style={styles.contactItem}>
+              {item}
+            </Text>
+          ))}
+          {cvReview.linkedinUrl ? (
+            <Link src={cvReview.linkedinUrl} style={styles.contactLink}>
+              LinkedIn
+            </Link>
+          ) : null}
+        </View>
+      ) : null}
+    </>
+  );
 
   return (
     <Document onRender={onRender}>
       <Page size="A4" style={styles.page}>
+        {/* headerBanner : bande décorative bord à bord, cf. commentaire sur
+            le style `banner` — purement visuelle, aucun texte dupliqué
+            avec l'en-tête juste en dessous. */}
+        {resolvedTheme.headerBanner ? <View style={styles.banner} /> : null}
+
         <View style={styles.header}>
-          {fullName ? <Text style={styles.name}>{fullName.toUpperCase()}</Text> : null}
-          {cvReview.headline ? <Text style={styles.headline}>{cvReview.headline}</Text> : null}
-          {contactItems.length || cvReview.linkedinUrl ? (
-            <View style={styles.contactRow}>
-              {contactItems.map((item) => (
-                <Text key={item} style={styles.contactItem}>
-                  {item}
-                </Text>
-              ))}
-              {cvReview.linkedinUrl ? (
-                <Link src={cvReview.linkedinUrl} style={styles.contactLink}>
-                  LinkedIn
-                </Link>
-              ) : null}
+          {showPhoto ? (
+            <View style={styles.headerRow}>
+              <Image src={avatarDataUrl} style={styles.headerAvatar} />
+              <View style={styles.headerTextBlock}>{headerText}</View>
             </View>
-          ) : null}
+          ) : (
+            headerText
+          )}
         </View>
 
         {cvReview.summary ? (
@@ -349,10 +413,19 @@ export function CvDocumentClassicPdf({ cvReview, fontScale = 1, spaceScale = 1, 
 // ni de `fixed` ici — Classic est mono-colonne, donc pas de rectangle vide
 // à éviter ; si le contenu déborde encore au plancher, on l'assume
 // (overflow: true) plutôt que de couper du contenu silencieusement.
-export async function fitCvDocumentClassicPdfToOnePage(cvReview, options) {
+// `theme` optionnel (défaut DEFAULT_CV_THEME) — rétrocompatible avec les
+// appels existants qui ne le passent pas.
+export async function fitCvDocumentClassicPdfToOnePage(cvReview, theme, avatarDataUrl, options) {
   const result = await shrinkToOnePage(
     (fontScale, spaceScale, onRender) => (
-      <CvDocumentClassicPdf cvReview={cvReview} fontScale={fontScale} spaceScale={spaceScale} onRender={onRender} />
+      <CvDocumentClassicPdf
+        cvReview={cvReview}
+        theme={theme}
+        avatarDataUrl={avatarDataUrl}
+        fontScale={fontScale}
+        spaceScale={spaceScale}
+        onRender={onRender}
+      />
     ),
     options
   );
