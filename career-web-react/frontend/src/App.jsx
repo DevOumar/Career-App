@@ -150,9 +150,9 @@ import { PLANS, PLAN_SEGMENTS, getPlanById } from "./data/plans";
 const NAV_ITEMS = [
   { id: "home", label: { fr: "Accueil", en: "Home" }, always: true, icon: "home" },
   { id: "import", label: { fr: "Importer CV", en: "Import CV" }, always: true, icon: "upload" },
+  { id: "lettre", label: { fr: "Lettre & Email IA", en: "Letter & Email AI" }, icon: "mail" },
   { id: "candidatures", label: { fr: "Candidatures", en: "Applications" }, always: true, icon: "briefcase" },
   { id: "entretiens", label: { fr: "Entretiens", en: "Interviews" }, icon: "chat" },
-  { id: "lettre", label: { fr: "Lettre IA", en: "AI Letter" }, icon: "mail" },
   { id: "negociation", label: { fr: "Négociation", en: "Negotiation" }, icon: "scale" },
   { id: "email-finder", label: { fr: "Email Scout", en: "Email Scout" }, icon: "network" },
   { id: "historique", label: { fr: "Historique CV", en: "CV history" }, always: true, icon: "history" },
