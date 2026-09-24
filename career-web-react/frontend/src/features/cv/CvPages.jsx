@@ -1241,7 +1241,7 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTe
           {template === "sidebar" ? (
             <CvDocumentSidebar cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
           ) : template === "linear" ? (
-            <CvDocumentLinear cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
+            <CvDocumentLinear cvReview={cvReview} copy={copy} />
           ) : (
             <CvDocumentClassic cvReview={cvReview} copy={copy} />
           )}
@@ -1410,7 +1410,7 @@ export function CvDocumentClassic({ cvReview, copy }) {
 // tableau 2 lignes (réutilise .cv-document-entry/-entry-head/-entry-org,
 // identiques à Classic), compétences en 2 colonnes texte brut (nouvelles
 // classes .cv-linear-skill-*, pas de chips ici contrairement à Classic).
-export function CvDocumentLinear({ cvReview, copy, avatarDataUrl }) {
+export function CvDocumentLinear({ cvReview, copy }) {
   const contactItems = [cvReview.email, cvReview.phone, cvReview.location].filter(Boolean);
   const skillRows = [
     // Libellés courts identiques à ceux codés en dur dans la version PDF
@@ -1426,9 +1426,7 @@ export function CvDocumentLinear({ cvReview, copy, avatarDataUrl }) {
   return (
     <div className="cv-document cv-document-linear" id="cv-preview-document">
       <header className="cv-linear-header">
-        <div className="cv-linear-header-side">
-          {avatarDataUrl ? <img className="cv-linear-avatar" src={avatarDataUrl} alt="" /> : null}
-        </div>
+        <div className="cv-linear-header-side" />
         <div className="cv-linear-header-center">
           <div className="cv-linear-name">
             {cvReview.firstName ? <span className="cv-linear-name-first">{cvReview.firstName}</span> : null}
