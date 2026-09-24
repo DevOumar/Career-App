@@ -7,6 +7,8 @@ import { UiIcon } from "../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
 import { generateCoverLetter, listCoverLetters, saveCoverLetter, updateCoverLetter, deleteCoverLetter } from "../../lib/inMemoryDb.js";
 import { loadPdfFitter, slugifyForFilename, downloadBlob } from "../../lib/pdfDownload.js";
+import { themeColorsFromPresetId } from "../../lib/themeColors.js";
+import { THEME_PRESETS } from "../../App.jsx";
 import { COVER_LETTER_COPY } from "./coverLetterCopy.js";
 
 function CoverLetterIllustration() {
@@ -46,6 +48,10 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   const copy = COVER_LETTER_COPY[language] || COVER_LETTER_COPY.fr;
   const [tone, setTone] = useState("formal");
   const [template, setTemplate] = useState("classic");
+  // Réglage indépendant du template (Étape C) — même mécanique que cvColor
+  // dans CvPages.jsx : id THEME_PRESETS, "orange" = Corail = défaut du
+  // thème actuel de l'app.
+  const [letterColor, setLetterColor] = useState("orange");
   const [letter, setLetter] = useState("");
   const [subject, setSubject] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -63,6 +69,19 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   // d'un pool personnel limité.
   const hasUnlimitedTokens = tokensBalance >= 999;
   const outOfTokens = !hasUnlimitedTokens && tokensBalance <= 0;
+  // Vars CSS custom scopées au seul document (pas à toute la page, qui
+  // contient aussi la barre d'outils) — même principe que cvColorVars dans
+  // CvPreviewCard (CvPages.jsx) : .letter-document.template-modern utilise
+  // déjà var(--primary) (styles.css), donc réutiliser la couleur choisie ne
+  // demande aucun changement de CSS, juste la redéfinir localement ici.
+  // L'export PDF n'en dépend pas (il lit letterColor directement dans
+  // handleDownload).
+  const letterColorPreset = themeColorsFromPresetId(letterColor);
+  const letterColorVars = {
+    "--primary": letterColorPreset.primary,
+    "--primary-ink": letterColorPreset.primaryInk,
+    "--bg-accent": letterColorPreset.bgAccent
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -89,7 +108,7 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
 
   async function persistConversation(nextLetter, nextSubject) {
     if (!userId) return;
-    const payload = { letter: nextLetter, subject: nextSubject, tone, template, offer };
+    const payload = { letter: nextLetter, subject: nextSubject, tone, template, color: letterColor, offer };
     try {
       if (conversationId) {
         await updateCoverLetter({ userId, conversationId, payload });
@@ -120,6 +139,7 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     setSubject(conv.subject || "");
     if (conv.tone) setTone(conv.tone);
     if (conv.template) setTemplate(conv.template);
+    if (conv.color) setLetterColor(conv.color);
     setIsEditing(false);
     setError("");
   }
@@ -180,12 +200,12 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     setError("");
     try {
       const fitToOnePage = await loadPdfFitter("letter");
-      // Pas de sélecteur couleur/template PDF pour l'instant (point C, pas
-      // encore fait) : theme non transmis, CoverLetterPdf retombe sur
-      // DEFAULT_CV_THEME (orange corail) via resolveCvTheme. `template`
-      // reste piloté par le sélecteur ton/modèle déjà existant sur cette
-      // page (classic/modern/minimal).
-      const fit = await fitToOnePage({ subject, letter, template });
+      // Étape C : theme.colors construit depuis letterColor, même mécanique
+      // que handleDownloadPdf dans CvPages.jsx (theme.colors depuis
+      // cvColor). `template` reste piloté par le sélecteur ton/modèle
+      // déjà existant sur cette page (classic/modern/minimal), inchangé.
+      const theme = { colors: themeColorsFromPresetId(letterColor) };
+      const fit = await fitToOnePage({ subject, letter, template }, theme);
       const baseName = offer?.company || offer?.title || [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ");
       const fileName = `Lettre-${slugifyForFilename(baseName)}-${new Date().toISOString().slice(0, 10)}.pdf`;
       downloadBlob(fit.blob, fileName);
@@ -305,6 +325,24 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
             ))}
           </div>
         </div>
+
+        <div className="tone-selector">
+          <span>{copy.colorLabel}</span>
+          <div className="cv-color-switch">
+            {THEME_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`cv-color-swatch ${letterColor === preset.id ? "active" : ""}`}
+                style={{ "--swatch-color": preset.vars["--primary"] }}
+                title={preset.label[language] || preset.label.fr}
+                aria-label={preset.label[language] || preset.label.fr}
+                aria-pressed={letterColor === preset.id}
+                onClick={() => setLetterColor(preset.id)}
+              />
+            ))}
+          </div>
+        </div>
       </div>
 
       {error ? <p className="field-error">{error}</p> : null}
@@ -362,11 +400,12 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
           {isEditing ? (
             <textarea
               className={`letter-document letter-document-edit template-${template}`}
+              style={letterColorVars}
               value={draftLetter}
               onChange={(event) => setDraftLetter(event.target.value)}
             />
           ) : (
-            <div className={`letter-document template-${template}`} id="cover-letter-document">
+            <div className={`letter-document template-${template}`} style={letterColorVars} id="cover-letter-document">
               {subject ? <p className="letter-subject">{subject}</p> : null}
               {letter.split("\n\n").map((paragraph, index) => (
                 <p key={`para-${index}`}>{paragraph}</p>

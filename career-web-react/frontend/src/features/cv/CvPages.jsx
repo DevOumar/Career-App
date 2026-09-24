@@ -29,20 +29,7 @@ import { APPLICATIONS_COPY } from "../applications/applicationsCopy.js";
 import { CV_COPY } from "./cvCopy.js";
 import { levelTag, recommendationLevelLabel, THEME_PRESETS } from "../../App.jsx";
 import { getMatchVerdict, getMatchVerdictTier } from "../../lib/matchingService.js";
-
-// Reprend les 3 champs de couleur déjà utilisés par cvTemplateThemes.js
-// (theme.colors : primary/primaryInk/bgAccent) à partir d'un id THEME_PRESETS
-// (App.jsx) — même palette que le thème global de l'app, --primary-2 ignoré
-// (pas utilisé par les templates PDF). Retombe sur Corail ("orange") si
-// l'id ne correspond à aucun preset connu.
-function cvThemeColorsFromPresetId(presetId) {
-  const preset = THEME_PRESETS.find((item) => item.id === presetId) || THEME_PRESETS.find((item) => item.id === "orange");
-  return {
-    primary: preset.vars["--primary"],
-    primaryInk: preset.vars["--primary-ink"],
-    bgAccent: preset.vars["--bg-accent"]
-  };
-}
+import { themeColorsFromPresetId } from "../../lib/themeColors.js";
 
 function ImportPage({
   latestCv,
@@ -838,7 +825,7 @@ function MatchResultsStep({
       // Sidebar, le PDF téléchargé ne la montrait jamais faute de
       // branchement ici.
       const showPhotoInPdf = template === "sidebar" && Boolean(avatarDataUrl);
-      const theme = { colors: cvThemeColorsFromPresetId(cvColor), hasPhoto: showPhotoInPdf };
+      const theme = { colors: themeColorsFromPresetId(cvColor), hasPhoto: showPhotoInPdf };
       const fit = await fitToOnePage(cvReview, theme, showPhotoInPdf ? avatarDataUrl : undefined);
       const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
       const fileName = `CV-${slugifyForFilename(fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`;
@@ -1175,7 +1162,7 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTe
   // choisie pour l'aperçu écran ne demande aucun changement de CSS — juste
   // les redéfinir localement ici. L'export PDF n'en dépend pas (il lit
   // cvColor directement dans handleDownloadPdf).
-  const cvColorVars = cvThemeColorsFromPresetId(cvColor);
+  const cvColorVars = themeColorsFromPresetId(cvColor);
   // Classic/Sidebar gardent leurs libellés traduits existants ; Linear
   // (module-level, pas de traduction dédiée) complète la liste. Zichy/
   // StartBootstrap/Mnjul ont été abandonnés et retirés (bug Courier
