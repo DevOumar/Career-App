@@ -2,9 +2,9 @@
 // @react-pdf/renderer — composant isolé, non branché à l'app (pas de
 // route, pas de bouton). CvDocumentSidebar original reste inchangé et
 // continue de servir l'aperçu écran ; celui-ci ne sert qu'à l'export PDF.
-// Même principe que CvDocumentClassicPdf (voir ce fichier) : mêmes
-// couleurs figées (preset "orange", thème par défaut de THEME_PRESETS),
-// polices déjà enregistrées via fonts.js.
+// Même principe que CvDocumentClassicPdf (voir ce fichier) : polices déjà
+// enregistrées via fonts.js, couleurs désormais pilotées par un `theme`
+// (cvTemplateThemes.js) au lieu de valeurs figées.
 //
 // Layout à 2 colonnes : react-pdf n'a pas CSS Grid (grid-template-columns
 // dans .cv-document-sidebar), seulement Flexbox (Yoga). Équivalent :
@@ -27,23 +27,15 @@
 //      vide observé sans protection. On accepte alors un dépassement à
 //      2 pages (overflow: true) plutôt que de couper indéfiniment.
 // Jamais de repli silencieux vers CvDocumentClassicPdf (écarté).
+//
+// Templates paramétrables — le composant accepte maintenant un prop
+// `theme` (cvTemplateThemes.js). Sans lui, comportement strictement
+// identique à avant (DEFAULT_CV_THEME = les valeurs qui étaient en dur).
 import React from "react";
-import { Document, Page, View, Text, Link, Svg, Path, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, View, Text, Link, Svg, Path, Image, StyleSheet } from "@react-pdf/renderer";
 import "./fonts.js";
 import { shrinkToOnePage } from "./pdfAutoFit.js";
-
-const COLORS = {
-  primary: "#ea580c",
-  primaryInk: "#431407",
-  text: "#0c0c10",
-  text2: "#48464d",
-  text3: "#6f6c74",
-  line: "#e8e5dd",
-  surface: "#ffffff",
-  surface2: "#faf8f3",
-  surface3: "#f2efe8",
-  bgAccent: "#fff7ed"
-};
+import { CV_NEUTRAL_COLORS, resolveCvTheme } from "./cvTemplateThemes.js";
 
 // Tracés SVG repris tels quels de components/UiIcon.jsx (viewBox 0 0 20 20)
 // pour garder les mêmes icônes mail/téléphone/lieu que l'aperçu écran.
@@ -60,57 +52,130 @@ const ICON_PATHS = {
 // comme le padding de Page côté Classic — ce sont des marges de mise en
 // page, pas du contenu à densifier. La largeur de l'aside et la taille
 // de l'avatar restent fixes aussi (dimensions structurelles).
-function makeStyles(fontScale = 1, spaceScale = 1) {
+function makeStyles(fontScale = 1, spaceScale = 1, theme) {
   const f = (value) => value * fontScale;
   const s = (value) => value * spaceScale;
+  const resolved = resolveCvTheme(theme);
+  const colors = { ...CV_NEUTRAL_COLORS, ...resolved.colors };
+  const fonts = resolved.fonts;
+  const decoration = resolved.decoration;
+
+  // Seule la colonne latérale varie par décoration — "line" reproduit
+  // exactement le traitement historique (fond neutre, bordure fine
+  // neutre). Le point réutilisé dans la timeline (rond vs carré) suit la
+  // même décoration pour rester cohérent à l'intérieur d'un template.
+  // Le côté de la bordure suit asidePosition : le séparateur doit rester
+  // du côté adjacent à `main`, jamais sur le bord extérieur de la page.
+  const asideOnRight = resolved.asidePosition === "right";
+  const dividerSide = asideOnRight ? "Left" : "Right";
+  const asideDecoration =
+    decoration === "block"
+      ? {
+          backgroundColor: colors.bgAccent,
+          [`border${dividerSide}Width`]: 0
+        }
+      : decoration === "bracket"
+        ? {
+            backgroundColor: colors.surface2,
+            [`border${dividerSide}Width`]: 4,
+            [`border${dividerSide}Color`]: colors.primary,
+            [`border${dividerSide}Style`]: "solid"
+          }
+        : {
+            backgroundColor: colors.surface2,
+            [`border${dividerSide}Width`]: 1,
+            [`border${dividerSide}Color`]: colors.line,
+            [`border${dividerSide}Style`]: "solid"
+          };
+  const timelineDotRadius = decoration === "block" ? 0 : 999;
 
   return StyleSheet.create({
+    // headerBanner restructure la page en colonne (bandeau + rangée des 2
+    // colonnes) ; sans lui, `page` reste directement la rangée comme avant
+    // (rétrocompatible à l'identique).
     page: {
-      flexDirection: "row",
-      fontFamily: "Instrument Sans",
+      flexDirection: resolved.headerBanner ? "column" : "row",
+      fontFamily: fonts.bodyFamily,
       fontSize: f(9.5),
-      color: COLORS.text2
+      color: colors.text2
+    },
+    // Bandeau plein largeur (Page n'a pas de padding ici, contrairement à
+    // Classic — donc pas besoin de marges négatives pour aller bord à
+    // bord). Contient nom + accroche, retirés de `main` dans ce cas pour
+    // ne pas les dupliquer (cf. composant plus bas).
+    banner: {
+      backgroundColor: colors.primary,
+      paddingVertical: s(16),
+      paddingHorizontal: 26
+    },
+    bannerName: {
+      fontFamily: fonts.accentFamily,
+      fontWeight: 700,
+      fontSize: f(17),
+      color: "#ffffff"
+    },
+    bannerHeadline: {
+      fontFamily: fonts.accentFamily,
+      fontWeight: 700,
+      fontSize: f(9),
+      color: "#ffffff",
+      opacity: 0.85,
+      textTransform: "uppercase",
+      marginTop: s(4),
+      letterSpacing: f(0.5)
+    },
+    contentRow: {
+      flexDirection: "row",
+      flex: 1
     },
 
     // --- Colonne latérale (aside) ---
     aside: {
       width: 165,
-      backgroundColor: COLORS.surface2,
-      borderRightWidth: 1,
-      borderRightColor: COLORS.line,
-      borderRightStyle: "solid",
       paddingVertical: 26,
       paddingHorizontal: 18,
       flexDirection: "column",
-      rowGap: s(16)
+      rowGap: s(16),
+      ...asideDecoration
     },
     avatarWrap: {
       width: 70,
       height: 70,
       borderRadius: 999,
-      backgroundColor: COLORS.surface3,
+      backgroundColor: colors.surface3,
       borderWidth: 3,
-      borderColor: COLORS.surface,
+      borderColor: colors.surface,
       borderStyle: "solid",
       alignSelf: "center",
       alignItems: "center",
       justifyContent: "center"
     },
+    avatarImage: {
+      width: 64,
+      height: 64,
+      borderRadius: 999,
+      // Sans ça, react-pdf étire l'image pour remplir le cadre 64×64 —
+      // correct seulement si la photo source est carrée. objectFit:"cover"
+      // recadre en gardant le ratio (centré), comme le CSS object-fit
+      // équivalent déjà utilisé côté écran (.avatar img) : même
+      // comportement des deux côtés pour une même photo non carrée.
+      objectFit: "cover"
+    },
     avatarInitials: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(16),
-      color: COLORS.primary
+      color: colors.primary
     },
     asideBlock: {
       flexDirection: "column",
       rowGap: s(6)
     },
     asideBlockTitle: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(8),
-      color: COLORS.primary,
+      color: colors.primary,
       textTransform: "uppercase",
       letterSpacing: f(0.6)
     },
@@ -121,7 +186,7 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
     },
     contactRowText: {
       fontSize: f(8),
-      color: COLORS.text2,
+      color: colors.text2,
       flex: 1
     },
     asideList: {
@@ -134,18 +199,18 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
     },
     asideListBullet: {
       fontSize: f(8),
-      color: COLORS.primary,
+      color: colors.primary,
       width: s(7)
     },
     asideListText: {
       fontSize: f(8),
-      color: COLORS.text2,
+      color: colors.text2,
       lineHeight: 1.4,
       flex: 1
     },
     asideLink: {
       fontSize: f(7.5),
-      color: COLORS.primary,
+      color: colors.primary,
       textDecoration: "none"
     },
     chipRow: {
@@ -154,11 +219,11 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
     },
     chip: {
       borderWidth: 1,
-      borderColor: COLORS.line,
+      borderColor: colors.line,
       borderStyle: "solid",
       borderRadius: 999,
-      backgroundColor: COLORS.surface,
-      color: COLORS.text2,
+      backgroundColor: colors.surface,
+      color: colors.text2,
       fontSize: f(7.5),
       paddingVertical: s(2.5),
       paddingHorizontal: s(6),
@@ -166,9 +231,9 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       marginBottom: s(4)
     },
     chipSoft: {
-      backgroundColor: COLORS.bgAccent,
-      borderColor: COLORS.line,
-      color: COLORS.primaryInk
+      backgroundColor: colors.bgAccent,
+      borderColor: colors.line,
+      color: colors.primaryInk
     },
 
     // --- Colonne principale (main) ---
@@ -178,16 +243,16 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       paddingHorizontal: 26
     },
     headerName: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(17),
-      color: COLORS.text
+      color: colors.text
     },
     headerHeadline: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(9),
-      color: COLORS.primary,
+      color: colors.primary,
       textTransform: "uppercase",
       marginTop: s(4),
       letterSpacing: f(0.5)
@@ -196,34 +261,34 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       marginTop: s(14),
       marginBottom: s(16),
       padding: s(10),
-      backgroundColor: COLORS.surface2,
+      backgroundColor: colors.surface2,
       borderWidth: 1,
-      borderColor: COLORS.line,
+      borderColor: colors.line,
       borderStyle: "solid",
       borderRadius: 6
     },
     summaryTitle: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(8),
-      color: COLORS.primary,
+      color: colors.primary,
       textTransform: "uppercase",
       letterSpacing: f(0.6),
       marginBottom: s(4)
     },
     summaryText: {
       fontSize: f(9),
-      color: COLORS.text2,
+      color: colors.text2,
       lineHeight: 1.5
     },
     section: {
       marginBottom: s(14)
     },
     sectionTitle: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(9),
-      color: COLORS.primary,
+      color: colors.primary,
       textTransform: "uppercase",
       letterSpacing: f(0.6),
       marginBottom: s(6)
@@ -237,7 +302,7 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
     // .cv-sidebar-timeline / ::before en CSS.
     timeline: {
       borderLeftWidth: 2,
-      borderLeftColor: COLORS.line,
+      borderLeftColor: colors.line,
       borderLeftStyle: "solid",
       paddingLeft: s(12)
     },
@@ -251,8 +316,8 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       top: s(3),
       width: 6,
       height: 6,
-      borderRadius: 999,
-      backgroundColor: COLORS.primary
+      borderRadius: timelineDotRadius,
+      backgroundColor: colors.primary
     },
     entryHead: {
       flexDirection: "row",
@@ -260,24 +325,24 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       alignItems: "baseline"
     },
     entryTitle: {
-      fontFamily: "Cabinet Grotesk",
+      fontFamily: fonts.accentFamily,
       fontWeight: 700,
       fontSize: f(9.5),
-      color: COLORS.text
+      color: colors.text
     },
     entryDates: {
       fontSize: f(8),
-      color: COLORS.text3
+      color: colors.text3
     },
     entryOrg: {
       fontSize: f(8.5),
       fontWeight: 700,
-      color: COLORS.text2,
+      color: colors.text2,
       marginTop: s(1)
     },
     entryDesc: {
       fontSize: f(8.5),
-      color: COLORS.text2,
+      color: colors.text2,
       lineHeight: 1.45,
       marginTop: s(3)
     },
@@ -290,12 +355,12 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
     },
     entryDescBullet: {
       fontSize: f(8.5),
-      color: COLORS.primary,
+      color: colors.primary,
       width: s(10)
     },
     entryDescListText: {
       fontSize: f(8.5),
-      color: COLORS.text2,
+      color: colors.text2,
       lineHeight: 1.45,
       flex: 1
     },
@@ -306,7 +371,7 @@ function makeStyles(fontScale = 1, spaceScale = 1) {
       // rencontrée à l'Étape 2. Le ton atténué (text3) + la taille réduite
       // suffisent à signaler "secondaire".
       fontSize: f(7.5),
-      color: COLORS.text3,
+      color: colors.text3,
       marginTop: s(2)
     }
   });
@@ -334,10 +399,10 @@ function CvEntryDescriptionPdf({ text, styles }) {
   );
 }
 
-function ContactIcon({ name }) {
+function ContactIcon({ name, color }) {
   return (
     <Svg width={9} height={9} viewBox="0 0 20 20">
-      <Path d={ICON_PATHS[name]} fill={COLORS.primary} />
+      <Path d={ICON_PATHS[name]} fill={color} />
     </Svg>
   );
 }
@@ -380,6 +445,8 @@ function initialsOf(firstName, lastName) {
 
 export function CvDocumentSidebarPdf({
   cvReview,
+  theme,
+  avatarDataUrl,
   fontScale = 1,
   spaceScale = 1,
   maxExperiences = null,
@@ -387,7 +454,12 @@ export function CvDocumentSidebarPdf({
   asideFixed = false,
   onRender
 }) {
-  const styles = makeStyles(fontScale, spaceScale);
+  const styles = makeStyles(fontScale, spaceScale, theme);
+  const resolvedTheme = resolveCvTheme(theme);
+  const iconColor = resolvedTheme.colors.primary;
+  const showPhoto = resolvedTheme.hasPhoto && Boolean(avatarDataUrl);
+  const showBannerHeader = resolvedTheme.headerBanner;
+  const asideOnRight = resolvedTheme.asidePosition === "right";
   const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
   const socialLinks = [cvReview.linkedinUrl ? { label: "LinkedIn", url: cvReview.linkedinUrl } : null].filter(Boolean);
   const certifications = (cvReview.certifications || []).filter((item) => item?.name || item?.issuer);
@@ -407,37 +479,38 @@ export function CvDocumentSidebarPdf({
   const shownEducation = typeof maxEducation === "number" ? cappedEducation.slice(0, maxEducation) : cappedEducation;
   const hiddenEducation = cappedEducation.length - shownEducation.length;
 
-  return (
-    <Document onRender={onRender}>
-      <Page size="A4" style={styles.page}>
-        {/* --- Colonne latérale --- */}
-        {/* fixed (filet de sécurité Étape 4) : si le contenu principal
-            déborde encore malgré la réduction et la troncature, cette
-            colonne est reproduite telle quelle sur chaque page générée
-            (primitive react-pdf native) au lieu du rectangle vide
-            observé sans protection. */}
-        <View style={styles.aside} fixed={asideFixed}>
-          <View style={styles.avatarWrap}>
-            <Text style={styles.avatarInitials}>{initialsOf(cvReview.firstName, cvReview.lastName)}</Text>
-          </View>
+  // --- Colonne latérale --- fixed (filet de sécurité Étape 4) : si le
+  // contenu principal déborde encore malgré la réduction et la
+  // troncature, cette colonne est reproduite telle quelle sur chaque
+  // page générée (primitive react-pdf native) au lieu du rectangle vide
+  // observé sans protection.
+  const asideElement = (
+    <View style={styles.aside} fixed={asideFixed} key="aside">
+      <View style={styles.avatarWrap}>
+        {showPhoto ? (
+          <Image src={avatarDataUrl} style={styles.avatarImage} />
+        ) : (
+          <Text style={styles.avatarInitials}>{initialsOf(cvReview.firstName, cvReview.lastName)}</Text>
+        )}
+      </View>
 
           {cvReview.email || cvReview.phone || cvReview.location ? (
             <View style={styles.asideBlock}>
               {cvReview.email ? (
                 <View style={styles.contactRow}>
-                  <ContactIcon name="mail" />
+                  <ContactIcon name="mail" color={iconColor} />
                   <Text style={styles.contactRowText}>{cvReview.email}</Text>
                 </View>
               ) : null}
               {cvReview.phone ? (
                 <View style={styles.contactRow}>
-                  <ContactIcon name="phone" />
+                  <ContactIcon name="phone" color={iconColor} />
                   <Text style={styles.contactRowText}>{cvReview.phone}</Text>
                 </View>
               ) : null}
               {cvReview.location ? (
                 <View style={styles.contactRow}>
-                  <ContactIcon name="pin" />
+                  <ContactIcon name="pin" color={iconColor} />
                   <Text style={styles.contactRowText}>{cvReview.location}</Text>
                 </View>
               ) : null}
@@ -481,11 +554,15 @@ export function CvDocumentSidebarPdf({
             </View>
           ) : null}
         </View>
+  );
 
-        {/* --- Colonne principale --- */}
-        <View style={styles.main}>
-          {fullName ? <Text style={styles.headerName}>{fullName}</Text> : null}
-          {cvReview.headline ? <Text style={styles.headerHeadline}>{cvReview.headline}</Text> : null}
+  // --- Colonne principale --- headerName/headerHeadline masqués ici
+  // quand showBannerHeader : affichés dans le bandeau à la place, jamais
+  // les deux pour ne pas dupliquer le nom.
+  const mainElement = (
+    <View style={styles.main} key="main">
+      {!showBannerHeader && fullName ? <Text style={styles.headerName}>{fullName}</Text> : null}
+      {!showBannerHeader && cvReview.headline ? <Text style={styles.headerHeadline}>{cvReview.headline}</Text> : null}
 
           {cvReview.summary ? (
             <View style={styles.summaryBox}>
@@ -561,6 +638,29 @@ export function CvDocumentSidebarPdf({
             </View>
           ) : null}
         </View>
+  );
+
+  // asidePosition="right" inverse simplement l'ordre — la bordure de
+  // séparation a déjà été basculée du bon côté dans makeStyles
+  // (dividerSide). headerBanner restructure la page en colonne (bandeau
+  // + rangée) ; sans lui, la rangée est directement `page` (comportement
+  // identique à avant quand aucun des 2 nouveaux réglages n'est activé).
+  const columns = asideOnRight ? [mainElement, asideElement] : [asideElement, mainElement];
+
+  return (
+    <Document onRender={onRender}>
+      <Page size="A4" style={styles.page}>
+        {showBannerHeader ? (
+          <>
+            <View style={styles.banner}>
+              {fullName ? <Text style={styles.bannerName}>{fullName}</Text> : null}
+              {cvReview.headline ? <Text style={styles.bannerHeadline}>{cvReview.headline}</Text> : null}
+            </View>
+            <View style={styles.contentRow}>{columns}</View>
+          </>
+        ) : (
+          columns
+        )}
       </Page>
     </Document>
   );
@@ -577,7 +677,9 @@ const MIN_KEPT_ENTRIES = 1;
 // puis en tout dernier recours `fixed` sur l'aside. Après chaque
 // troncature, on retente la réduction en repartant de 100% : moins de
 // contenu peut parfois tenir sans rien réduire.
-export async function fitCvDocumentSidebarPdfToOnePage(cvReview, options) {
+// `theme` optionnel (défaut DEFAULT_CV_THEME) — rétrocompatible avec les
+// appels existants qui ne le passent pas.
+export async function fitCvDocumentSidebarPdfToOnePage(cvReview, theme, avatarDataUrl, options) {
   const totalExperiences = (cvReview.experiences || []).slice(0, 6).length;
   const totalEducation = (cvReview.educationItems || []).slice(0, 4).length;
 
@@ -591,6 +693,8 @@ export async function fitCvDocumentSidebarPdfToOnePage(cvReview, options) {
       (fontScale, spaceScale, onRender) => (
         <CvDocumentSidebarPdf
           cvReview={cvReview}
+          theme={theme}
+          avatarDataUrl={avatarDataUrl}
           fontScale={fontScale}
           spaceScale={spaceScale}
           maxExperiences={maxExperiences}
@@ -631,6 +735,8 @@ export async function fitCvDocumentSidebarPdfToOnePage(cvReview, options) {
       (fontScale, spaceScale, onRender) => (
         <CvDocumentSidebarPdf
           cvReview={cvReview}
+          theme={theme}
+          avatarDataUrl={avatarDataUrl}
           fontScale={fontScale}
           spaceScale={spaceScale}
           maxExperiences={maxExperiences}

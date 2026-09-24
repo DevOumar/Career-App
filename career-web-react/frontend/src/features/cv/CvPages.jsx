@@ -829,8 +829,17 @@ function MatchResultsStep({
     setCvPrintOverflow(false);
     try {
       const fitToOnePage = await loadPdfFitter(template);
-      const theme = { colors: cvThemeColorsFromPresetId(cvColor) };
-      const fit = await fitToOnePage(cvReview, theme);
+      // hasPhoto/avatarDataUrl : uniquement pour Sidebar (seul template dont
+      // l'aperçu écran affiche déjà la photo) et seulement si l'utilisateur
+      // en a une — Classic/Linear gardent leur comportement actuel
+      // (avatarDataUrl jamais transmis, hasPhoto jamais activé), pour ne
+      // pas changer leur rendu par surprise. Corrige l'incohérence
+      // aperçu-écran/PDF constatée : l'aperçu affichait déjà la photo pour
+      // Sidebar, le PDF téléchargé ne la montrait jamais faute de
+      // branchement ici.
+      const showPhotoInPdf = template === "sidebar" && Boolean(avatarDataUrl);
+      const theme = { colors: cvThemeColorsFromPresetId(cvColor), hasPhoto: showPhotoInPdf };
+      const fit = await fitToOnePage(cvReview, theme, showPhotoInPdf ? avatarDataUrl : undefined);
       const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
       const fileName = `CV-${slugifyForFilename(fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`;
       downloadBlob(fit.blob, fileName);
