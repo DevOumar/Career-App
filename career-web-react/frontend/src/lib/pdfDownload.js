@@ -19,7 +19,11 @@
 const PDF_FITTERS = {
   sidebar: () => import("../pdf/CvDocumentSidebarPdf.jsx").then((mod) => mod.fitCvDocumentSidebarPdfToOnePage),
   linear: () => import("../pdf/CvDocumentLinearPdf.jsx").then((mod) => mod.fitCvDocumentLinearPdfToOnePage),
-  classic: () => import("../pdf/CvDocumentClassicPdf.jsx").then((mod) => mod.fitCvDocumentClassicPdfToOnePage)
+  classic: () => import("../pdf/CvDocumentClassicPdf.jsx").then((mod) => mod.fitCvDocumentClassicPdfToOnePage),
+  // Lettre de motivation (CoverLetterPage.jsx) — même mécanisme de
+  // chargement paresseux, signature différente (fitCoverLetterPdfToOnePage
+  // prend {subject, letter, template} plutôt que cvReview/avatarDataUrl).
+  letter: () => import("../pdf/CoverLetterPdf.jsx").then((mod) => mod.fitCoverLetterPdfToOnePage)
 };
 
 export async function loadPdfFitter(templateName) {

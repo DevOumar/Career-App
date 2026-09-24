@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
 import { generateCoverLetter, listCoverLetters, saveCoverLetter, updateCoverLetter, deleteCoverLetter } from "../../lib/inMemoryDb.js";
+import { loadPdfFitter, slugifyForFilename, downloadBlob } from "../../lib/pdfDownload.js";
 import { COVER_LETTER_COPY } from "./coverLetterCopy.js";
 
 function CoverLetterIllustration() {
@@ -52,6 +53,7 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draftLetter, setDraftLetter] = useState("");
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [conversationId, setConversationId] = useState(null);
 
@@ -172,14 +174,26 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     setTimeout(() => setCopied(false), 1800);
   }
 
-  function handleDownload() {
-    // Comme pour le CV (voir handleDownloadPdf dans CvPages.jsx) : sans
-    // cette classe, window.print() imprime toute la page (en-tête,
-    // sélecteurs de ton/modèle, historique des lettres) en plus du
-    // document lui-même.
-    document.body.classList.add("print-letter-only");
-    window.print();
-    document.body.classList.remove("print-letter-only");
+  async function handleDownload() {
+    if (isDownloadingPdf) return;
+    setIsDownloadingPdf(true);
+    setError("");
+    try {
+      const fitToOnePage = await loadPdfFitter("letter");
+      // Pas de sélecteur couleur/template PDF pour l'instant (point C, pas
+      // encore fait) : theme non transmis, CoverLetterPdf retombe sur
+      // DEFAULT_CV_THEME (orange corail) via resolveCvTheme. `template`
+      // reste piloté par le sélecteur ton/modèle déjà existant sur cette
+      // page (classic/modern/minimal).
+      const fit = await fitToOnePage({ subject, letter, template });
+      const baseName = offer?.company || offer?.title || [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ");
+      const fileName = `Lettre-${slugifyForFilename(baseName)}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      downloadBlob(fit.blob, fileName);
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setIsDownloadingPdf(false);
+    }
   }
 
   function startEditing() {
@@ -339,8 +353,8 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
                 <button type="button" className="btn-ghost" onClick={handleCopy}>
                   {copied ? copy.copied : copy.copy}
                 </button>
-                <button type="button" className="btn-main" onClick={handleDownload}>
-                  <UiIcon name="download" /> {copy.download}
+                <button type="button" className="btn-main" onClick={handleDownload} disabled={isDownloadingPdf}>
+                  {isDownloadingPdf ? <span className="btn-spinner" /> : <UiIcon name="download" />} {copy.download}
                 </button>
               </>
             )}

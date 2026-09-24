@@ -4210,12 +4210,12 @@ input[aria-invalid="true"] {
   /* Étape 5 : le bouton "Télécharger PDF" utilise désormais
      @react-pdf/renderer (plus de window.print()), donc la classe
      body.print-cv-only n'est plus jamais posée par l'app — les 2 règles
-     qui la ciblaient ont été retirées (mortes). Le reste de ce bloc
-     (@page, .no-print, #match-print-area, les règles cv-document et
-     cv-sidebar ci-dessous) reste utile : CoverLetterPage.jsx a son propre
-     window.print() qui dépend de @page/.no-print, et un Ctrl+P manuel du
-     navigateur sur cette page (aperçu CV visible) passe encore par ces
-     règles. */
+     qui la ciblaient ont été retirées (mortes). CoverLetterPage.jsx a subi
+     la même migration (son propre window.print() a aussi disparu, cf.
+     print-letter-only plus bas). Le reste de ce bloc (@page, .no-print,
+     #match-print-area, les règles cv-document et cv-sidebar ci-dessous)
+     reste utile : un Ctrl+P manuel du navigateur sur cette page (aperçu CV
+     visible) passe encore par ces règles. */
   #match-print-area .card {
     box-shadow: none;
     break-inside: avoid;
@@ -9610,6 +9610,12 @@ input[aria-invalid="true"] {
 }
 
 @media print {
+  /* Le bouton "Télécharger" utilise désormais @react-pdf/renderer (plus de
+     window.print()), donc la classe body.print-letter-only n'est plus
+     jamais posée par l'app — les 3 règles qui la ciblaient ont été retirées
+     (mortes). Même principe que print-cv-only pour le CV (styles.css,
+     section impression CV). Les 2 règles ci-dessous restent utiles : un
+     Ctrl+P manuel du navigateur sur cette page passe encore par elles. */
   .letter-toolbar {
     display: none;
   }
@@ -9617,26 +9623,6 @@ input[aria-invalid="true"] {
   .letter-document-card {
     box-shadow: none;
     border: none;
-  }
-
-  /* "Télécharger" cible uniquement le document lettre : sans isolation,
-     window.print() imprimait aussi l'en-tête de page, le panneau ton/
-     modèle et la barre latérale d'historique. Même principe que
-     print-cv-only pour le CV (styles.css, section impression CV) — en
-     deux niveaux ici car .letter-document-card est imbriqué sous
-     .cover-letter-page, elle-même sœur de l'aside historique dans
-     .negotiation-layout. */
-  body.print-letter-only .negotiation-layout > *:not(.cover-letter-page) {
-    display: none !important;
-  }
-
-  body.print-letter-only .cover-letter-page > *:not(.letter-document-card) {
-    display: none !important;
-  }
-
-  body.print-letter-only .letter-document-card {
-    background: none;
-    box-shadow: none;
   }
 }
 
