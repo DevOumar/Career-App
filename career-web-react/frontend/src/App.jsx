@@ -26,6 +26,7 @@ import EmailFinderPage from "./features/emailScout/EmailFinderPage.jsx";
 import {
   CURRENCY_OPTIONS,
   getCurrencyOption,
+  applyFxRates,
   formatAmountInCurrency,
   formatPlanPrice,
   fillTemplate,
@@ -42,6 +43,7 @@ import {
   analyzeMatch,
   changeUserPassword,
   consumeTokens,
+  getFxRates,
   createStripeCheckoutSession,
   confirmStripeCheckoutSession,
   requestPasswordReset,
@@ -873,6 +875,15 @@ export default function App() {
   const [sessionLoading, setSessionLoading] = useState(() => Boolean(localStorage.getItem("career_app_token")));
   const [language, setLanguage] = useState(() => localStorage.getItem("career_app_language") || "fr");
   const [currency, setCurrency] = useState(getCurrency);
+  // Taux de change réels (BCE) pour l'affichage des prix dans la devise choisie.
+  const [, setFxVersion] = useState(0);
+  useEffect(() => {
+    getFxRates()
+      .then((data) => {
+        if (applyFxRates(data)) setFxVersion((value) => value + 1);
+      })
+      .catch(() => {});
+  }, []);
   const [theme, setTheme] = useState(getTheme);
   const [mode, setMode] = useState(getMode);
   const [density, setDensity] = useState(getDensity);

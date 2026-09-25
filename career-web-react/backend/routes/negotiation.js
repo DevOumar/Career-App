@@ -286,8 +286,9 @@ app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) =
       console.warn(`Reponse IA de negociation indisponible: ${aiError.message}`);
     }
 
-    const fallback = finish ? localNegotiationSummary(language) : localNegotiationReply(language);
-    return res.json({ ...(result || fallback), provider, salaryReference });
+    // Pas de réplique ni de synthèse génériques : sans IA, erreur explicite.
+    if (!result) return res.status(503).json({ error: "Le service d'IA est momentanément indisponible. Réessayez dans un instant : aucun jeton n'a été débité." });
+    return res.json({ ...result, provider, salaryReference });
   } catch (error) {
     return res.status(400).json({ error: error.message || "Reponse de negociation impossible." });
   }

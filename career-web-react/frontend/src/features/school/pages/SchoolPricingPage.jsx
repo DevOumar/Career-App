@@ -89,7 +89,7 @@ export default function SchoolPricingPage({ user, language, currency = "EUR", on
               <strong>{perSeat != null ? `${formatEur(perSeat, currency)} ${t("/ étudiant / an", "/ student / year")}` : t("Sur devis", "On quote")}</strong>
             </span>
             <span>
-              <small>{t("Budget annuel estimé", "Estimated yearly budget")}</small>
+              <small>{t("Coût annuel de la licence", "Annual license cost")}</small>
               <strong>{yearlyCost != null ? formatEur(yearlyCost, currency) : "-"}</strong>
             </span>
             <span>

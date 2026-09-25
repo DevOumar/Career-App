@@ -161,16 +161,9 @@ export function registerInterviewRoutes(app) {
       }
     }
 
-    // Fallback simulation when no API key configured
-    const lastUser = messages.filter((m) => m.role === "user").pop()?.content || "";
-    if (lastUser.includes("[START_INTERVIEW]") || lastUser.includes("[KICKOFF]")) {
-      return "Bonjour et bienvenue ! Je suis ravi(e) de vous recevoir aujourd'hui pour cet entretien. Pour commencer, pouvez-vous vous présenter brièvement en quelques minutes ?";
-    }
-    if (lastUser.toLowerCase().includes("bilan") || lastUser.toLowerCase().includes("fin") || lastUser.includes("[END_INTERVIEW]")) {
-      return `Merci beaucoup pour cet échange. Voici votre bilan d'entretien complet :\n\n1. **Points forts** : Bonne élocution, présentation structurée de votre parcours et motivation claire pour le poste.\n2. **Axes d'amélioration & Corrections** : Appuyez davantage vos réponses avec la méthode STAR (Situation, Tâche, Action, Résultat) pour donner des exemples chiffrés et factuels.\n3. **Synthèse & Conseil global** : Prestation solide ! Entraînez-vous à préparer 3 exemples STAR concrets pour aborder votre prochain entretien réel en toute confiance.`;
-    }
-
-    return "C'est bien noté. Pouvez-vous me donner un exemple concret d'une situation où vous avez dû surmonter une difficulté technique ou un conflit en équipe, et comment vous l'avez résolu ?";
+    // Aucune réponse inventée : sans réponse réelle du modèle, l'échange
+    // s'interrompt avec une erreur explicite (le candidat peut réessayer).
+    throw Object.assign(new Error("Le recruteur IA est momentanément indisponible. Réessayez dans un instant."), { statusCode: 503 });
   }
 
   // Démarrer la simulation
@@ -208,7 +201,7 @@ export function registerInterviewRoutes(app) {
       });
     } catch (error) {
       console.error("Erreur API start interview:", error);
-      res.status(500).json({ error: error.message });
+      res.status(error.statusCode || 500).json({ error: error.message });
     }
   });
 
@@ -274,7 +267,7 @@ export function registerInterviewRoutes(app) {
       });
     } catch (error) {
       console.error("Erreur API interview message:", error);
-      res.status(500).json({ error: error.message });
+      res.status(error.statusCode || 500).json({ error: error.message });
     }
   });
 
@@ -293,6 +286,8 @@ export function registerInterviewRoutes(app) {
           formData.append("file", blob, "audio.webm");
           formData.append("model", "whisper-large-v3-turbo");
           formData.append("language", "fr");
+          // verbose_json : le fournisseur renvoie la durée audio réellement facturée.
+          formData.append("response_format", "verbose_json");
 
           const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
             method: "POST",
@@ -311,8 +306,9 @@ export function registerInterviewRoutes(app) {
         }
       }
 
+      // Jamais de réponse inventée à la place du candidat.
       if (!transcribedText) {
-        transcribedText = "Merci de m'avoir posé la question. J'ai plusieurs expériences pertinentes sur ce sujet.";
+        return res.status(422).json({ error: "Votre réponse vocale n'a pas pu être transcrite. Réessayez, ou répondez par écrit." });
       }
 
       const type_entretien = req.query.type_entretien || "RH";
@@ -340,7 +336,7 @@ export function registerInterviewRoutes(app) {
       });
     } catch (error) {
       console.error("Erreur API audio interview:", error);
-      res.status(500).json({ error: error.message });
+      res.status(error.statusCode || 500).json({ error: error.message });
     }
   });
 

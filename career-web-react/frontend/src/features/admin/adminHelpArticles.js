@@ -218,22 +218,22 @@ export const ADMIN_HELP_ARTICLES = [
     id: "ai-monitoring",
     categoryId: "ai",
     title: { fr: "Monitoring et modération de l'IA", en: "AI monitoring and moderation" },
-    summary: { fr: "Taux de réussite, coûts estimés et réponses invalides.", en: "Success rate, estimated costs and invalid responses." },
+    summary: { fr: "Taux de réussite, coûts IA mesurés et réponses invalides.", en: "Success rate, measured AI costs and invalid responses." },
     body: {
       fr: [
-        "Monitoring IA présente les extractions réussies, partielles et échouées, le score moyen de matching et une estimation du coût de l'IA par module, comparée au revenu encaissé.",
+        "Monitoring IA présente les extractions réussies, partielles et échouées, le score moyen de matching et le coût réel de l'IA par module : les tokens renvoyés par le fournisseur à chaque appel, multipliés par son tarif public et convertis en euros au taux de référence de la BCE, comparés au revenu encaissé sur la même période.",
         "Les réponses invalides sont regroupées par personne ; le panneau détaille chaque CV concerné et les points relevés.",
         "Modération IA permet de relire des échantillons de réponses générées, regroupés par personne."
       ],
       en: [
-        "AI monitoring shows successful, partial and failed extractions, the average matching score and an estimate of AI cost per module, compared with collected revenue.",
+        "AI monitoring shows successful, partial and failed extractions, the average matching score and the real AI cost per module: tokens returned by the provider on each call, times its public rate, converted to euros at the ECB reference rate, compared with revenue collected over the same period.",
         "Invalid responses are grouped by person; the panel details each affected CV and the issues found.",
         "AI moderation lets you review samples of generated responses, grouped by person."
       ]
     },
     caveat: {
-      fr: "Les coûts affichés sont des estimations calculées par la plateforme, pas la facture de votre fournisseur d'IA.",
-      en: "Displayed costs are estimates computed by the platform, not your AI provider's invoice."
+      fr: "Les tarifs par modèle sont ceux publiés par le fournisseur (modifiables via AI_PRICE_INPUT_PER_MTOK / AI_PRICE_OUTPUT_PER_MTOK) : vérifiez-les si votre contrat diffère. Les appels antérieurs à la mise en place de la mesure ne sont pas comptés.",
+      en: "Per-model rates are the provider's published prices (overridable via AI_PRICE_INPUT_PER_MTOK / AI_PRICE_OUTPUT_PER_MTOK): check them if your contract differs. Calls made before measurement started are not counted."
     }
   },
   {

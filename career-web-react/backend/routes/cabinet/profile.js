@@ -286,7 +286,11 @@ app.get("/api/cabinet/profile", async (req, res) => {
         logoDataUrl: row.logo_data_url || "",
         description: row.description || "",
         publicPageEnabled: Boolean(Number(row.public_page_enabled)),
-        publicSlug: row.public_slug || ""
+        publicSlug: row.public_slug || "",
+        legalName: row.legal_name || "",
+        siret: row.siret || "",
+        vatNumber: row.vat_number || "",
+        invoiceFooter: row.invoice_footer || ""
       }
     });
   } catch (error) {
@@ -302,6 +306,23 @@ app.put("/api/cabinet/profile", async (req, res) => {
     requireCabinetOwnerRole(cabinet);
     const rootId = cabinet.cabinetRootId;
     const profile = req.body?.profile || {};
+
+    // Validation serveur (l'interface valide aussi) : code « field:<champ> »
+    // pour que l'interface signale le bon champ.
+    const invalid = (field, message) => res.status(400).json({ error: message, code: `field:${field}` });
+    const organizationName = coerceString(profile.organizationName).trim();
+    const contactEmail = coerceString(profile.contactEmail).trim();
+    const website = coerceString(profile.website).trim();
+    const contactPhone = coerceString(profile.contactPhone).trim();
+    if (organizationName.length < 2) return invalid("organizationName", "Le nom du cabinet doit contenir au moins 2 caractères.");
+    if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contactEmail)) return invalid("contactEmail", "Adresse e-mail de contact invalide.");
+    if (website && !/^(https?:\/\/)?[a-z0-9.-]+\.[a-z]{2,}(\/.*)?$/i.test(website)) return invalid("website", "Adresse du site web invalide.");
+    if (contactPhone && !/^\+?[0-9 ]{6,20}$/.test(contactPhone)) return invalid("contactPhone", "Le téléphone ne doit contenir que des chiffres (et éventuellement + au début).");
+    if (coerceString(profile.logoDataUrl).length > 2800000) return invalid("logoDataUrl", "Le logo est trop lourd (2 Mo maximum).");
+    const siret = coerceString(profile.siret).replace(/\s+/g, "");
+    const vatNumber = coerceString(profile.vatNumber).replace(/\s+/g, "").toUpperCase();
+    if (siret && !/^[0-9]{14}$/.test(siret)) return invalid("siret", "Le SIRET doit contenir 14 chiffres.");
+    if (vatNumber && !/^[A-Z]{2}[0-9A-Z]{2,13}$/.test(vatNumber)) return invalid("vatNumber", "Numéro de TVA intracommunautaire invalide (ex. FR12345678901).");
 
     // Slug de la page publique : dérivé du nom de cabinet, garanti unique en
     // suffixant l'id si besoin (pas de collision possible entre cabinets).
@@ -322,8 +343,8 @@ app.put("/api/cabinet/profile", async (req, res) => {
     }
 
     await db.query(
-      `INSERT INTO user_recruiter_profiles (user_id, organization_name, website, address, city, country, contact_email, contact_phone, primary_contact_name, logo_data_url, description, public_page_enabled, public_slug, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      `INSERT INTO user_recruiter_profiles (user_id, organization_name, website, address, city, country, contact_email, contact_phone, primary_contact_name, logo_data_url, description, public_page_enabled, public_slug, updated_at, legal_name, siret, vat_number, invoice_footer)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
        ON CONFLICT (user_id) DO UPDATE SET
          organization_name=EXCLUDED.organization_name,
          website=EXCLUDED.website,
@@ -337,7 +358,11 @@ app.put("/api/cabinet/profile", async (req, res) => {
          description=EXCLUDED.description,
          public_page_enabled=EXCLUDED.public_page_enabled,
          public_slug=EXCLUDED.public_slug,
-         updated_at=EXCLUDED.updated_at`,
+         updated_at=EXCLUDED.updated_at,
+         legal_name=EXCLUDED.legal_name,
+         siret=EXCLUDED.siret,
+         vat_number=EXCLUDED.vat_number,
+         invoice_footer=EXCLUDED.invoice_footer`,
       [
         rootId,
         coerceString(profile.organizationName),
@@ -352,7 +377,11 @@ app.put("/api/cabinet/profile", async (req, res) => {
         coerceString(profile.description).slice(0, 2000),
         profile.publicPageEnabled ? 1 : 0,
         publicSlug,
-        nowIso()
+        nowIso(),
+        coerceString(profile.legalName).trim().slice(0, 200),
+        siret,
+        vatNumber,
+        coerceString(profile.invoiceFooter).trim().slice(0, 1000)
       ]
     );
     await logSecurityEvent(req, userId, "cabinet_profile_updated", {});
@@ -377,7 +406,7 @@ app.get("/api/public/cabinet/:slug", async (req, res) => {
     const row = rows[0];
 
     const { rows: missionRows } = await db.query(
-      "SELECT id, title, location, created_at FROM cabinet_missions WHERE cabinet_user_id = $1 AND status = 'open' ORDER BY created_at DESC LIMIT 30",
+      "SELECT id, title, location, created_at, description, contract_type, remote_policy, salary_min, salary_max, skills_json, deadline FROM cabinet_missions WHERE cabinet_user_id = $1 AND status IN ('open', 'in_progress') AND is_public = 1 ORDER BY created_at DESC LIMIT 30",
       [row.user_id]
     );
 
@@ -392,6 +421,13 @@ app.get("/api/public/cabinet/:slug", async (req, res) => {
         id: mission.id,
         title: mission.title,
         location: mission.location,
+        description: mission.description || "",
+        contractType: mission.contract_type || "",
+        remotePolicy: mission.remote_policy || "",
+        salaryMin: mission.salary_min != null ? Number(mission.salary_min) : null,
+        salaryMax: mission.salary_max != null ? Number(mission.salary_max) : null,
+        skills: parseJsonField(mission.skills_json, []),
+        deadline: mission.deadline || null,
         createdAt: mission.created_at
       }))
     });

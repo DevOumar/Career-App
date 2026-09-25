@@ -4,6 +4,9 @@ import { UiIcon } from "../../../components/UiIcon.jsx";
 import { formatDate } from "../../../lib/format.js";
 import { getPublicCabinetPage } from "../../../lib/inMemoryDb.js";
 
+const CONTRACTS = { cdi: { fr: "CDI", en: "Permanent" }, cdd: { fr: "CDD", en: "Fixed-term" }, freelance: { fr: "Freelance", en: "Freelance" }, interim: { fr: "Intérim", en: "Temp" }, stage: { fr: "Stage", en: "Internship" }, alternance: { fr: "Alternance", en: "Work-study" } };
+const REMOTE = { onsite: { fr: "Sur site", en: "On site" }, hybrid: { fr: "Hybride", en: "Hybrid" }, remote: { fr: "Télétravail", en: "Remote" } };
+
 // Vitrine publique d'un cabinet (visiteur non connecté) — opt-in
 // (public_page_enabled), montée directement depuis main.jsx sans passer par
 // l'App authentifiée : aucune session requise, aucune donnée sensible
@@ -61,7 +64,9 @@ export default function CabinetPublicPage({ slug }) {
           <h1>{data.organizationName}</h1>
           <p className="muted">{[data.city, data.country].filter(Boolean).join(", ")}</p>
           {data.website ? (
-            <a href={data.website} target="_blank" rel="noreferrer">{data.website}</a>
+            <a href={/^https?:\/\//i.test(data.website) ? data.website : `https://${data.website}`} target="_blank" rel="noreferrer">
+              {data.website}
+            </a>
           ) : null}
         </div>
       </header>
@@ -79,10 +84,38 @@ export default function CabinetPublicPage({ slug }) {
                     <span className="history-card-icon"><UiIcon name="briefcase" /></span>
                     <div>
                       <h3>{mission.title}</h3>
-                      <p>{mission.location || "-"} · {formatDate(mission.createdAt)}</p>
+                      <p>{[mission.location, CONTRACTS[mission.contractType]?.[language], REMOTE[mission.remotePolicy]?.[language], formatDate(mission.createdAt)].filter(Boolean).join(" · ")}</p>
                     </div>
                   </div>
                 </div>
+                {mission.salaryMin != null || mission.salaryMax != null ? (
+                  <p className="public-mission-salary">
+                    {language === "en" ? "Annual gross salary: " : "Salaire annuel brut : "}
+                    {[mission.salaryMin, mission.salaryMax]
+                      .filter((value) => value != null)
+                      .map((value) => new Intl.NumberFormat(language === "en" ? "en-GB" : "fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(value))
+                      .join(" – ")}
+                  </p>
+                ) : null}
+                {mission.skills?.length ? (
+                  <div className="job-chip-row history-skill-row">
+                    {mission.skills.slice(0, 10).map((skill) => (
+                      <span key={skill}>{skill}</span>
+                    ))}
+                  </div>
+                ) : null}
+                {mission.description ? (
+                  <details className="public-mission-details">
+                    <summary>{language === "en" ? "See the job description" : "Voir la description du poste"}</summary>
+                    <p>{mission.description}</p>
+                  </details>
+                ) : null}
+                {mission.deadline ? (
+                  <p className="public-mission-deadline">
+                    {language === "en" ? "Apply before " : "Candidater avant le "}
+                    {formatDate(mission.deadline)}
+                  </p>
+                ) : null}
               </article>
             ))}
           </div>

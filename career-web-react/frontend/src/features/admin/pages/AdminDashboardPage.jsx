@@ -23,6 +23,7 @@ import { LanguageSwitch } from "../../../components/LanguageSwitch.jsx";
 // ici car ces composants ne sont utilisés qu'au rendu (jamais à
 // l'évaluation du module), bien après la résolution du cycle ESM.
 import AccountDrawer from "../../account/AccountDrawer.jsx";
+import AdminInvestorMetrics from "./AdminInvestorMetrics.jsx";
 import { ConnectedFooter, ADMIN_ACCOUNT_TYPES } from "../../../App.jsx";
 import { PLANS, PLAN_SEGMENTS, getPlanById, resolvePlanId, mergeByResolvedPlan } from "../../../data/plans.js";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
@@ -452,6 +453,8 @@ export default function AdminDashboardPage({ user, language, allowedModules = []
           {copy.emailScoutSearches} : <strong>{overview.emailScoutSearches || 0}</strong>
         </p>
       </div>
+
+      <AdminInvestorMetrics user={user} language={language} />
 
       <div className="jy-grid-2">
         <div className="jy-card">

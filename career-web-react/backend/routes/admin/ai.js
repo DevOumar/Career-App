@@ -243,8 +243,24 @@ export function registerAdminAiRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    getFxRates,
+    aiPriceFor
   } = app.locals.ctx;
+
+  // Regroupement des modules mesurés (table ai_usage) pour l'affichage.
+  const AI_MODULE_GROUPS = {
+    cv: "cv",
+    cv_optimization: "cv",
+    cabinet_cv: "cv",
+    matching: "matching",
+    cabinet_matching: "matching",
+    job_extraction: "matching",
+    interview: "interview",
+    cover_letter: "coverLetter",
+    negotiation: "negotiation",
+    email_scout: "emailScout"
+  };
 
 app.get("/api/admin/ai-samples", async (req, res) => {
   try {
@@ -320,26 +336,38 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
        GROUP BY event_type`
     );
 
-    // Estimation de coût élargie à TOUS les modules IA (pas seulement CV +
-    // matching) : lettres de motivation (1 appel/lettre), négociation et
-    // entretien (1 appel par message échangé, compté dans payload_json —
-    // une conversation à 6 échanges coûte 6 appels, pas 1), Email Scout.
-    const { rows: coverLetterRows } = await db.query("SELECT COUNT(*)::int AS count FROM cover_letters");
-    const { rows: negotiationRows } = await db.query("SELECT payload_json FROM negotiation_conversations");
-    const { rows: interviewRows } = await db.query("SELECT payload_json FROM interview_conversations");
-    function countMessages(rows) {
-      let total = 0;
-      for (const row of rows) {
-        const payload = parseJsonField(row.payload_json, {});
-        const messages = Array.isArray(payload.messages) ? payload.messages : Array.isArray(payload) ? payload : [];
-        total += messages.length || 1;
-      }
-      return total;
+    // Coût IA réel : tokens (et durée audio) renvoyés par le fournisseur à
+    // chaque appel, enregistrés dans ai_usage, × tarif public du modèle,
+    // converti en euros au taux de référence BCE du jour.
+    const { rows: usageRows } = await db.query(
+      `SELECT module, model, COUNT(*)::int AS calls,
+              COUNT(*) FILTER (WHERE status <> 'ok')::int AS failed,
+              COUNT(*) FILTER (WHERE cost_usd IS NULL AND status = 'ok')::int AS unpriced,
+              COALESCE(SUM(prompt_tokens), 0)::bigint AS prompt_tokens,
+              COALESCE(SUM(completion_tokens), 0)::bigint AS completion_tokens,
+              COALESCE(SUM(audio_seconds), 0) AS audio_seconds,
+              COALESCE(SUM(cost_usd), 0) AS cost_usd,
+              MIN(created_at) AS since
+       FROM ai_usage GROUP BY module, model`
+    );
+    const fx = await getFxRates();
+    const usdPerEur = Number(fx?.rates?.USD) || null;
+    const since = usageRows.reduce((min, row) => (!min || row.since < min ? row.since : min), null);
+    const totalCostUsd = usageRows.reduce((sum, row) => sum + Number(row.cost_usd || 0), 0);
+    const toEur = (usd) => (usdPerEur ? Math.round((usd / usdPerEur) * 10000) / 10000 : null);
+    const costByModuleUsd = {};
+    for (const row of usageRows) {
+      const group = AI_MODULE_GROUPS[row.module] || "other";
+      costByModuleUsd[group] = (costByModuleUsd[group] || 0) + Number(row.cost_usd || 0);
     }
-    const coverLetterCount = coverLetterRows[0]?.count || 0;
-    const negotiationCallCount = countMessages(negotiationRows);
-    const interviewCallCount = countMessages(interviewRows);
-    const emailScoutCount = (eventRows.find((row) => row.event_type === "email_finder_search")?.count) || 0;
+    const costByModule = Object.fromEntries(Object.entries(costByModuleUsd).map(([key, usd]) => [key, toEur(usd)]));
+    const totalCostEur = toEur(totalCostUsd);
+    const models = [...new Set(usageRows.map((row) => row.model).filter(Boolean))];
+
+    const { rows: revenueSinceRows } = since
+      ? await db.query("SELECT COALESCE(SUM(amount_collected), 0) AS total FROM transactions WHERE COALESCE(refunded, 0) = 0 AND created_at >= $1", [since])
+      : { rows: [{ total: 0 }] };
+    const revenueSinceMeasurement = Number(revenueSinceRows[0]?.total || 0);
 
     const { rows: revenueRows } = await db.query(
       "SELECT COALESCE(SUM(amount_collected), 0) AS total FROM transactions"
@@ -363,21 +391,8 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
 
     const eventCounts = Object.fromEntries(eventRows.map((row) => [row.event_type, row.count]));
 
-    // Même tarif indicatif par appel que l'estimation existante (0,002€/appel
-    // — ordre de grandeur pour un modèle Groq/gpt-oss-120b), appliqué
-    // désormais à tous les modules IA, pas seulement CV+matching.
-    const COST_PER_CALL = 0.002;
-    const costByModule = {
-      cv: Math.round(cvRows.length * COST_PER_CALL * 1000) / 1000,
-      matching: Math.round(matchRows.length * COST_PER_CALL * 1000) / 1000,
-      coverLetter: Math.round(coverLetterCount * COST_PER_CALL * 1000) / 1000,
-      negotiation: Math.round(negotiationCallCount * COST_PER_CALL * 1000) / 1000,
-      interview: Math.round(interviewCallCount * COST_PER_CALL * 1000) / 1000,
-      emailScout: Math.round(emailScoutCount * COST_PER_CALL * 1000) / 1000
-    };
-    const totalEstimatedCost = Math.round(Object.values(costByModule).reduce((sum, value) => sum + value, 0) * 1000) / 1000;
-    const estimatedMargin = Math.round((totalRevenueCollected - totalEstimatedCost) * 100) / 100;
-    const marginRate = totalRevenueCollected > 0 ? estimatedMargin / totalRevenueCollected : null;
+    const estimatedMargin = totalCostEur === null ? null : Math.round((revenueSinceMeasurement - totalCostEur) * 100) / 100;
+    const marginRate = totalCostEur !== null && revenueSinceMeasurement > 0 ? estimatedMargin / revenueSinceMeasurement : null;
 
     return res.json({
       successfulExtractions,
@@ -386,13 +401,23 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
       totalMatchRuns: matchRows.length,
       averageMatchScore: scores.length ? Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length) : null,
       providerCounts,
-      estimatedCost: {
-        currency: "EUR",
-        amount: totalEstimatedCost,
-        note: "Estimation indicative : nombre d'appels IA enregistrés × coût moyen par appel, tous modules confondus (CV, matching, lettre, négociation, entretien, Email Scout)."
+      aiCost: {
+        measuredSince: since,
+        calls: usageRows.reduce((sum, row) => sum + row.calls, 0),
+        failedCalls: usageRows.reduce((sum, row) => sum + row.failed, 0),
+        unpricedCalls: usageRows.reduce((sum, row) => sum + row.unpriced, 0),
+        promptTokens: usageRows.reduce((sum, row) => sum + Number(row.prompt_tokens || 0), 0),
+        completionTokens: usageRows.reduce((sum, row) => sum + Number(row.completion_tokens || 0), 0),
+        audioSeconds: Math.round(usageRows.reduce((sum, row) => sum + Number(row.audio_seconds || 0), 0)),
+        costUsd: Math.round(totalCostUsd * 10000) / 10000,
+        costEur: totalCostEur,
+        fxRate: usdPerEur,
+        fxDate: fx?.date || null,
+        pricing: Object.fromEntries(models.map((model) => [model, aiPriceFor(model)]))
       },
       costByModule,
       totalRevenueCollected,
+      revenueSinceMeasurement,
       estimatedMargin,
       marginRate,
       averageAnalysisTimeSeconds: null,

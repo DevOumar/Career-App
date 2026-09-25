@@ -16021,3 +16021,10 @@ input[aria-invalid="true"] {
   align-items: center;
   justify-content: center;
 }
+
+/* Page publique cabinet : détails des missions */
+.public-mission-salary { margin: 10px 0 0; font-weight: 600; color: var(--text); }
+.public-mission-details { margin-top: 10px; }
+.public-mission-details summary { cursor: pointer; color: var(--primary); font-weight: 600; }
+.public-mission-details p { white-space: pre-wrap; line-height: 1.6; margin: 8px 0 0; color: var(--text); }
+.public-mission-deadline { margin: 8px 0 0; color: var(--text-3); font-size: 0.85rem; }

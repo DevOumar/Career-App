@@ -10,6 +10,7 @@ import { registerCabinetMissionsRoutes } from "./cabinet/missions.js";
 import { registerCabinetAnnouncementsRoutes } from "./cabinet/announcements.js";
 import { registerCabinetReportsRoutes } from "./cabinet/reports.js";
 import { registerCabinetProfileRoutes } from "./cabinet/profile.js";
+import { registerCabinetExtrasRoutes } from "./cabinet/extras.js";
 
 export function registerCabinetRoutes(app) {
   registerCabinetOverviewRoutes(app);
@@ -21,4 +22,5 @@ export function registerCabinetRoutes(app) {
   registerCabinetAnnouncementsRoutes(app);
   registerCabinetReportsRoutes(app);
   registerCabinetProfileRoutes(app);
+  registerCabinetExtrasRoutes(app);
 }

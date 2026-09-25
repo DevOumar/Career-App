@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from "node:async_hooks";
 import cors from "cors";
 import crypto from "crypto";
 import express from "express";
@@ -380,6 +381,16 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
 });
 
 app.use(express.json({ limit: "10mb" }));
+
+// Mesure réelle de l'usage IA : chaque appel sortant vers un fournisseur IA
+// (chat, transcription) est enregistré avec les tokens / la durée audio
+// renvoyés par le fournisseur lui-même, le module de l'application et
+// l'utilisateur à l'origine de la requête.
+const aiRequestContext = new AsyncLocalStorage();
+app.use((req, _res, next) => {
+  const userId = String((req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body) ? req.body.userId : "") || req.query?.userId || "");
+  aiRequestContext.run({ path: req.path, userId }, next);
+});
 
 // Anti-bourrinage sur les routes d'authentification (connexion, inscription,
 // demande/vérification de code) : au-delà de 20 requêtes en 15 minutes
@@ -1001,6 +1012,123 @@ await db.exec(`
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS logo_data_url TEXT NOT NULL DEFAULT '';
   ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS placement_amount NUMERIC;
   ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS follow_up_date TEXT;
+  -- Dates d'étape (indicateurs de délai de l'Accueil Cabinet) : renseignées à
+  -- chaque changement à partir de maintenant, jamais reconstituées.
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS status_updated_at TEXT;
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS placed_at TEXT;
+  ALTER TABLE cabinet_mission_candidates ADD COLUMN IF NOT EXISTS stage_updated_at TEXT;
+  ALTER TABLE cabinet_mission_candidates ADD COLUMN IF NOT EXISTS placed_at TEXT;
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS closed_at TEXT;
+  -- Espace Cabinet : fiches clients, agenda des entretiens, factures
+  -- d'honoraires, journal d'activité, e-mails aux candidats et RGPD.
+  CREATE TABLE IF NOT EXISTS cabinet_clients (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    sector TEXT NOT NULL DEFAULT '',
+    website TEXT NOT NULL DEFAULT '',
+    contact_name TEXT NOT NULL DEFAULT '',
+    contact_email TEXT NOT NULL DEFAULT '',
+    contact_phone TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS cabinet_interviews (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    mission_id TEXT,
+    scheduled_at TEXT NOT NULL,
+    duration_minutes INTEGER NOT NULL DEFAULT 60,
+    mode TEXT NOT NULL DEFAULT 'visio',
+    location TEXT NOT NULL DEFAULT '',
+    interviewer TEXT NOT NULL DEFAULT '',
+    notes TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'planned',
+    feedback TEXT NOT NULL DEFAULT '',
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS cabinet_invoices (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    number TEXT NOT NULL,
+    client_id TEXT,
+    client_name TEXT NOT NULL DEFAULT '',
+    mission_id TEXT,
+    label TEXT NOT NULL DEFAULT '',
+    amount_ht NUMERIC NOT NULL DEFAULT 0,
+    vat_rate NUMERIC NOT NULL DEFAULT 20,
+    status TEXT NOT NULL DEFAULT 'draft',
+    issued_at TEXT,
+    due_at TEXT,
+    paid_at TEXT,
+    created_by TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS cabinet_activity (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    actor_id TEXT,
+    actor_name TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL,
+    entity_type TEXT NOT NULL DEFAULT '',
+    entity_id TEXT NOT NULL DEFAULT '',
+    entity_label TEXT NOT NULL DEFAULT '',
+    details_json TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS ai_usage (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    module TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT 'chat',
+    status TEXT NOT NULL DEFAULT 'ok',
+    prompt_tokens INTEGER NOT NULL DEFAULT 0,
+    completion_tokens INTEGER NOT NULL DEFAULT 0,
+    audio_seconds NUMERIC,
+    cost_usd NUMERIC,
+    duration_ms INTEGER,
+    created_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS cabinet_candidate_emails (
+    id TEXT PRIMARY KEY,
+    cabinet_user_id TEXT NOT NULL,
+    candidate_id TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    message TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'sent',
+    sent_by TEXT,
+    sent_by_name TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL
+  );
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS consent_status TEXT NOT NULL DEFAULT 'pending';
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS consent_at TEXT;
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS consent_source TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS anonymized_at TEXT;
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS client_id TEXT;
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS contract_type TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS salary_min NUMERIC;
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS salary_max NUMERIC;
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS skills_json TEXT NOT NULL DEFAULT '[]';
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS experience_min INTEGER;
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS deadline TEXT;
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS remote_policy TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cabinet_missions ADD COLUMN IF NOT EXISTS is_public INTEGER NOT NULL DEFAULT 1;
+  ALTER TABLE cabinet_mission_candidates ADD COLUMN IF NOT EXISTS match_json TEXT NOT NULL DEFAULT '{}';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS retention_months INTEGER NOT NULL DEFAULT 24;
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS auto_anonymize INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS legal_name TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS siret TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS vat_number TEXT NOT NULL DEFAULT '';
+  ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS invoice_footer TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS public_page_enabled INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS public_slug TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
@@ -3939,7 +4067,11 @@ async function seedOffersIfNeeded() {
 }
 
 await ensureAccountRowsForLegacyUsers();
-await seedOffersIfNeeded();
+// Les offres d'exemple (entreprises réelles, postes inventés) ne sont plus
+// insérées : suppression ciblée de celles déjà présentes.
+for (const offer of OFFERS) {
+  await db.query("DELETE FROM offers WHERE id = $1 AND company = $2 AND title = $3", [offer.id, offer.company, offer.title]);
+}
 
 async function getCvCount(userId) {
   const { rows } = await db.query("SELECT COUNT(*)::int AS total FROM cvs WHERE user_id = $1", [userId]);
@@ -4636,6 +4768,259 @@ async function runSchoolWeeklyDigests() {
 
 // Digest hebdomadaire Cabinet — miroir de runSchoolWeeklyDigests, mêmes
 // garanties (best-effort, une fois par semaine max par cabinet).
+// Journal d'activité du cabinet : qui a fait quoi (jamais bloquant).
+async function logCabinetActivity(cabinet, action, { entityType = "", entityId = "", entityLabel = "", details = {} } = {}) {
+  try {
+    const actorName = cabinet?.actorName || `${cabinet?.first_name || ""} ${cabinet?.last_name || ""}`.trim();
+    await db.query(
+      `INSERT INTO cabinet_activity (id, cabinet_user_id, actor_id, actor_name, action, entity_type, entity_id, entity_label, details_json, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+      [
+        `cact-${crypto.randomUUID()}`,
+        cabinet.cabinetRootId,
+        cabinet.id || null,
+        actorName,
+        action,
+        entityType,
+        String(entityId || ""),
+        String(entityLabel || "").slice(0, 200),
+        JSON.stringify(details || {}),
+        nowIso()
+      ]
+    );
+  } catch (error) {
+    console.warn(`Journal cabinet indisponible (${action}) : ${error.message}`);
+  }
+}
+
+// RGPD : anonymisation d'une liste de candidats du vivier. Les données
+// personnelles (identité, coordonnées, CV, notes, e-mails) sont effacées ;
+// l'étape et les compétences restent pour les statistiques agrégées.
+async function anonymizeCabinetCandidates(cabinetRootId, candidateIds) {
+  const ids = [...new Set((candidateIds || []).filter(Boolean))];
+  if (!ids.length) return 0;
+  const now = nowIso();
+  const { rows } = await db.query(
+    `UPDATE cabinet_candidates
+     SET first_name = 'Candidat', last_name = 'anonymisé', email = '', phone = '', headline = '', notes = '',
+         cv_file_name = '', source_text = '', parsed_json = '{}', follow_up_date = NULL,
+         consent_status = 'anonymized', anonymized_at = $3, updated_at = $3
+     WHERE cabinet_user_id = $1 AND id = ANY($2) AND anonymized_at IS NULL
+     RETURNING id`,
+    [cabinetRootId, ids, now]
+  );
+  const done = rows.map((row) => row.id);
+  if (done.length) {
+    await db.query("DELETE FROM cabinet_candidate_notes WHERE cabinet_user_id = $1 AND candidate_id = ANY($2)", [cabinetRootId, done]);
+    await db.query("DELETE FROM cabinet_candidate_emails WHERE cabinet_user_id = $1 AND candidate_id = ANY($2)", [cabinetRootId, done]);
+    await db.query(
+      "UPDATE cabinet_interviews SET notes = '', feedback = '', updated_at = $3 WHERE cabinet_user_id = $1 AND candidate_id = ANY($2)",
+      [cabinetRootId, done, now]
+    );
+  }
+  return done.length;
+}
+
+// Candidats dont la dernière interaction (fiche, note, entretien, e-mail)
+// dépasse la durée de conservation choisie par le cabinet.
+async function getCabinetExpiredCandidateIds(cabinetRootId, retentionMonths) {
+  const months = Math.max(1, Number(retentionMonths) || 24);
+  const cutoff = new Date();
+  cutoff.setUTCMonth(cutoff.getUTCMonth() - months);
+  const { rows } = await db.query(
+    `SELECT c.id FROM cabinet_candidates c
+     WHERE c.cabinet_user_id = $1 AND c.anonymized_at IS NULL
+       AND GREATEST(
+         c.updated_at,
+         COALESCE((SELECT MAX(n.created_at) FROM cabinet_candidate_notes n WHERE n.candidate_id = c.id), ''),
+         COALESCE((SELECT MAX(i.scheduled_at) FROM cabinet_interviews i WHERE i.candidate_id = c.id), ''),
+         COALESCE((SELECT MAX(e.created_at) FROM cabinet_candidate_emails e WHERE e.candidate_id = c.id), '')
+       ) < $2`,
+    [cabinetRootId, cutoff.toISOString()]
+  );
+  return rows.map((row) => row.id);
+}
+
+// Anonymisation automatique (cabinets qui l'ont activée), toutes les 6 h.
+async function runCabinetRetention() {
+  try {
+    const { rows } = await db.query("SELECT user_id, retention_months FROM user_recruiter_profiles WHERE auto_anonymize = 1");
+    for (const row of rows) {
+      const ids = await getCabinetExpiredCandidateIds(row.user_id, row.retention_months);
+      const count = await anonymizeCabinetCandidates(row.user_id, ids);
+      if (count) {
+        await logCabinetActivity({ cabinetRootId: row.user_id, id: null, actorName: "Career CV (automatique)" }, "candidates_anonymized", {
+          entityType: "candidate",
+          entityLabel: `${count} candidat(s)`,
+          details: { count, automatic: true, retentionMonths: row.retention_months }
+        });
+      }
+    }
+  } catch (error) {
+    console.warn(`Rétention cabinet : ${error.message}`);
+  }
+}
+
+// Fiches clients créées à partir des noms déjà saisis sur les missions.
+async function backfillCabinetClients() {
+  try {
+    const { rows } = await db.query(
+      "SELECT id, cabinet_user_id, client_name FROM cabinet_missions WHERE client_id IS NULL AND TRIM(client_name) <> ''"
+    );
+    for (const row of rows) {
+      const clientId = await ensureCabinetClient(row.cabinet_user_id, row.client_name);
+      if (clientId) await db.query("UPDATE cabinet_missions SET client_id = $1 WHERE id = $2", [clientId, row.id]);
+    }
+  } catch (error) {
+    console.warn(`Clients cabinet : ${error.message}`);
+  }
+}
+
+// Retrouve un client par son nom (sans tenir compte de la casse) ou le crée.
+async function ensureCabinetClient(cabinetRootId, rawName) {
+  const name = String(rawName || "").trim().slice(0, 160);
+  if (!name) return null;
+  const { rows } = await db.query("SELECT id FROM cabinet_clients WHERE cabinet_user_id = $1 AND LOWER(name) = LOWER($2) LIMIT 1", [cabinetRootId, name]);
+  if (rows.length) return rows[0].id;
+  const id = `ccli-${crypto.randomUUID()}`;
+  const now = nowIso();
+  await db.query("INSERT INTO cabinet_clients (id, cabinet_user_id, name, created_at, updated_at) VALUES ($1,$2,$3,$4,$4)", [id, cabinetRootId, name, now]);
+  return id;
+}
+
+// ---------------------------------------------------------------- usage IA
+// Tarifs publics des fournisseurs, en dollars US par million de tokens
+// (audio : par heure). Modifiables sans code via AI_PRICE_INPUT_PER_MTOK /
+// AI_PRICE_OUTPUT_PER_MTOK (modèle principal) et AI_PRICE_AUDIO_PER_HOUR.
+const AI_PRICE_TABLE = {
+  "openai/gpt-oss-120b": { input: 0.15, output: 0.6 },
+  "openai/gpt-oss-20b": { input: 0.075, output: 0.3 },
+  "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  "whisper-large-v3-turbo": { audioPerHour: 0.04 },
+  "whisper-large-v3": { audioPerHour: 0.111 }
+};
+function aiPriceFor(model) {
+  const key = String(model || "").toLowerCase();
+  const known = Object.entries(AI_PRICE_TABLE).find(([name]) => key === name || key.endsWith(`/${name}`) || key.startsWith(name));
+  const base = known ? { ...known[1] } : {};
+  const envInput = Number(process.env.AI_PRICE_INPUT_PER_MTOK);
+  const envOutput = Number(process.env.AI_PRICE_OUTPUT_PER_MTOK);
+  const envAudio = Number(process.env.AI_PRICE_AUDIO_PER_HOUR);
+  if (AI_MODEL && key === String(AI_MODEL).toLowerCase()) {
+    if (Number.isFinite(envInput) && envInput >= 0) base.input = envInput;
+    if (Number.isFinite(envOutput) && envOutput >= 0) base.output = envOutput;
+  }
+  if (base.audioPerHour !== undefined && Number.isFinite(envAudio) && envAudio >= 0) base.audioPerHour = envAudio;
+  return base;
+}
+
+const AI_ENDPOINT_PATTERN = /^https:\/\/api\.(groq\.com|openai\.com|x\.ai)\/(openai\/)?v1\/(chat\/completions|audio\/transcriptions)/;
+
+function aiModuleFromPath(path = "") {
+  if (path.startsWith("/api/cabinet/candidates/extract")) return "cabinet_cv";
+  if (/^\/api\/cabinet\/missions\/[^/]+\/matches/.test(path)) return "cabinet_matching";
+  if (path.startsWith("/api/interview")) return "interview";
+  if (path.startsWith("/api/negotiation")) return "negotiation";
+  if (path.startsWith("/api/coverletter") || path.startsWith("/api/cover-letter")) return "cover_letter";
+  if (path.startsWith("/api/email-finder") || path.startsWith("/api/emailfinder")) return "email_scout";
+  if (path.includes("optimiz")) return "cv_optimization";
+  if (path.startsWith("/api/match")) return "matching";
+  if (path.startsWith("/api/offer") || path.startsWith("/api/job")) return "job_extraction";
+  if (path.startsWith("/api/cv")) return "cv";
+  if (path.startsWith("/api/admin")) return "admin";
+  const segment = path.split("/").filter(Boolean)[1];
+  return segment || "other";
+}
+
+async function recordAiUsage(url, response, startedAt) {
+  try {
+    const context = aiRequestContext.getStore() || {};
+    const isAudio = url.includes("/audio/transcriptions");
+    const data = await response.json().catch(() => null);
+    const usage = data?.usage || data?.x_groq?.usage || {};
+    const model = String(data?.model || (isAudio ? data?.x_groq?.model || "whisper-large-v3-turbo" : AI_MODEL) || "");
+    const provider = url.includes("groq.com") ? "groq" : url.includes("x.ai") ? "xai" : "openai";
+    const promptTokens = Number(usage.prompt_tokens || usage.input_tokens || 0) || 0;
+    const completionTokens = Number(usage.completion_tokens || usage.output_tokens || 0) || 0;
+    const audioSeconds = isAudio && Number.isFinite(Number(data?.duration)) ? Number(data.duration) : null;
+    const price = aiPriceFor(model);
+    let cost = null;
+    if (isAudio && audioSeconds !== null && price.audioPerHour !== undefined) cost = (audioSeconds / 3600) * price.audioPerHour;
+    if (!isAudio && price.input !== undefined && (promptTokens || completionTokens)) {
+      cost = (promptTokens * price.input + completionTokens * (price.output ?? price.input)) / 1_000_000;
+    }
+    await db.query(
+      `INSERT INTO ai_usage (id, user_id, module, provider, model, kind, status, prompt_tokens, completion_tokens, audio_seconds, cost_usd, duration_ms, created_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+      [
+        `aiu-${crypto.randomUUID()}`,
+        context.userId || null,
+        aiModuleFromPath(context.path),
+        provider,
+        model,
+        isAudio ? "audio" : "chat",
+        response.ok ? "ok" : `http_${response.status}`,
+        promptTokens,
+        completionTokens,
+        audioSeconds,
+        cost,
+        Date.now() - startedAt,
+        nowIso()
+      ]
+    );
+  } catch (error) {
+    console.warn(`Mesure d'usage IA non enregistrée : ${error.message}`);
+  }
+}
+
+const nativeFetch = globalThis.fetch.bind(globalThis);
+globalThis.fetch = async (input, init) => {
+  const url = typeof input === "string" ? input : input?.url || String(input || "");
+  if (!AI_ENDPOINT_PATTERN.test(url)) return nativeFetch(input, init);
+  const startedAt = Date.now();
+  const response = await nativeFetch(input, init);
+  recordAiUsage(url, response.clone(), startedAt);
+  return response;
+};
+
+// ---------------------------------------------------------------- taux de change
+// Taux de référence officiels de la Banque centrale européenne (publiés
+// chaque jour ouvré), conservés en base pour rester disponibles hors ligne.
+const FX_SETTING_KEY = "fx_rates_ecb";
+let fxRatesCache = null;
+async function getFxRates() {
+  const fresh = fxRatesCache && Date.now() - new Date(fxRatesCache.fetchedAt).getTime() < 6 * 60 * 60 * 1000;
+  if (fresh) return fxRatesCache;
+  try {
+    const response = await nativeFetch("https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml", { signal: AbortSignal.timeout(8000) });
+    if (!response.ok) throw new Error(`BCE ${response.status}`);
+    const xml = await response.text();
+    const date = xml.match(/time=['"](\d{4}-\d{2}-\d{2})['"]/)?.[1];
+    const rates = {};
+    for (const match of xml.matchAll(/currency=['"]([A-Z]{3})['"]\s+rate=['"]([0-9.]+)['"]/g)) rates[match[1]] = Number(match[2]);
+    if (!date || !rates.USD) throw new Error("réponse BCE illisible");
+    fxRatesCache = { base: "EUR", source: "BCE", date, rates, fetchedAt: nowIso() };
+    await setPlatformSetting(FX_SETTING_KEY, JSON.stringify(fxRatesCache));
+  } catch (error) {
+    if (!fxRatesCache) {
+      try {
+        const stored = getPlatformSetting(FX_SETTING_KEY);
+        if (stored) fxRatesCache = JSON.parse(stored);
+      } catch (_error) {
+        fxRatesCache = null;
+      }
+    }
+    console.warn(`Taux BCE indisponibles (${error.message})${fxRatesCache ? `, dernier taux connu du ${fxRatesCache.date}` : ""}.`);
+  }
+  return fxRatesCache;
+}
+
+app.get("/api/fx-rates", async (_req, res) => {
+  const fx = await getFxRates();
+  if (!fx) return res.status(503).json({ error: "Taux de change indisponibles." });
+  return res.json({ base: fx.base, source: fx.source, date: fx.date, rates: { USD: fx.rates.USD, GBP: fx.rates.GBP } });
+});
+
 async function runCabinetWeeklyDigests() {
   try {
     const { rows: cabinets } = await db.query(
@@ -5178,7 +5563,13 @@ app.locals.ctx = {
   generateEmailCandidates,
   probeSmtp,
   JOB_APPLICATION_STATUSES,
-  toPublicJobApplication
+  toPublicJobApplication,
+  logCabinetActivity,
+  anonymizeCabinetCandidates,
+  getCabinetExpiredCandidateIds,
+  ensureCabinetClient,
+  getFxRates,
+  aiPriceFor
 };
 
 registerHealthRoutes(app);
@@ -5218,6 +5609,12 @@ if (serverStart.status === "existing") {
   setInterval(() => runSchoolWeeklyDigests(), 6 * 60 * 60 * 1000);
   setTimeout(() => runCabinetWeeklyDigests(), 90_000);
   setInterval(() => runCabinetWeeklyDigests(), 6 * 60 * 60 * 1000);
+  // RGPD : anonymisation automatique des candidats au-delà de la durée de
+  // conservation (cabinets qui l'ont activée), et fiches clients créées à
+  // partir des noms déjà saisis sur les missions.
+  setTimeout(() => backfillCabinetClients(), 20_000);
+  setTimeout(() => runCabinetRetention(), 120_000);
+  setInterval(() => runCabinetRetention(), 6 * 60 * 60 * 1000);
 }
 
 

@@ -304,7 +304,8 @@ export function runMatching({ user, cvRecord, offerText, offers, premiumAccess }
     sector: user.profile?.sector || ""
   };
 
-  const allOffers = [customOffer, ...offers];
+  // Uniquement l'offre réellement analysée par le candidat (aucune offre d'exemple).
+  const allOffers = [customOffer, ...(offers || []).filter((offer) => offer?.id && !String(offer.id).startsWith("off-00"))];
   const scored = allOffers.map((offer) => scoreOffer({ candidate, offer, premiumAccess }));
   scored.sort((a, b) => b.score - a.score);
 

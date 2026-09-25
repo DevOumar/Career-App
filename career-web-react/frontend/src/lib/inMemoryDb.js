@@ -749,6 +749,14 @@ export async function getAdminOverview(adminUserId) {
   return request(`/admin/overview?adminUserId=${encodeURIComponent(adminUserId)}`);
 }
 
+export async function getFxRates() {
+  return request("/fx-rates");
+}
+
+export async function getAdminInvestorMetrics(adminUserId) {
+  return request(`/admin/investor-metrics?adminUserId=${encodeURIComponent(adminUserId)}`);
+}
+
 export async function getAdminNotifications(adminUserId) {
   const data = await request(`/admin/notifications?adminUserId=${encodeURIComponent(adminUserId)}`);
   return data.items;
@@ -1245,6 +1253,79 @@ export async function getCabinetProfile(userId) {
 
 export async function updateCabinetProfile(userId, profile) {
   return request("/cabinet/profile", { method: "PUT", body: { userId, profile } });
+}
+
+// --- Espace Cabinet : clients, entretiens, factures, journal, RGPD, matching
+
+const cabinetQuery = (userId, extra = {}) => new URLSearchParams({ userId, ...extra }).toString();
+
+export async function getCabinetClients(userId) {
+  return (await request(`/cabinet/clients?${cabinetQuery(userId)}`)).items;
+}
+export async function createCabinetClient(userId, payload) {
+  return request("/cabinet/clients", { method: "POST", body: { userId, ...payload } });
+}
+export async function updateCabinetClient(userId, clientId, payload) {
+  return request(`/cabinet/clients/${encodeURIComponent(clientId)}`, { method: "PUT", body: { userId, ...payload } });
+}
+export async function deleteCabinetClient(userId, clientId) {
+  return request(`/cabinet/clients/${encodeURIComponent(clientId)}?${cabinetQuery(userId)}`, { method: "DELETE" });
+}
+
+export async function getCabinetInterviews(userId, { candidateId = "" } = {}) {
+  return (await request(`/cabinet/interviews?${cabinetQuery(userId, candidateId ? { candidateId } : {})}`)).items;
+}
+export async function createCabinetInterview(userId, payload) {
+  return request("/cabinet/interviews", { method: "POST", body: { userId, ...payload } });
+}
+export async function updateCabinetInterview(userId, interviewId, payload) {
+  return request(`/cabinet/interviews/${encodeURIComponent(interviewId)}`, { method: "PUT", body: { userId, ...payload } });
+}
+export async function deleteCabinetInterview(userId, interviewId) {
+  return request(`/cabinet/interviews/${encodeURIComponent(interviewId)}?${cabinetQuery(userId)}`, { method: "DELETE" });
+}
+
+export async function getCabinetInvoices(userId) {
+  return request(`/cabinet/invoices?${cabinetQuery(userId)}`);
+}
+export async function createCabinetInvoice(userId, payload) {
+  return request("/cabinet/invoices", { method: "POST", body: { userId, ...payload } });
+}
+export async function updateCabinetInvoice(userId, invoiceId, payload) {
+  return request(`/cabinet/invoices/${encodeURIComponent(invoiceId)}`, { method: "PUT", body: { userId, ...payload } });
+}
+export async function deleteCabinetInvoice(userId, invoiceId) {
+  return request(`/cabinet/invoices/${encodeURIComponent(invoiceId)}?${cabinetQuery(userId)}`, { method: "DELETE" });
+}
+
+export async function getCabinetActivity(userId) {
+  return (await request(`/cabinet/activity?${cabinetQuery(userId)}`)).items;
+}
+
+export async function sendCabinetCandidateEmail(userId, candidateId, { subject, message }) {
+  return request(`/cabinet/candidates/${encodeURIComponent(candidateId)}/email`, { method: "POST", body: { userId, subject, message } });
+}
+export async function getCabinetCandidateTimeline(userId, candidateId) {
+  return request(`/cabinet/candidates/${encodeURIComponent(candidateId)}/timeline?${cabinetQuery(userId)}`);
+}
+export async function exportCabinetCandidateData(userId, candidateId) {
+  return request(`/cabinet/candidates/${encodeURIComponent(candidateId)}/export?${cabinetQuery(userId)}`);
+}
+export async function anonymizeCabinetCandidates(userId, candidateIds) {
+  return request("/cabinet/candidates/anonymize", { method: "POST", body: { userId, candidateIds } });
+}
+export async function getCabinetRgpd(userId) {
+  return request(`/cabinet/rgpd?${cabinetQuery(userId)}`);
+}
+export async function updateCabinetRgpd(userId, { retentionMonths, autoAnonymize }) {
+  return request("/cabinet/rgpd", { method: "PUT", body: { userId, retentionMonths, autoAnonymize } });
+}
+
+export async function getCabinetMissionMatches(userId, missionId) {
+  return request(`/cabinet/missions/${encodeURIComponent(missionId)}/matches?${cabinetQuery(userId)}`);
+}
+export async function analyzeCabinetMatchWithAi(userId, missionId, candidateId) {
+  return request(`/cabinet/missions/${encodeURIComponent(missionId)}/matches/${encodeURIComponent(candidateId)}/ai`, { method: "POST", body: { userId } });
 }
 
 export async function getPublicCabinetPage(slug) {

@@ -250,10 +250,14 @@ export function registerCabinetCandidatesRoutes(app) {
     buildCabinetMetrics,
     buildCabinetAlerts,
     resolveAccountSegments,
-    aiActionRateLimiter
+    aiActionRateLimiter,
+    logCabinetActivity
   } = app.locals.ctx;
 
 const CABINET_CANDIDATE_STATUSES = new Set(["sourced", "contacted", "interviewing", "placed", "rejected"]);
+// RGPD : consentement du candidat au traitement de ses données par le cabinet.
+const CABINET_CONSENT_STATUSES = new Set(["pending", "granted", "refused"]);
+const CABINET_CONSENT_SOURCES = new Set(["", "email", "phone", "form", "meeting", "job_board", "other"]);
 
 function normalizeCabinetContact(value) {
   return coerceString(value).trim().toLowerCase();
@@ -300,6 +304,11 @@ app.get("/api/cabinet/candidates", async (req, res) => {
         hasCv: Boolean(row.source_text),
         followUpDate: row.follow_up_date || null,
         followUpDue: Boolean(row.follow_up_date && row.follow_up_date <= now),
+        consentStatus: row.consent_status || "pending",
+        consentAt: row.consent_at || null,
+        consentSource: row.consent_source || "",
+        anonymizedAt: row.anonymized_at || null,
+        statusUpdatedAt: row.status_updated_at || null,
         createdAt: row.created_at,
         updatedAt: row.updated_at
       }))
@@ -479,6 +488,24 @@ app.post("/api/cabinet/candidates", async (req, res) => {
         now
       ]
     );
+    await db.query(
+      "UPDATE cabinet_candidates SET status_updated_at = created_at, placed_at = CASE WHEN status = 'placed' THEN created_at ELSE NULL END WHERE id = $1",
+      [id]
+    );
+    const consentStatus = CABINET_CONSENT_STATUSES.has(coerceString(req.body?.consentStatus)) ? coerceString(req.body?.consentStatus) : "pending";
+    const consentSource = CABINET_CONSENT_SOURCES.has(coerceString(req.body?.consentSource)) ? coerceString(req.body?.consentSource) : "";
+    await db.query("UPDATE cabinet_candidates SET consent_status = $1, consent_source = $2, consent_at = $3 WHERE id = $4", [
+      consentStatus,
+      consentSource,
+      consentStatus === "pending" ? null : now,
+      id
+    ]);
+    await logCabinetActivity(cabinet, "candidate_created", {
+      entityType: "candidate",
+      entityId: id,
+      entityLabel: `${firstName} ${lastName}`.trim(),
+      details: { fromCv: Boolean(coerceString(req.body?.sourceText)) }
+    });
     await logSecurityEvent(req, userId, "cabinet_candidate_created", { candidateId: id });
     return res.status(201).json({ ok: true, id });
   } catch (error) {
@@ -504,6 +531,11 @@ app.put("/api/cabinet/candidates/:id", async (req, res) => {
     );
     if (!existingRows.length) return res.status(404).json({ error: "Candidat introuvable." });
     const existing = existingRows[0];
+    if (existing.anonymized_at) return res.status(400).json({ error: "Ce candidat a été anonymisé : sa fiche ne peut plus être modifiée." });
+    const consentStatus = coerceString(req.body?.consentStatus);
+    if (consentStatus && !CABINET_CONSENT_STATUSES.has(consentStatus)) return res.status(400).json({ error: "Consentement invalide." });
+    const consentSource = req.body?.consentSource !== undefined ? coerceString(req.body.consentSource) : existing.consent_source;
+    if (!CABINET_CONSENT_SOURCES.has(consentSource || "")) return res.status(400).json({ error: "Origine du consentement invalide." });
 
     const skills = Array.isArray(req.body?.skills)
       ? req.body.skills.map((value) => coerceString(value).trim()).filter(Boolean)
@@ -533,6 +565,45 @@ app.put("/api/cabinet/candidates/:id", async (req, res) => {
         cabinet.cabinetRootId
       ]
     );
+    const candidateLabel = `${coerceString(req.body?.firstName ?? existing.first_name)} ${coerceString(req.body?.lastName ?? existing.last_name)}`.trim();
+    if ((consentStatus && consentStatus !== existing.consent_status) || (consentSource || "") !== (existing.consent_source || "")) {
+      const nextConsent = consentStatus || existing.consent_status;
+      await db.query("UPDATE cabinet_candidates SET consent_status = $1, consent_source = $2, consent_at = $3 WHERE id = $4", [
+        nextConsent,
+        consentSource || "",
+        nextConsent === "pending" ? null : nextConsent !== existing.consent_status ? nowIso() : existing.consent_at,
+        candidateId
+      ]);
+      if (nextConsent !== existing.consent_status) {
+        await logCabinetActivity(cabinet, "candidate_consent_changed", {
+          entityType: "candidate",
+          entityId: candidateId,
+          entityLabel: candidateLabel,
+          details: { from: existing.consent_status, to: nextConsent }
+        });
+      }
+    }
+    if (status && status !== existing.status) {
+      await logCabinetActivity(cabinet, "candidate_status_changed", {
+        entityType: "candidate",
+        entityId: candidateId,
+        entityLabel: candidateLabel,
+        details: { from: existing.status, to: status }
+      });
+    } else {
+      await logCabinetActivity(cabinet, "candidate_updated", { entityType: "candidate", entityId: candidateId, entityLabel: candidateLabel });
+    }
+    // Date du changement d'étape (et du placement) pour les délais de l'Accueil.
+    if (status && status !== existing.status) {
+      const changedAt = nowIso();
+      await db.query(
+        `UPDATE cabinet_candidates
+         SET status_updated_at = $1,
+             placed_at = CASE WHEN $2 = 'placed' THEN $1 ELSE NULL END
+         WHERE id = $3 AND cabinet_user_id = $4`,
+        [changedAt, status, candidateId, cabinet.cabinetRootId]
+      );
+    }
     return res.json({ ok: true });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
@@ -571,10 +642,11 @@ app.post("/api/cabinet/candidates/:id/notes", async (req, res) => {
     if (!body) return res.status(400).json({ error: "Le contenu de la note est requis." });
 
     const { rows: candidateRows } = await db.query(
-      "SELECT id FROM cabinet_candidates WHERE id = $1 AND cabinet_user_id = $2",
+      "SELECT id, anonymized_at FROM cabinet_candidates WHERE id = $1 AND cabinet_user_id = $2",
       [candidateId, cabinet.cabinetRootId]
     );
     if (!candidateRows.length) return res.status(404).json({ error: "Candidat introuvable." });
+    if (candidateRows[0].anonymized_at) return res.status(400).json({ error: "Ce candidat a été anonymisé." });
 
     const id = `ccnote-${crypto.randomUUID()}`;
     const now = nowIso();
@@ -585,6 +657,8 @@ app.post("/api/cabinet/candidates/:id/notes", async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6)`,
       [id, candidateId, cabinet.cabinetRootId, `${cabinet.first_name} ${cabinet.last_name}`.trim(), body, now]
     );
+    await db.query("UPDATE cabinet_candidates SET updated_at = $1 WHERE id = $2", [now, candidateId]);
+    await logCabinetActivity(cabinet, "candidate_note_added", { entityType: "candidate", entityId: candidateId, details: { excerpt: body.slice(0, 120) } });
     return res.status(201).json({ ok: true, id, createdAt: now });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
@@ -610,9 +684,21 @@ app.delete("/api/cabinet/candidates/:id", async (req, res) => {
     if (!requireMatchingSession(req, res, userId)) return;
     const cabinet = await requireCabinetOwner(userId);
     const candidateId = coerceString(req.params.id);
+    const { rows: ownedRows } = await db.query("SELECT first_name, last_name FROM cabinet_candidates WHERE id = $1 AND cabinet_user_id = $2", [
+      candidateId,
+      cabinet.cabinetRootId
+    ]);
+    if (!ownedRows.length) return res.status(404).json({ error: "Candidat introuvable." });
     await db.query("DELETE FROM cabinet_mission_candidates WHERE candidate_id = $1", [candidateId]);
     await db.query("DELETE FROM cabinet_candidate_notes WHERE candidate_id = $1", [candidateId]);
+    await db.query("DELETE FROM cabinet_candidate_emails WHERE candidate_id = $1", [candidateId]);
+    await db.query("DELETE FROM cabinet_interviews WHERE candidate_id = $1", [candidateId]);
     await db.query("DELETE FROM cabinet_candidates WHERE id = $1 AND cabinet_user_id = $2", [candidateId, cabinet.cabinetRootId]);
+    await logCabinetActivity(cabinet, "candidate_deleted", {
+      entityType: "candidate",
+      entityId: candidateId,
+      entityLabel: `${ownedRows[0].first_name} ${ownedRows[0].last_name}`.trim()
+    });
     await logSecurityEvent(req, userId, "cabinet_candidate_deleted", { candidateId });
     return res.json({ ok: true });
   } catch (error) {

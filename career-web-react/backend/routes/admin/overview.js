@@ -496,4 +496,227 @@ app.get("/api/admin/notifications", async (req, res) => {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
+// Indicateurs investisseurs (rétention, revenu récurrent, économie unitaire
+// de l'IA, placement). Tout est calculé à partir des données réellement
+// enregistrées ; les comptes administrateurs sont exclus.
+//  - Utilisateur actif : au moins une trace sur la période (connexion ou autre
+//    événement de compte, activité de session, CV, analyse, candidature,
+//    lettre, entretien, négociation, avis, action cabinet).
+//  - Revenu récurrent mensuel (MRR) : dernière transaction payée non
+//    remboursée de chaque compte, tant que sa période court (30 j mensuel,
+//    365 j annuel) ; un paiement annuel compte pour 1/12 par mois.
+//  - Coût IA : mesuré (tokens réels renvoyés par le fournisseur × tarif
+//    public du modèle, converti au taux BCE), sur les 30 derniers jours.
+app.get("/api/admin/investor-metrics", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
+    await requireAdminModule(adminUserId, "dashboard");
+
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const iso = (ms) => new Date(ms).toISOString();
+    const since = (days) => iso(now - days * DAY_MS);
+
+    const { rows: userRows } = await db.query("SELECT id, role_type, created_at FROM users WHERE role_type <> 'admin'");
+    const userById = new Map(userRows.map((row) => [row.id, row]));
+
+    // Toutes les traces d'activité des 13 derniers mois, par utilisateur.
+    const ACTIVITY_SQL = `
+      SELECT user_id, created_at AS ts FROM account_security_events WHERE event_type NOT LIKE 'admin\\_%'
+      UNION ALL SELECT user_id, last_seen_at FROM sessions
+      UNION ALL SELECT user_id, created_at FROM sessions
+      UNION ALL SELECT user_id, created_at FROM cvs
+      UNION ALL SELECT user_id, created_at FROM match_runs
+      UNION ALL SELECT user_id, updated_at FROM job_applications
+      UNION ALL SELECT user_id, updated_at FROM cover_letters
+      UNION ALL SELECT user_id, updated_at FROM negotiation_conversations
+      UNION ALL SELECT user_id, updated_at FROM interview_conversations
+      UNION ALL SELECT user_id, created_at FROM satisfaction_surveys
+      UNION ALL SELECT created_by, updated_at FROM cabinet_candidates WHERE created_by IS NOT NULL`;
+    const { rows: activityRows } = await db.query(
+      `SELECT user_id, ts FROM (${ACTIVITY_SQL}) a WHERE ts IS NOT NULL AND ts <> '' AND ts >= $1`,
+      [since(400)]
+    );
+    const lastActivity = new Map();
+    const activeMonths = new Map();
+    const monthKey = (date) => `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+    for (const row of activityRows) {
+      if (!userById.has(row.user_id)) continue;
+      const date = new Date(row.ts);
+      const time = date.getTime();
+      if (Number.isNaN(time) || time > now + DAY_MS) continue;
+      if (!lastActivity.has(row.user_id) || lastActivity.get(row.user_id) < time) lastActivity.set(row.user_id, time);
+      if (!activeMonths.has(row.user_id)) activeMonths.set(row.user_id, new Set());
+      activeMonths.get(row.user_id).add(monthKey(date));
+    }
+    const activeWithin = (days) => [...lastActivity.values()].filter((time) => time >= now - days * DAY_MS).length;
+    const dau = activeWithin(1);
+    const wau = activeWithin(7);
+    const mau = activeWithin(30);
+
+    // Rétention à 30 jours : comptes de plus de 30 jours encore actifs ce mois-ci.
+    const matureUsers = userRows.filter((row) => new Date(row.created_at).getTime() < now - 30 * DAY_MS);
+    const matureActive = matureUsers.filter((row) => (lastActivity.get(row.id) || 0) >= now - 30 * DAY_MS).length;
+
+    // Cohortes : 6 derniers mois d'inscription, part encore active 1, 2 et 3
+    // mois après le mois d'inscription (le mois d'inscription lui-même
+    // n'est pas une mesure de rétention).
+    const cohorts = [];
+    const currentMonth = new Date(Date.UTC(new Date(now).getUTCFullYear(), new Date(now).getUTCMonth(), 1));
+    for (let back = 5; back >= 0; back -= 1) {
+      const start = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() - back, 1));
+      const key = monthKey(start);
+      const members = userRows.filter((row) => {
+        const created = new Date(row.created_at);
+        return !Number.isNaN(created.getTime()) && monthKey(created) === key;
+      });
+      const retention = [];
+      for (let offset = 1; offset <= 3; offset += 1) {
+        const target = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + offset, 1));
+        if (target > currentMonth) {
+          retention.push(null);
+          continue;
+        }
+        const targetKey = monthKey(target);
+        const active = members.filter((row) => activeMonths.get(row.id)?.has(targetKey)).length;
+        retention.push(members.length ? Math.round((active / members.length) * 100) : null);
+      }
+      cohorts.push({ month: key, size: members.length, retention });
+    }
+
+    // ------------------------------------------------ revenu récurrent
+    const { rows: txRows } = await db.query(
+      `SELECT user_id, plan_id, billing_cycle, amount_collected, created_at
+       FROM transactions
+       WHERE COALESCE(refunded, 0) = 0 AND amount_collected > 0
+       ORDER BY created_at DESC`
+    );
+    const periodDays = (cycle) => (cycle === "annual" || cycle === "yearly" ? 365 : 30);
+    const monthlyValue = (row) => Number(row.amount_collected || 0) / (periodDays(row.billing_cycle) === 365 ? 12 : 1);
+    const segmentOf = (userId) => {
+      const role = userById.get(userId)?.role_type || "";
+      if (role === "school") return "school";
+      if (role === "recruiter_firm" || role === "recruiter_internal") return "agency";
+      return "candidate";
+    };
+    // MRR à une date donnée : dernière transaction de chaque compte dont la
+    // période couvre cette date.
+    function mrrAt(atMs) {
+      const seen = new Set();
+      const bySegment = { candidate: 0, school: 0, agency: 0 };
+      let total = 0;
+      let customers = 0;
+      for (const row of txRows) {
+        const start = new Date(row.created_at).getTime();
+        if (Number.isNaN(start) || start > atMs || seen.has(row.user_id)) continue;
+        seen.add(row.user_id);
+        if (start + periodDays(row.billing_cycle) * DAY_MS < atMs) continue;
+        const value = monthlyValue(row);
+        total += value;
+        customers += 1;
+        bySegment[segmentOf(row.user_id)] += value;
+      }
+      return { total, customers, bySegment };
+    }
+    const round2 = (value) => Math.round(value * 100) / 100;
+    const current = mrrAt(now);
+    const mrrTrend = [];
+    for (let back = 5; back >= 0; back -= 1) {
+      const end = back === 0 ? now : Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() - back + 1, 1) - 1;
+      mrrTrend.push({ weekStart: iso(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() - back, 1)), mrr: round2(mrrAt(end).total) });
+    }
+    const previousMrr = mrrTrend.length > 1 ? mrrTrend[mrrTrend.length - 2].mrr : 0;
+
+    // Revenu encaissé sur 30 jours (tous paiements non remboursés).
+    const revenueLast30 = txRows
+      .filter((row) => new Date(row.created_at).getTime() >= now - 30 * DAY_MS)
+      .reduce((sum, row) => sum + Number(row.amount_collected || 0), 0);
+
+    // ------------------------------------------------ coût IA réel (30 jours)
+    // Tokens et durée audio renvoyés par le fournisseur à chaque appel
+    // (table ai_usage), × tarif public du modèle, convertis au taux BCE.
+    const from30 = since(30);
+    const { rows: usageRows } = await db.query(
+      `SELECT COUNT(*)::int AS calls, COALESCE(SUM(cost_usd), 0) AS cost_usd, MIN(created_at) AS first_call,
+              COUNT(DISTINCT user_id)::int AS users
+       FROM ai_usage WHERE created_at >= $1`,
+      [from30]
+    );
+    const { rows: firstUsageRows } = await db.query("SELECT MIN(created_at) AS first FROM ai_usage");
+    const fx = await app.locals.ctx.getFxRates();
+    const usdPerEur = Number(fx?.rates?.USD) || null;
+    const aiCalls = usageRows[0]?.calls || 0;
+    const aiCostLast30 = usdPerEur ? Number(usageRows[0]?.cost_usd || 0) / usdPerEur : null;
+    const measuredSince = firstUsageRows[0]?.first || null;
+
+    // ------------------------------------------------ placement (cabinets)
+    const { rows: placementRows } = await db.query(
+      `SELECT
+         (SELECT COUNT(*)::int FROM cabinet_candidates) AS candidates,
+         (SELECT COUNT(*)::int FROM cabinet_candidates WHERE status = 'placed') AS placed,
+         (SELECT COUNT(*)::int FROM cabinet_mission_candidates) AS assignments,
+         (SELECT COUNT(*)::int FROM cabinet_mission_candidates WHERE stage = 'placed') AS assignments_placed,
+         (SELECT COUNT(*)::int FROM cabinet_missions) AS missions,
+         (SELECT COUNT(*)::int FROM cabinet_missions WHERE status = 'closed') AS missions_closed,
+         (SELECT COALESCE(SUM(placement_amount), 0) FROM cabinet_missions) AS fees`
+    );
+    const placement = placementRows[0] || {};
+    const { rows: applicationRows } = await db.query(
+      "SELECT COUNT(*)::int AS total, COUNT(*) FILTER (WHERE status = 'offer')::int AS offers, COUNT(*) FILTER (WHERE status IN ('interview', 'offer'))::int AS interviews FROM job_applications"
+    );
+    const applications = applicationRows[0] || {};
+
+    const share = (part, total) => (total ? Math.round((part / total) * 1000) / 10 : null);
+
+    return res.json({
+      generatedAt: iso(now),
+      usage: {
+        totalUsers: userRows.length,
+        dau,
+        wau,
+        mau,
+        stickiness: share(dau, mau),
+        retention30: share(matureActive, matureUsers.length),
+        matureUsers: matureUsers.length,
+        matureActive,
+        cohorts
+      },
+      revenue: {
+        mrr: round2(current.total),
+        arr: round2(current.total * 12),
+        payingCustomers: current.customers,
+        arpa: current.customers ? round2(current.total / current.customers) : null,
+        mrrBySegment: Object.fromEntries(Object.entries(current.bySegment).map(([key, value]) => [key, round2(value)])),
+        mrrGrowth: previousMrr > 0 ? share(current.total - previousMrr, previousMrr) : null,
+        mrrTrend,
+        revenueLast30: round2(revenueLast30)
+      },
+      unitEconomics: {
+        aiCalls30: aiCalls,
+        aiCost30: aiCostLast30 === null ? null : Math.round(aiCostLast30 * 10000) / 10000,
+        measuredSince,
+        fxDate: fx?.date || null,
+        aiCostPerActiveUser: mau && aiCostLast30 !== null ? Math.round((aiCostLast30 / mau) * 10000) / 10000 : null,
+        revenuePerActiveUser: mau ? round2(revenueLast30 / mau) : null,
+        aiCostShareOfRevenue: revenueLast30 > 0 && aiCostLast30 !== null ? share(aiCostLast30, revenueLast30) : null
+      },
+      placement: {
+        candidates: placement.candidates || 0,
+        placed: placement.placed || 0,
+        placementRate: share(placement.placed || 0, placement.candidates || 0),
+        assignments: placement.assignments || 0,
+        assignmentsPlaced: placement.assignments_placed || 0,
+        missions: placement.missions || 0,
+        missionsClosed: placement.missions_closed || 0,
+        fees: Number(placement.fees || 0),
+        applications: applications.total || 0,
+        applicationInterviews: applications.interviews || 0,
+        applicationOffers: applications.offers || 0
+      }
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
 }

@@ -91,21 +91,22 @@ export default function AdminAiMonitoringPage({ user, language }) {
         failed: "Needs review",
         partial: "Partial",
         runs: "Match analyses",
-        cost: "Estimated cost",
+        cost: "Measured AI cost",
         avg: "Average score",
         invalid: "Invalid responses / weak extractions",
         costVsRevenue: "AI cost vs revenue",
-        costByModule: "Estimated cost by module",
+        costByModule: "Measured cost by module",
         totalRevenue: "Total revenue collected",
-        totalCost: "Total estimated AI cost",
-        margin: "Estimated margin",
+        totalCost: "Total measured AI cost",
+        margin: "Margin",
         marginRate: "Margin rate",
         moduleCv: "CV extraction",
         moduleMatching: "Job matching",
         moduleCoverLetter: "Cover letters",
         moduleNegotiation: "Salary negotiation",
         moduleInterview: "Interview simulator",
-        moduleEmailScout: "Email Scout"
+        moduleEmailScout: "Email Scout",
+        moduleOther: "Other (admin tools)"
       }
     : {
         title: "Monitoring IA",
@@ -114,21 +115,22 @@ export default function AdminAiMonitoringPage({ user, language }) {
         failed: "À revoir",
         partial: "Partielles",
         runs: "Analyses matching",
-        cost: "Coût estimé",
+        cost: "Coût IA mesuré",
         avg: "Score moyen",
         invalid: "Réponses invalides / extractions faibles",
         costVsRevenue: "Coût IA vs revenu",
-        costByModule: "Coût estimé par module",
+        costByModule: "Coût mesuré par module",
         totalRevenue: "Revenu total encaissé",
-        totalCost: "Coût IA total estimé",
-        margin: "Marge estimée",
+        totalCost: "Coût IA total mesuré",
+        margin: "Marge",
         marginRate: "Taux de marge",
         moduleCv: "Extraction CV",
         moduleMatching: "Matching offres",
         moduleCoverLetter: "Lettres de motivation",
         moduleNegotiation: "Négociation salariale",
         moduleInterview: "Simulateur d'entretiens",
-        moduleEmailScout: "Email Scout"
+        moduleEmailScout: "Email Scout",
+        moduleOther: "Autres (outils admin)"
       };
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
@@ -143,9 +145,13 @@ export default function AdminAiMonitoringPage({ user, language }) {
   const euro = (value, digits = 2) => `${Number(value || 0).toLocaleString(language === "en" ? "en-GB" : "fr-FR", { minimumFractionDigits: digits, maximumFractionDigits: digits })} €`;
   const totalExtractions = Number(data.successfulExtractions || 0) + Number(data.partialExtractions || 0) + Number(data.failedExtractions || 0);
   const successRate = totalExtractions ? Math.round((Number(data.successfulExtractions || 0) / totalExtractions) * 100) : 0;
-  const revenue = Number(data.totalRevenueCollected || 0);
-  const cost = Number(data.estimatedCost?.amount || 0);
+  const ai = data.aiCost || {};
+  const measured = Boolean(ai.measuredSince);
+  const revenue = Number((measured ? data.revenueSinceMeasurement : data.totalRevenueCollected) || 0);
+  const cost = Number(ai.costEur || 0);
   const margin = Number(data.estimatedMargin || 0);
+  const sinceLabel = measured ? new Date(ai.measuredSince).toLocaleDateString(language === "en" ? "en-GB" : "fr-FR") : "";
+  const number = (value) => Number(value || 0).toLocaleString(language === "en" ? "en-GB" : "fr-FR");
   const costShare = revenue > 0 ? Math.min(100, (cost / revenue) * 100) : cost > 0 ? 100 : 0;
 
   const modules = [
@@ -154,9 +160,11 @@ export default function AdminAiMonitoringPage({ user, language }) {
     { key: "interview", label: copy.moduleInterview, icon: "satisfaction" },
     { key: "coverLetter", label: copy.moduleCoverLetter, icon: "edit" },
     { key: "negotiation", label: copy.moduleNegotiation, icon: "finance" },
-    { key: "emailScout", label: copy.moduleEmailScout, icon: "search" }
+    { key: "emailScout", label: copy.moduleEmailScout, icon: "search" },
+    { key: "other", label: copy.moduleOther, icon: "settings" }
   ]
     .map((module) => ({ ...module, value: Number(data.costByModule?.[module.key] || 0) }))
+    .filter((module) => module.key !== "other" || module.value > 0)
     .sort((a, b) => b.value - a.value);
   const moduleMax = Math.max(0.0001, ...modules.map((module) => module.value));
   const moduleTotal = modules.reduce((sum, module) => sum + module.value, 0);
@@ -165,7 +173,15 @@ export default function AdminAiMonitoringPage({ user, language }) {
     { icon: "quality", label: t("Taux de réussite", "Success rate"), value: `${successRate} %`, tone: "green", bar: successRate, hint: t(`${data.successfulExtractions} extractions réussies`, `${data.successfulExtractions} successful extractions`) },
     { icon: "alert", label: t("Extractions à surveiller", "Extractions to watch"), value: Number(data.partialExtractions || 0) + Number(data.failedExtractions || 0), tone: "danger", hint: t(`${data.partialExtractions} partielles · ${data.failedExtractions} à revoir`, `${data.partialExtractions} partial · ${data.failedExtractions} to review`) },
     { icon: "adminMatches", label: copy.runs, value: data.totalMatchRuns, tone: "", hint: t(`score moyen ${data.averageMatchScore == null ? "-" : `${data.averageMatchScore}/100`}`, `average score ${data.averageMatchScore == null ? "-" : `${data.averageMatchScore}/100`}`) },
-    { icon: "finance", label: copy.cost, value: euro(cost, 3), tone: "gold", hint: t("tous modules confondus", "all modules combined") }
+    {
+      icon: "finance",
+      label: copy.cost,
+      value: measured ? euro(cost, 3) : "-",
+      tone: "gold",
+      hint: measured
+        ? t(`${number(ai.calls)} appels mesurés depuis le ${sinceLabel}`, `${number(ai.calls)} calls measured since ${sinceLabel}`)
+        : t("Aucun appel IA mesuré pour l'instant", "No AI call measured yet")
+    }
   ];
 
   const issuesOf = (item) => [
@@ -225,7 +241,7 @@ export default function AdminAiMonitoringPage({ user, language }) {
           </div>
           <div className="jy-figures jy-figures-3">
             <div className="jy-figure">
-              <span>{t("Revenu encaissé", "Revenue collected")}</span>
+              <span>{measured ? t(`Revenu encaissé depuis le ${sinceLabel}`, `Revenue collected since ${sinceLabel}`) : t("Revenu encaissé", "Revenue collected")}</span>
               <strong>{euro(revenue)}</strong>
             </div>
             <div className="jy-figure">
@@ -234,7 +250,7 @@ export default function AdminAiMonitoringPage({ user, language }) {
             </div>
             <div className="jy-figure">
               <span>{copy.margin}</span>
-              <strong className={margin >= 0 ? "green" : "danger"}>{euro(margin)}</strong>
+              <strong className={margin >= 0 ? "green" : "danger"}>{measured && data.estimatedMargin !== null ? euro(margin) : "-"}</strong>
             </div>
           </div>
           <div className="jy-split-bar" aria-hidden="true">
@@ -250,11 +266,29 @@ export default function AdminAiMonitoringPage({ user, language }) {
             </span>
           </div>
           <p className="jy-card-foot">
-            {t(
-              "Estimation : nombre d'appels IA enregistrés × coût moyen par appel, tous modules confondus.",
-              "Estimate: recorded AI calls × average cost per call, all modules combined."
-            )}
+            {measured
+              ? t(
+                  `Mesure réelle : ${number(ai.promptTokens)} tokens envoyés et ${number(ai.completionTokens)} tokens générés${ai.audioSeconds ? `, ${number(Math.round(ai.audioSeconds / 60))} min d'audio transcrit` : ""}, facturés ${ai.costUsd != null ? `${Number(ai.costUsd).toLocaleString("fr-FR", { maximumFractionDigits: 4 })} $` : "-"} au tarif public du fournisseur, convertis au taux BCE du ${ai.fxDate ? new Date(ai.fxDate).toLocaleDateString("fr-FR") : "-"} (1 € = ${ai.fxRate ?? "-"} $).`,
+                  `Real measurement: ${number(ai.promptTokens)} tokens sent and ${number(ai.completionTokens)} generated${ai.audioSeconds ? `, ${number(Math.round(ai.audioSeconds / 60))} min of audio transcribed` : ""}, billed $${ai.costUsd ?? "-"} at the provider's public rate, converted at the ECB rate of ${ai.fxDate || "-"} (€1 = $${ai.fxRate ?? "-"}).`
+                )
+              : t("Le coût est mesuré à chaque appel IA à partir des tokens renvoyés par le fournisseur : il apparaîtra dès le prochain appel.", "Cost is measured on every AI call from the tokens returned by the provider: it will appear with the next call.")}
           </p>
+          {measured && Object.keys(ai.pricing || {}).length ? (
+            <ul className="jy-pricing-used">
+              {Object.entries(ai.pricing).map(([model, price]) => (
+                <li key={model}>
+                  <code>{model}</code>
+                  <span>
+                    {price.audioPerHour !== undefined
+                      ? t(`${price.audioPerHour} $ / heure d'audio`, `$${price.audioPerHour} / audio hour`)
+                      : price.input !== undefined
+                      ? t(`${price.input} $ / M tokens envoyés · ${price.output} $ / M tokens générés`, `$${price.input} / M input tokens · $${price.output} / M output tokens`)
+                      : t("tarif inconnu (non compté)", "unknown rate (not counted)")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
 
         <div className="jy-card">

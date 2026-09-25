@@ -1,11 +1,29 @@
 // Formatage de devises, partagé par plusieurs modules (Tarifs, Négociation
 // salariale...). Pas de dépendance à React : utilisable côté composant comme
 // côté logique pure.
+// Taux de conversion : taux de référence officiels de la BCE, chargés au
+// démarrage via GET /api/fx-rates (voir applyFxRates). Tant qu'aucun taux
+// réel n'est disponible, les montants restent affichés en euros.
 export const CURRENCY_OPTIONS = [
   { id: "EUR", label: "EUR (€)", symbol: "€", rate: 1, position: "after" },
-  { id: "USD", label: "USD ($)", symbol: "$", rate: 1.08, position: "before" },
-  { id: "GBP", label: "GBP (£)", symbol: "£", rate: 0.85, position: "before" }
+  { id: "USD", label: "USD ($)", symbol: "$", rate: null, position: "before" },
+  { id: "GBP", label: "GBP (£)", symbol: "£", rate: null, position: "before" }
 ];
+const fxInfo = { date: null, source: null };
+
+export function applyFxRates(data) {
+  if (!data?.rates) return false;
+  for (const option of CURRENCY_OPTIONS) {
+    if (option.id !== "EUR" && Number(data.rates[option.id]) > 0) option.rate = Number(data.rates[option.id]);
+  }
+  fxInfo.date = data.date || null;
+  fxInfo.source = data.source || "BCE";
+  return true;
+}
+
+export function getFxInfo() {
+  return { ...fxInfo };
+}
 
 export function getCurrencyOption(currency) {
   return CURRENCY_OPTIONS.find((item) => item.id === currency) || CURRENCY_OPTIONS[0];
@@ -63,7 +81,8 @@ export function fillTemplate(template, values) {
 }
 
 export function formatAmountInCurrency(amountEur, currency, { decimals } = {}) {
-  const option = getCurrencyOption(currency);
+  const requested = getCurrencyOption(currency);
+  const option = requested.rate ? requested : CURRENCY_OPTIONS[0];
   const converted = Number(amountEur) * option.rate;
   const hasDecimals = decimals ?? !Number.isInteger(converted);
   const formatted = converted.toLocaleString("fr-FR", {

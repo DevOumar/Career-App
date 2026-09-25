@@ -265,8 +265,9 @@ app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
       console.warn(`Generation IA de la lettre indisponible: ${aiError.message}`);
     }
 
-    const result = letterResult || buildLocalCoverLetter(candidate, offer, language);
-    return res.json({ letter: result.letter, subject: result.subject, provider });
+    // Pas de lettre modèle présentée comme générée : sans IA, erreur explicite.
+    if (!letterResult) return res.status(503).json({ error: "Le service d'IA est momentanément indisponible. Réessayez dans un instant : aucun jeton n'a été débité." });
+    return res.json({ letter: letterResult.letter, subject: letterResult.subject, provider });
   } catch (error) {
     return res.status(400).json({ error: error.message || "Generation de la lettre impossible." });
   }
