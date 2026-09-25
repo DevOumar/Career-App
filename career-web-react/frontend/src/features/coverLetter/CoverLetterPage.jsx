@@ -5,7 +5,14 @@ import Swal from "sweetalert2";
 import { useState, useEffect } from "react";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
-import { generateCoverLetter, listCoverLetters, saveCoverLetter, updateCoverLetter, deleteCoverLetter } from "../../lib/inMemoryDb.js";
+import {
+  generateCoverLetter,
+  generateApplicationEmail,
+  listCoverLetters,
+  saveCoverLetter,
+  updateCoverLetter,
+  deleteCoverLetter
+} from "../../lib/inMemoryDb.js";
 import { loadPdfFitter, slugifyForFilename, downloadBlob } from "../../lib/pdfDownload.js";
 import { themeColorsFromPresetId } from "../../lib/themeColors.js";
 import { THEME_PRESETS } from "../../App.jsx";
@@ -44,6 +51,115 @@ const LETTER_TEMPLATES = [
 
 const LETTER_TONE_ICONS = { formal: "shield", enthusiastic: "matchmark", direct: "share" };
 
+const EMAIL_TYPES = [
+  { id: "offer_reply", icon: "briefcase" },
+  { id: "spontaneous", icon: "matchmark" },
+  { id: "follow_up", icon: "share" }
+];
+
+const EMAIL_LENGTHS = [
+  { id: "short", icon: "docMinimal" },
+  { id: "long", icon: "docClassic" }
+];
+
+// Extrait pour être rendu à 2 endroits : empilé sous les réglages lettre
+// avant toute génération (une seule colonne), et dans la colonne email une
+// fois la lettre générée (vue 2 colonnes) — mêmes champs, même state, pas
+// de duplication de JSX.
+function EmailSettingsFields({
+  copy,
+  tones,
+  recipientName,
+  setRecipientName,
+  recipientEmail,
+  setRecipientEmail,
+  emailType,
+  setEmailType,
+  emailLength,
+  setEmailLength,
+  emailTone,
+  setEmailTone,
+  emailError
+}) {
+  return (
+    <>
+      <div className="cover-letter-recipient-row">
+        <label>
+          {copy.recipientNameLabel}
+          <input
+            type="text"
+            value={recipientName}
+            placeholder={copy.recipientNamePlaceholder}
+            onChange={(event) => setRecipientName(event.target.value)}
+          />
+        </label>
+        <label>
+          {copy.recipientEmailLabel}
+          <input
+            type="email"
+            value={recipientEmail}
+            placeholder={copy.recipientEmailPlaceholder}
+            onChange={(event) => setRecipientEmail(event.target.value)}
+          />
+        </label>
+      </div>
+
+      <div className="tone-selector">
+        <span>{copy.emailTypeLabel}</span>
+        <div className="tone-pills">
+          {EMAIL_TYPES.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`tone-pill ${emailType === item.id ? "active" : ""}`}
+              onClick={() => setEmailType(item.id)}
+            >
+              <UiIcon name={item.icon} />
+              {copy[`emailType_${item.id}`]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="tone-selector">
+        <span>{copy.emailLengthLabel}</span>
+        <div className="tone-pills">
+          {EMAIL_LENGTHS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`tone-pill ${emailLength === item.id ? "active" : ""}`}
+              onClick={() => setEmailLength(item.id)}
+            >
+              <UiIcon name={item.icon} />
+              {copy[`emailLength_${item.id}`]}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="tone-selector">
+        <span>{copy.toneLabel}</span>
+        <div className="tone-pills">
+          {tones.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={`tone-pill ${emailTone === item.id ? "active" : ""}`}
+              onClick={() => setEmailTone(item.id)}
+            >
+              <UiIcon name={LETTER_TONE_ICONS[item.id]} />
+              {item.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {emailError ? <p className="field-error">{emailError}</p> : null}
+    </>
+  );
+}
+
 function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
   const copy = COVER_LETTER_COPY[language] || COVER_LETTER_COPY.fr;
   const [tone, setTone] = useState("formal");
@@ -62,6 +178,21 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [conversationId, setConversationId] = useState(null);
+  // Étape D : email d'accompagnement, distinct de la lettre (génération,
+  // stockage et boutons séparés — cf. persistConversation plus bas).
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  // Réglages indépendants de l'email (distincts de tone/template/letterColor
+  // ci-dessus, qui pilotent la lettre) — emailTone réutilise exactement les
+  // mêmes valeurs formal/enthusiastic/direct que tone, via son propre state.
+  const [emailType, setEmailType] = useState("offer_reply");
+  const [emailLength, setEmailLength] = useState("short");
+  const [emailTone, setEmailTone] = useState("formal");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [isGeneratingEmail, setIsGeneratingEmail] = useState(false);
+  const [emailError, setEmailError] = useState("");
+  const [copiedEmailField, setCopiedEmailField] = useState("");
 
   const hasContext = Boolean(candidate && offer && (offer.title || offer.skills?.length));
   // 999 = solde "infini" (compte associé à un cabinet/école) : dans ce cas
@@ -69,6 +200,11 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   // d'un pool personnel limité.
   const hasUnlimitedTokens = tokensBalance >= 999;
   const outOfTokens = !hasUnlimitedTokens && tokensBalance <= 0;
+  // La toute première génération (avant que lettre ET email n'existent)
+  // enchaîne les 2 actions payantes déjà existantes (1 jeton la lettre +
+  // 1 jeton l'email, cf. handleGenerateBoth) : il faut donc 2 jetons, pas 1,
+  // pour pouvoir la déclencher.
+  const missingTokensForBoth = !hasUnlimitedTokens && tokensBalance < 2;
   // Vars CSS custom scopées au seul document (pas à toute la page, qui
   // contient aussi la barre d'outils) — même principe que cvColorVars dans
   // CvPreviewCard (CvPages.jsx) : .letter-document.template-modern utilise
@@ -96,6 +232,22 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     };
   }, [userId]);
 
+  // Pré-remplissage depuis l'offre (contactName/contactEmail, extraits par
+  // /api/jobs/extract UNIQUEMENT s'ils sont explicitement mentionnés) —
+  // seulement si le champ est encore vide, pour ne jamais écraser une
+  // saisie utilisateur ou une reprise d'historique (handleResumeConversation
+  // s'exécute après ce mount et applique ses propres valeurs). Dépend des
+  // champs eux-mêmes (primitifs), pas de l'objet offer entier, qui est
+  // recréé à chaque render côté App.jsx (extractOfferSummary(offerText)).
+  useEffect(() => {
+    if (offer?.contactName && !recipientName) setRecipientName(offer.contactName);
+    if (offer?.contactEmail && !recipientEmail) setRecipientEmail(offer.contactEmail);
+    // recipientName/recipientEmail volontairement absents des deps : ne
+    // doit tourner qu'à l'apparition d'un contact dans l'offre, jamais à
+    // chaque frappe utilisateur dans les champs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offer?.contactName, offer?.contactEmail]);
+
   const tones = [
     { id: "formal", label: copy.toneFormal },
     { id: "enthusiastic", label: copy.toneEnthusiastic },
@@ -106,9 +258,27 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     return offer?.title ? `${offer.title}${offer.company ? ` · ${offer.company}` : ""}` : copy.untitled;
   }
 
-  async function persistConversation(nextLetter, nextSubject) {
+  async function persistConversation(nextLetter, nextSubject, nextEmail) {
     if (!userId) return;
-    const payload = { letter: nextLetter, subject: nextSubject, tone, template, color: letterColor, offer };
+    // nextEmail : passé explicitement par handleGenerateEmail (valeur
+    // fraîche, pas encore en state) ; sinon retombe sur l'email déjà en
+    // state (cas handleGenerate/saveEditing, qui ne touchent pas à l'email
+    // — régénérer la lettre ne doit pas effacer un email déjà généré).
+    const email = nextEmail !== undefined ? nextEmail : emailSubject || emailBody ? { subject: emailSubject, body: emailBody } : null;
+    const payload = {
+      letter: nextLetter,
+      subject: nextSubject,
+      tone,
+      template,
+      color: letterColor,
+      offer,
+      recipientName,
+      recipientEmail,
+      emailType,
+      emailLength,
+      emailTone,
+      email
+    };
     try {
       if (conversationId) {
         await updateCoverLetter({ userId, conversationId, payload });
@@ -131,6 +301,17 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     setConversationId(null);
     setIsEditing(false);
     setError("");
+    // Repart des contacts connus de l'offre (pas juste vidé) : l'effet de
+    // pré-remplissage au montage ne se redéclenche pas ici puisque offer
+    // n'a pas changé.
+    setRecipientName(offer?.contactName || "");
+    setRecipientEmail(offer?.contactEmail || "");
+    setEmailType("offer_reply");
+    setEmailLength("short");
+    setEmailTone("formal");
+    setEmailSubject("");
+    setEmailBody("");
+    setEmailError("");
   }
 
   function handleResumeConversation(conv) {
@@ -140,8 +321,16 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     if (conv.tone) setTone(conv.tone);
     if (conv.template) setTemplate(conv.template);
     if (conv.color) setLetterColor(conv.color);
+    setRecipientName(conv.recipientName || "");
+    setRecipientEmail(conv.recipientEmail || "");
+    if (conv.emailType) setEmailType(conv.emailType);
+    if (conv.emailLength) setEmailLength(conv.emailLength);
+    if (conv.emailTone) setEmailTone(conv.emailTone);
+    setEmailSubject(conv.email?.subject || "");
+    setEmailBody(conv.email?.body || "");
     setIsEditing(false);
     setError("");
+    setEmailError("");
   }
 
   async function handleDeleteConversation(event, conv) {
@@ -188,6 +377,60 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     }
   }
 
+  // Génération initiale combinée (lettre + email, 2 jetons) : enchaîne les
+  // 2 actions déjà existantes et déjà validées séparément (generateCoverLetter
+  // + 1 jeton, puis generateApplicationEmail + 1 jeton) — pas un nouvel appel
+  // IA unique, cf. décision prise avec l'utilisateur. Si la lettre réussit
+  // mais que l'email échoue ensuite, la lettre (déjà payée et générée) est
+  // conservée et persistée quand même : l'utilisateur ne perd que le jeton
+  // de l'étape qui a réellement échoué, pas les deux.
+  async function handleGenerateBoth() {
+    if (!hasContext || isGenerating || isGeneratingEmail) return;
+    if (missingTokensForBoth) {
+      onGoToTarifs();
+      return;
+    }
+    setError("");
+    setEmailError("");
+    setIsGenerating(true);
+    setIsEditing(false);
+
+    let letterResult;
+    try {
+      letterResult = await generateCoverLetter({ candidate, offer, tone, language });
+      setLetter(letterResult.letter);
+      setSubject(letterResult.subject || "");
+      await onConsumeToken();
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, language));
+      setIsGenerating(false);
+      return;
+    }
+    setIsGenerating(false);
+
+    setIsGeneratingEmail(true);
+    try {
+      const emailResult = await generateApplicationEmail({
+        candidate,
+        offer,
+        recipientName: recipientName.trim(),
+        tone: emailTone,
+        type: emailType,
+        length: emailLength,
+        language
+      });
+      setEmailSubject(emailResult.subject);
+      setEmailBody(emailResult.body);
+      await onConsumeToken();
+      await persistConversation(letterResult.letter, letterResult.subject || "", { subject: emailResult.subject, body: emailResult.body });
+    } catch (err) {
+      setEmailError(getFriendlyErrorMessage(err, language));
+      await persistConversation(letterResult.letter, letterResult.subject || "", null);
+    } finally {
+      setIsGeneratingEmail(false);
+    }
+  }
+
   function handleCopy() {
     navigator.clipboard?.writeText(letter);
     setCopied(true);
@@ -214,6 +457,42 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     } finally {
       setIsDownloadingPdf(false);
     }
+  }
+
+  async function handleGenerateEmail() {
+    if (!hasContext || isGeneratingEmail) return;
+    if (outOfTokens) {
+      onGoToTarifs();
+      return;
+    }
+    setEmailError("");
+    setIsGeneratingEmail(true);
+    try {
+      const result = await generateApplicationEmail({
+        candidate,
+        offer,
+        recipientName: recipientName.trim(),
+        tone: emailTone,
+        type: emailType,
+        length: emailLength,
+        language
+      });
+      setEmailSubject(result.subject);
+      setEmailBody(result.body);
+      await onConsumeToken();
+      await persistConversation(letter, subject, { subject: result.subject, body: result.body });
+    } catch (err) {
+      setEmailError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setIsGeneratingEmail(false);
+    }
+  }
+
+  function handleCopyEmail(part) {
+    const text = part === "subject" ? emailSubject : part === "body" ? emailBody : `${emailSubject}\n\n${emailBody}`;
+    navigator.clipboard?.writeText(text);
+    setCopiedEmailField(part);
+    setTimeout(() => setCopiedEmailField(""), 1800);
   }
 
   function startEditing() {
@@ -259,7 +538,13 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
               className={`negotiation-history-item${conv.id === conversationId ? " active" : ""}`}
               onClick={() => handleResumeConversation(conv)}
             >
-              <span className="negotiation-history-title">{conv.title || copy.untitled}</span>
+              <span className="negotiation-history-main">
+                <span className="negotiation-history-title">{conv.title || copy.untitled}</span>
+                <span className="negotiation-history-badges">
+                  <span className="history-badge history-badge-letter">{copy.historyBadgeLetter}</span>
+                  {conv.email?.body ? <span className="history-badge history-badge-email">{copy.historyBadgeEmail}</span> : null}
+                </span>
+              </span>
               <button
                 type="button"
                 className="negotiation-history-delete"

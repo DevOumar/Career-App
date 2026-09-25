@@ -487,6 +487,13 @@ export async function generateCoverLetter({ candidate, offer, tone, language }) 
   });
 }
 
+export async function generateApplicationEmail({ candidate, offer, recipientName, tone, type, length, language }) {
+  return request("/application-email/generate", {
+    method: "POST",
+    body: { candidate, offer, recipientName, tone, type, length, language }
+  });
+}
+
 export async function negotiationReply({ candidate, offer, history, targetSalary, finish, currencyLabel, salaryReference }) {
   return request("/negotiation/reply", {
     method: "POST",

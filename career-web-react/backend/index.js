@@ -1886,7 +1886,14 @@ const JOB_EXTRACTION_SCHEMA = {
     skills: { type: "array", items: { type: "string" } },
     softSkills: { type: "array", items: { type: "string" } },
     description: { type: "string" },
-    missions: { type: "array", items: { type: "string" } }
+    missions: { type: "array", items: { type: "string" } },
+    // contactName/contactEmail : optionnels (absents de `required`), jamais
+    // déduits — cf. prompt d'extraction (extractJobWithAi) : uniquement si
+    // explicitement mentionnés dans l'offre. Alimentent la génération
+    // d'email de candidature (APPLICATION_EMAIL_SCHEMA plus bas) : nom pour
+    // la salutation, email comme destinataire pré-rempli.
+    contactName: { type: "string" },
+    contactEmail: { type: "string" }
   },
   required: [
     "title",
@@ -1950,7 +1957,13 @@ function extractLocalJobSummary(text) {
     skills: uniqueByNormalized(skills).slice(0, 14),
     softSkills: uniqueByNormalized(softSkills).slice(0, 10),
     description,
-    missions: lines.filter((line) => /^[-•+]/.test(line) || /\b(vous serez|mission|responsabilit|contribu|particip|développ|developp|analy)/i.test(line)).slice(0, 8)
+    missions: lines.filter((line) => /^[-•+]/.test(line) || /\b(vous serez|mission|responsabilit|contribu|particip|développ|developp|analy)/i.test(line)).slice(0, 8),
+    // Repli sans IA : simple regex email sur le texte brut, aucune
+    // déduction pour le nom (contactName reste null — impossible à
+    // distinguer fiablement d'un autre nom propre présent dans l'offre
+    // sans IA, contrairement à un email qui est syntaxiquement identifiable).
+    contactName: null,
+    contactEmail: (raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/) || [])[0] || null
   };
 }
 
@@ -1995,7 +2008,14 @@ function sanitizeAiJobExtraction(raw, sourceText) {
     skills,
     softSkills: uniqueByNormalized([...normalizeAiList(parsed.softSkills, 14), ...(fallback.softSkills || [])]).slice(0, 12),
     description: coerceString(parsed.description) || fallback.description,
-    missions: normalizeAiList(parsed.missions, 10).length ? normalizeAiList(parsed.missions, 10) : fallback.missions
+    missions: normalizeAiList(parsed.missions, 10).length ? normalizeAiList(parsed.missions, 10) : fallback.missions,
+    // contactName : uniquement ce que l'IA a explicitement trouvé (jamais
+    // le fallback local, qui ne déduit jamais de nom, cf.
+    // extractLocalJobSummary). contactEmail : repli sur le regex local si
+    // l'IA n'a rien trouvé (ceinture-bretelles — l'email est syntaxiquement
+    // détectable, autant ne pas dépendre uniquement du LLM pour ça).
+    contactName: coerceString(parsed.contactName) || null,
+    contactEmail: coerceString(parsed.contactEmail) || fallback.contactEmail
   };
 }
 
@@ -2012,7 +2032,8 @@ async function extractJobWithAi(sourceText) {
     {
       role: "user",
       content:
-        "Analyse cette offre d'emploi. Extrais: titre du poste, entreprise, lieu, contrat, secteur, années d'expérience minimum, niveau d'étude, compétences techniques, soft skills, description synthétique fidèle et missions principales. Le titre ne doit pas être une phrase longue de contexte; choisis le vrai intitulé du poste si présent.\n\n" +
+        "Analyse cette offre d'emploi. Extrais: titre du poste, entreprise, lieu, contrat, secteur, années d'expérience minimum, niveau d'étude, compétences techniques, soft skills, description synthétique fidèle et missions principales. Le titre ne doit pas être une phrase longue de contexte; choisis le vrai intitulé du poste si présent. " +
+        "Extrais aussi contactName et contactEmail UNIQUEMENT s'ils sont explicitement mentionnés dans le texte de l'offre (ex: \"Contact : Jean Dupont, jean.dupont@entreprise.com\"). Ne déduis jamais ces deux champs, ne les invente jamais à partir du nom de l'entreprise ou d'un autre indice indirect : laisse-les vides si l'offre ne cite aucun contact nommé.\n\n" +
         `OFFRE:\n${cleanExtractedText(sourceText).slice(0, 60000)}`
     }
   ];
@@ -2314,6 +2335,197 @@ async function generateCoverLetterWithAi(candidate, offer, tone, language) {
     );
   } catch (_schemaError) {
     return sanitizeAiCoverLetter(await callAi({ type: "json_object" }), { candidate, offer, language });
+  }
+}
+
+// Email d'accompagnement de candidature (distinct de la lettre : plus
+// court, pas de mise en page dédiée, jamais exporté en PDF) — miroir exact
+// de COVER_LETTER_SCHEMA/generateCoverLetterWithAi ci-dessus.
+const APPLICATION_EMAIL_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    subject: { type: "string" },
+    body: { type: "string" }
+  },
+  required: ["subject", "body"]
+};
+
+// type/length ne font pas partie du JSON demandé à l'IA (ce sont des
+// paramètres d'entrée qui orientent le prompt, pas une forme de sortie
+// différente : {subject, body} reste inchangé) — seuls le prompt
+// (generateApplicationEmailWithAi) et le repli local
+// (buildLocalApplicationEmail) varient selon ces 2 réglages + le ton
+// (tone, réutilise TONE_LABELS déjà défini pour la lettre plus haut).
+const APPLICATION_EMAIL_TYPES = new Set(["offer_reply", "spontaneous", "follow_up"]);
+const APPLICATION_EMAIL_LENGTHS = new Set(["short", "long"]);
+
+const APPLICATION_EMAIL_TYPE_LABELS = {
+  fr: {
+    offer_reply: "une reponse a une offre d'emploi precise et deja identifiee",
+    spontaneous:
+      "une candidature spontanee : aucune offre precise n'est visee, n'affirme jamais repondre a une annonce, exprime un interet proactif pour l'entreprise et le type de poste",
+    follow_up:
+      "un email de relance : une lettre de motivation et un CV ont deja ete envoyes sans reponse a ce jour, rappelle brievement le poste vise et la candidature deja transmise, exprime poliment le souhait d'obtenir un retour, sans reformuler mot pour mot une lettre de motivation"
+  },
+  en: {
+    offer_reply: "a reply to a specific, already identified job posting",
+    spontaneous:
+      "an unsolicited application: no specific posting is targeted, never claim to be replying to a listing, express proactive interest in the company and the type of role",
+    follow_up:
+      "a follow-up email: a cover letter and CV were already sent with no response yet, briefly recall the targeted role and the application already sent, politely express the wish for an update, without rephrasing a full cover letter"
+  }
+};
+
+const APPLICATION_EMAIL_LENGTH_TARGETS = {
+  short: { fr: "entre 80 et 150 mots", en: "between 80 and 150 words" },
+  long: { fr: "entre 200 et 300 mots", en: "between 200 and 300 words" }
+};
+
+function buildLocalApplicationEmail(candidate, offer, recipientName, type, length, language) {
+  const candidateName = [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ").trim() || "";
+  const title = offer?.title || "";
+  const company = offer?.company || "";
+  const greetingName = coerceString(recipientName);
+  const isSpontaneous = type === "spontaneous";
+  const isFollowUp = type === "follow_up";
+  // "même simplement" (repli local, pas d'IA) : une phrase d'ouverture par
+  // type, une phrase supplémentaire en "long" — pas 6 textes distincts
+  // codés en dur, mais une combinaison de blocs.
+  const extraSentence = {
+    fr: {
+      short: "",
+      long:
+        " Mon parcours récent m'a permis de développer une expertise directement applicable à ce contexte, et je serais ravi(e) d'en discuter plus en détail lors d'un échange."
+    },
+    en: {
+      short: "",
+      long:
+        " My recent experience has given me expertise directly applicable to this context, and I would be glad to discuss it further during a conversation."
+    }
+  };
+
+  if (language === "en") {
+    const opening = isFollowUp
+      ? `I am following up on the application (cover letter and CV) I sent for the ${title || "position"} role${company ? ` at ${company}` : ""}, as I have not yet heard back.`
+      : isSpontaneous
+        ? `I am reaching out${company ? ` to ${company}` : ""} to express my interest in joining your team${title ? `, particularly for a ${title}-type role` : ""}. Please find my cover letter and CV attached.`
+        : `I am applying for the ${title || "position"} role${company ? ` at ${company}` : ""}. Please find my cover letter and CV attached for your consideration.`;
+    return {
+      subject: isFollowUp
+        ? `Following up – Application for ${title || "the position"}${company ? ` at ${company}` : ""}`
+        : `Application for ${title || "the position"}${company ? ` at ${company}` : ""}`,
+      body:
+        `${greetingName ? `Dear ${greetingName},` : "Dear Hiring Manager,"}\n\n` +
+        `${opening}${extraSentence.en[length] || ""}\n\n` +
+        `I would be glad to discuss my application further at your convenience.\n\n` +
+        `Best regards,\n${candidateName}`
+    };
+  }
+
+  const opening = isFollowUp
+    ? `Je me permets de revenir vers vous concernant ma candidature (lettre de motivation et CV) transmise pour le poste de ${title || "poste visé"}${company ? ` au sein de ${company}` : ""}, restée pour l'instant sans réponse.`
+    : isSpontaneous
+      ? `Je me permets de vous contacter${company ? ` chez ${company}` : ""} pour vous faire part de mon intérêt à rejoindre votre équipe${title ? `, notamment sur un poste de type ${title}` : ""}. Vous trouverez ci-joint ma lettre de motivation et mon CV.`
+      : `Je vous adresse ma candidature pour le poste de ${title || "poste visé"}${company ? ` au sein de ${company}` : ""}. Vous trouverez ci-joint ma lettre de motivation et mon CV.`;
+
+  return {
+    subject: isFollowUp
+      ? `Relance – Candidature au poste de ${title || "poste visé"}${company ? ` chez ${company}` : ""}`
+      : `Candidature au poste de ${title || "poste visé"}${company ? ` chez ${company}` : ""}`,
+    body:
+      `${greetingName ? `Bonjour ${greetingName},` : "Madame, Monsieur,"}\n\n` +
+      `${opening}${extraSentence.fr[length] || ""}\n\n` +
+      `Je reste à votre disposition pour tout complément d'information.\n\n` +
+      `Cordialement,\n${candidateName}`
+  };
+}
+
+function sanitizeAiApplicationEmail(raw, { candidate, offer, recipientName, type, length, language }) {
+  const parsed = raw && typeof raw === "object" ? raw : {};
+  const fallback = buildLocalApplicationEmail(candidate, offer, recipientName, type, length, language);
+  const body = coerceString(parsed.body);
+  // Seuil ~25 caractères, proportionnellement plus bas que la lettre (40,
+  // cf. sanitizeAiCoverLetter) : l'email vise 80-150 mots (voire 200-300 en
+  // "long") contre 220-320 pour la lettre, un email valide peut être bien
+  // plus court.
+  return {
+    subject: coerceString(parsed.subject) || fallback.subject,
+    body: body.length > 25 ? body : fallback.body
+  };
+}
+
+async function generateApplicationEmailWithAi(candidate, offer, recipientName, tone, type, length, language) {
+  const config = aiExtractionConfig();
+  if (!config?.apiKey) return null;
+
+  const candidateName = [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ").trim();
+  const langLabel = language === "en" ? "in English" : "en francais";
+  const toneLabel = TONE_LABELS[language]?.[tone] || TONE_LABELS.fr[tone] || TONE_LABELS.fr.formal;
+  const typeLabel = APPLICATION_EMAIL_TYPE_LABELS[language]?.[type] || APPLICATION_EMAIL_TYPE_LABELS.fr[type] || APPLICATION_EMAIL_TYPE_LABELS.fr.offer_reply;
+  const lengthLabel =
+    APPLICATION_EMAIL_LENGTH_TARGETS[length]?.[language] || APPLICATION_EMAIL_LENGTH_TARGETS[length]?.fr || APPLICATION_EMAIL_LENGTH_TARGETS.short.fr;
+
+  const messages = [
+    {
+      role: "system",
+      content:
+        "Tu es un coach carriere expert en emails de candidature courts et professionnels. Tu ecris des emails d'accompagnement concis, jamais generiques, qui donnent envie d'ouvrir la lettre et le CV joints. Reponds uniquement en JSON."
+    },
+    {
+      role: "user",
+      content:
+        `Redige un email de candidature (pas une lettre de motivation complete : cet email accompagne une lettre et un CV deja joints), ${langLabel}, sur un ton ${toneLabel}, ${lengthLabel}. ` +
+        `Contexte precis : cet email est ${typeLabel}. ` +
+        (recipientName
+          ? `Adresse-toi nommement au destinataire (${recipientName}), avec une salutation personnalisee.`
+          : "Utilise une salutation generique professionnelle (pas de nom de destinataire connu).") +
+        " Mentionne le poste vise et 1 element concret et verifiable du profil du candidat en lien avec l'offre. Termine par une formule de politesse et la signature." +
+        (candidateName ? ` Le candidat s'appelle ${candidateName}, signe l'email avec ce nom.` : "") +
+        "\n\n" +
+        `PROFIL CANDIDAT:\n${JSON.stringify(candidate).slice(0, 10000)}\n\n` +
+        `OFFRE:\n${JSON.stringify(offer).slice(0, 10000)}`
+    }
+  ];
+
+  async function callAi(responseFormat) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
+    try {
+      const response = await fetch(config.url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.apiKey}`,
+          "Content-Type": "application/json"
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model: config.model,
+          temperature: 0.55,
+          messages,
+          response_format: responseFormat
+        })
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.error?.message || "Generation IA de l'email indisponible.");
+      }
+      return JSON.parse(data.choices?.[0]?.message?.content || "{}");
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  try {
+    return sanitizeAiApplicationEmail(
+      await callAi({
+        type: "json_schema",
+        json_schema: { name: "application_email", strict: false, schema: APPLICATION_EMAIL_SCHEMA }
+      }),
+      { candidate, offer, recipientName, type, length, language }
+    );
+  } catch (_schemaError) {
+    return sanitizeAiApplicationEmail(await callAi({ type: "json_object" }), { candidate, offer, recipientName, type, length, language });
   }
 }
 
@@ -5020,6 +5232,12 @@ app.locals.ctx = {
   buildLocalCoverLetter,
   sanitizeAiCoverLetter,
   generateCoverLetterWithAi,
+  APPLICATION_EMAIL_SCHEMA,
+  APPLICATION_EMAIL_TYPES,
+  APPLICATION_EMAIL_LENGTHS,
+  buildLocalApplicationEmail,
+  sanitizeAiApplicationEmail,
+  generateApplicationEmailWithAi,
   CV_ATS_OPTIMIZATION_SCHEMA,
   sanitizeAiCvOptimization,
   generateCvAtsOptimizationWithAi,

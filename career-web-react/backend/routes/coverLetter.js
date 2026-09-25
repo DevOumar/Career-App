@@ -152,6 +152,12 @@ export function registerCoverLetterRoutes(app) {
     buildLocalCoverLetter,
     sanitizeAiCoverLetter,
     generateCoverLetterWithAi,
+    APPLICATION_EMAIL_SCHEMA,
+    APPLICATION_EMAIL_TYPES,
+    APPLICATION_EMAIL_LENGTHS,
+    buildLocalApplicationEmail,
+    sanitizeAiApplicationEmail,
+    generateApplicationEmailWithAi,
     CV_ATS_OPTIMIZATION_SCHEMA,
     sanitizeAiCvOptimization,
     generateCvAtsOptimizationWithAi,
@@ -269,6 +275,33 @@ app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
     return res.json({ letter: result.letter, subject: result.subject, provider });
   } catch (error) {
     return res.status(400).json({ error: error.message || "Generation de la lettre impossible." });
+  }
+});
+
+app.post("/api/application-email/generate", aiActionRateLimiter, async (req, res) => {
+  try {
+    const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
+    const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
+    const recipientName = coerceString(req.body?.recipientName);
+    const tone = coerceString(req.body?.tone) || "formal";
+    const type = APPLICATION_EMAIL_TYPES.has(req.body?.type) ? req.body.type : "offer_reply";
+    const length = APPLICATION_EMAIL_LENGTHS.has(req.body?.length) ? req.body.length : "short";
+    const language = req.body?.language === "en" ? "en" : "fr";
+
+    let emailResult = null;
+    let provider = "local";
+    try {
+      emailResult = await generateApplicationEmailWithAi(candidate, offer, recipientName, tone, type, length, language);
+      if (emailResult) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+    } catch (aiError) {
+      emailResult = null;
+      console.warn(`Generation IA de l'email indisponible: ${aiError.message}`);
+    }
+
+    const result = emailResult || buildLocalApplicationEmail(candidate, offer, recipientName, type, length, language);
+    return res.json({ subject: result.subject, body: result.body, provider });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Generation de l'email impossible." });
   }
 });
 
