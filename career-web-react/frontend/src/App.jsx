@@ -394,7 +394,7 @@ const LANDING_COPY = {
       },
       {
         q: "Générez-vous des lettres de motivation personnalisées ?",
-        a: "Oui, depuis l'onglet Lettre IA : collez l'offre visée, l'IA rédige une lettre basée sur votre profil réel, que vous pouvez modifier avant de l'exporter."
+        a: "Oui, depuis l'onglet Lettre & Email IA : collez l'offre visée, l'IA rédige une lettre basée sur votre profil réel, que vous pouvez modifier avant de l'exporter."
       },
       {
         q: "Comment fonctionne le score de compatibilité avec une offre ?",
@@ -425,7 +425,7 @@ const LANDING_COPY = {
     footerProduct: "Produit",
     footerCompany: "Entreprise",
     footerLegal: "Légal",
-    linksProduct: ["Fonctionnalités", "Matching CV", "Entretiens", "Lettre IA", "Négociation", "Email Scout", "Offres", "Tarifs", "FAQ"],
+    linksProduct: ["Fonctionnalités", "Matching CV", "Entretiens", "Lettre & Email IA", "Négociation", "Email Scout", "Offres", "Tarifs", "FAQ"],
     linksCompany: ["À propos", "Contact", "Partenariats"],
     linksLegal: ["Confidentialité", "CGU", "Cookies", "Sécurité"]
   },
@@ -519,7 +519,7 @@ const LANDING_COPY = {
       },
       {
         q: "Do you generate personalized cover letters?",
-        a: "Yes, from the AI Letter tab: paste the target job posting and the AI drafts a letter based on your real profile, which you can edit before exporting."
+        a: "Yes, from the Letter & Email AI tab: paste the target job posting and the AI drafts a letter based on your real profile, which you can edit before exporting."
       },
       {
         q: "How does the job match score work?",
@@ -550,7 +550,7 @@ const LANDING_COPY = {
     footerProduct: "Product",
     footerCompany: "Company",
     footerLegal: "Legal",
-    linksProduct: ["Features", "CV matching", "Interviews", "AI Letter", "Negotiation", "Email Scout", "Jobs", "Pricing", "FAQ"],
+    linksProduct: ["Features", "CV matching", "Interviews", "Letter & Email AI", "Negotiation", "Email Scout", "Jobs", "Pricing", "FAQ"],
     linksCompany: ["About", "Contact", "Partnerships"],
     linksLegal: ["Privacy", "Terms", "Cookies", "Security"]
   }

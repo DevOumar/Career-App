@@ -21,7 +21,7 @@ export const PLANS = [
         "Analyse CV & Offre (IA)",
         "Score de matching",
         "1 CV enregistré",
-        "Lettre de motivation IA",
+        "Lettre & Email IA",
         "Simulateur de négociation salariale",
         "Email Scout (recherche d'email pro)"
       ],
@@ -29,7 +29,7 @@ export const PLANS = [
         "CV & Job analysis (AI)",
         "Matching score",
         "1 saved CV",
-        "AI cover letter",
+        "Letter & Email AI",
         "Salary negotiation simulator",
         "Email Scout (pro email finder)"
       ]
@@ -53,8 +53,8 @@ export const PLANS = [
     highlighted: false,
     badge: null,
     features: {
-      fr: ["30 jetons d'analyse (6x plus qu'Essentiel)", "Simulateur d'entretiens", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
-      en: ["30 analysis tokens (6x more than Essentiel)", "Interview simulator", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
+      fr: ["30 jetons d'analyse (6x plus qu'Essentiel)", "Simulateur d'entretiens", "Historique CV illimité", "Export PDF", "Lettre & Email IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
+      en: ["30 analysis tokens (6x more than Essentiel)", "Interview simulator", "Unlimited CV history", "PDF export", "Letter & Email AI", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
     }
   },
   {
@@ -84,7 +84,7 @@ export const PLANS = [
       fr: [
         "130 jetons d'analyse (4x plus qu'Élan)",
         "Simulateur d'entretiens",
-        "Lettre de motivation IA",
+        "Lettre & Email IA",
         "Simulateur de négociation salariale",
         "Email Scout (recherche d'email pro)",
         "Suggestions de réseautage avancées",
@@ -93,7 +93,7 @@ export const PLANS = [
       en: [
         "130 analysis tokens (4x more than Élan)",
         "Interview simulator",
-        "AI cover letter",
+        "Letter & Email AI",
         "Salary negotiation simulator",
         "Email Scout (pro email finder)",
         "Advanced networking suggestions",
@@ -180,7 +180,7 @@ export const PLANS = [
         "Support standard (72h)"
       ],
       en: [
-        "Unlimited AI modules for every student (CV analysis, cover letter, salary negotiation, Email Scout)",
+        "Unlimited AI modules for every student (CV analysis, letter & email, salary negotiation, Email Scout)",
         "Unlimited interview simulator (chat and voice call) for every student",
         "CV and application history, CV export to PDF for every student",
         "License codes to distribute",
