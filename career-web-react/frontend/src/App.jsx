@@ -19,6 +19,7 @@ import { LegalDocPage, PrivacyPolicyPage, TermsOfServicePage } from "./features/
 import { PublicPricingPage, PricingPage, PRICING_SEGMENTS, allowedPricingSegmentsForRole } from "./features/pricing/PricingPage.jsx";
 import HomePage from "./features/home/HomePage.jsx";
 import CoverLetterPage from "./features/coverLetter/CoverLetterPage.jsx";
+import SkillsTestPage from "./features/skillsTest/SkillsTestPage.jsx";
 import EmailFinderPage from "./features/emailScout/EmailFinderPage.jsx";
 import {
   CURRENCY_OPTIONS,
@@ -151,6 +152,7 @@ const NAV_ITEMS = [
   { id: "home", label: { fr: "Accueil", en: "Home" }, always: true, icon: "home" },
   { id: "import", label: { fr: "Importer CV", en: "Import CV" }, always: true, icon: "upload" },
   { id: "lettre", label: { fr: "Lettre & Email IA", en: "Letter & Email AI" }, icon: "mail" },
+  { id: "competences", label: { fr: "Test de compétences", en: "Skills test" }, icon: "check" },
   { id: "candidatures", label: { fr: "Candidatures", en: "Applications" }, always: true, icon: "briefcase" },
   { id: "entretiens", label: { fr: "Entretiens", en: "Interviews" }, icon: "chat" },
   { id: "negociation", label: { fr: "Négociation", en: "Negotiation" }, icon: "scale" },
@@ -167,6 +169,7 @@ const VALID_APP_PAGE_IDS = new Set([
   "candidatures",
   "entretiens",
   "lettre",
+  "competences",
   "negociation",
   "email-finder",
   "historique",
@@ -2438,6 +2441,21 @@ export default function App() {
         ) : null}
         {activePage === "lettre" ? (
           <CoverLetterPage
+            language={language}
+            userId={user?.id}
+            candidate={user ? buildCandidatePayload() : null}
+            offer={jobReview || extractOfferSummary(offerText)}
+            tokensBalance={tokensBalance}
+            onGoToTarifs={() => goTo("tarifs")}
+            onConsumeToken={async () => {
+              const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
+              setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
+              setPremium(tokenUpdate.premium);
+            }}
+          />
+        ) : null}
+        {activePage === "competences" ? (
+          <SkillsTestPage
             language={language}
             userId={user?.id}
             candidate={user ? buildCandidatePayload() : null}

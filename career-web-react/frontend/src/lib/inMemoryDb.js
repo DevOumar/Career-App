@@ -494,6 +494,24 @@ export async function generateApplicationEmail({ candidate, offer, recipientName
   });
 }
 
+// generateSkillsTest persiste le test cote serveur et ne renvoie jamais la
+// bonne reponse des QCM (voir backend/routes/skillsTest.js) : le seul etat a
+// conserver cote client est l'id renvoye ici, reutilise tel quel par
+// gradeSkillsTest.
+export async function generateSkillsTest({ userId, offer, language }) {
+  return request("/skills-test/generate", {
+    method: "POST",
+    body: { userId, offer, language }
+  });
+}
+
+export async function gradeSkillsTest({ userId, id, answers }) {
+  return request("/skills-test/grade", {
+    method: "POST",
+    body: { userId, id, answers }
+  });
+}
+
 export async function negotiationReply({ candidate, offer, history, targetSalary, finish, currencyLabel, salaryReference }) {
   return request("/negotiation/reply", {
     method: "POST",
