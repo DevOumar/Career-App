@@ -43,6 +43,34 @@ function CoverLetterIllustration() {
   );
 }
 
+function CoverLetterEmailIllustration() {
+  return (
+    <svg viewBox="0 0 320 240" className="module-illustration" aria-hidden="true">
+      <rect x="20" y="40" width="200" height="140" rx="14" fill="var(--surface-2)" stroke="var(--line)" />
+      <path
+        d="M20 46 L120 130 L220 46"
+        stroke="var(--primary)"
+        strokeWidth="5"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        opacity="0.85"
+      />
+      <rect x="40" y="140" width="140" height="8" rx="4" fill="var(--line-strong)" />
+      <rect x="40" y="158" width="100" height="8" rx="4" fill="var(--line-strong)" />
+      <circle cx="252" cy="60" r="42" fill="#f5f3ee" />
+      <path
+        d="M234 58l12 12 22-24"
+        stroke="var(--success, #237804)"
+        strokeWidth="6"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 const LETTER_TEMPLATES = [
   { id: "classic", label: { fr: "Classique", en: "Classic" }, icon: "docClassic" },
   { id: "modern", label: { fr: "Moderne", en: "Modern" }, icon: "docModern" },
@@ -563,7 +591,7 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   );
 
   return (
-    <div className="negotiation-layout">
+    <div className="negotiation-layout cover-letter-layout">
       {historySidebar}
       <section className="cover-letter-page">
       <header className="module-header feature-page-header">
@@ -576,129 +604,217 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
         </div>
       </header>
 
-      <div className="cover-letter-config-card">
-        <div className="tone-selector">
-          <span>{copy.toneLabel}</span>
-          <div className="tone-pills">
-            {tones.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`tone-pill ${tone === item.id ? "active" : ""}`}
-                onClick={() => setTone(item.id)}
-              >
-                <UiIcon name={LETTER_TONE_ICONS[item.id]} />
-                {item.label}
-              </button>
-            ))}
+      <div className="cover-letter-single-column">
+        <div className="cover-letter-block">
+          <div className="cover-letter-block-header">
+            <UiIcon name="mail" />
+            <h3>{copy.letterSectionTitle}</h3>
           </div>
-        </div>
-
-        <div className="tone-selector">
-          <span>{copy.templateLabel}</span>
-          <div className="tone-pills">
-            {LETTER_TEMPLATES.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`tone-pill template-pill template-pill-${item.id} ${template === item.id ? "active" : ""}`}
-                onClick={() => setTemplate(item.id)}
-              >
-                <UiIcon name={item.icon} />
-                {item.label[language] || item.label.fr}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="tone-selector">
-          <span>{copy.colorLabel}</span>
-          <div className="cv-color-switch">
-            {THEME_PRESETS.map((preset) => (
-              <button
-                key={preset.id}
-                type="button"
-                className={`cv-color-swatch ${letterColor === preset.id ? "active" : ""}`}
-                style={{ "--swatch-color": preset.vars["--primary"] }}
-                title={preset.label[language] || preset.label.fr}
-                aria-label={preset.label[language] || preset.label.fr}
-                aria-pressed={letterColor === preset.id}
-                onClick={() => setLetterColor(preset.id)}
-              />
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {error ? <p className="field-error">{error}</p> : null}
-
-      {!letter ? (
-        <div className="cover-letter-empty">
-          <CoverLetterIllustration />
-          {outOfTokens ? (
-            <p className="field-hint">
-              {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
-            </p>
-          ) : null}
-          <button type="button" className="btn-main ready" onClick={handleGenerate} disabled={isGenerating}>
-            {isGenerating ? (
-              <>
-                <span className="btn-spinner" /> {copy.generating}
-              </>
-            ) : hasUnlimitedTokens ? (
-              copy.generateUnlimited
-            ) : (
-              copy.generate
-            )}
-          </button>
-        </div>
-      ) : (
-        <div className="letter-document-card">
-          <div className="letter-toolbar no-print">
-            {isEditing ? (
-              <>
-                <button type="button" className="btn-ghost" onClick={cancelEditing}>
-                  {copy.cancelEdit}
-                </button>
-                <button type="button" className="btn-main" onClick={saveEditing}>
-                  {copy.saveEdit}
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" className="btn-ghost" onClick={handleGenerate} disabled={isGenerating}>
-                  {isGenerating ? <span className="btn-spinner" /> : null}{" "}
-                  {hasUnlimitedTokens ? copy.regenerateUnlimited : copy.regenerate}
-                </button>
-                <button type="button" className="btn-ghost" onClick={startEditing}>
-                  <UiIcon name="edit" /> {copy.edit}
-                </button>
-                <button type="button" className="btn-ghost" onClick={handleCopy}>
-                  {copied ? copy.copied : copy.copy}
-                </button>
-                <button type="button" className="btn-main" onClick={handleDownload} disabled={isDownloadingPdf}>
-                  {isDownloadingPdf ? <span className="btn-spinner" /> : <UiIcon name="download" />} {copy.download}
-                </button>
-              </>
-            )}
-          </div>
-          {isEditing ? (
-            <textarea
-              className={`letter-document letter-document-edit template-${template}`}
-              style={letterColorVars}
-              value={draftLetter}
-              onChange={(event) => setDraftLetter(event.target.value)}
-            />
-          ) : (
-            <div className={`letter-document template-${template}`} style={letterColorVars} id="cover-letter-document">
-              {subject ? <p className="letter-subject">{subject}</p> : null}
-              {letter.split("\n\n").map((paragraph, index) => (
-                <p key={`para-${index}`}>{paragraph}</p>
-              ))}
+          <div className="cover-letter-config-card">
+            <div className="tone-selector">
+              <span>{copy.toneLabel}</span>
+              <div className="tone-pills">
+                {tones.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`tone-pill ${tone === item.id ? "active" : ""}`}
+                    onClick={() => setTone(item.id)}
+                  >
+                    <UiIcon name={LETTER_TONE_ICONS[item.id]} />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
+
+            <div className="tone-selector">
+              <span>{copy.templateLabel}</span>
+              <div className="tone-pills">
+                {LETTER_TEMPLATES.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`tone-pill template-pill template-pill-${item.id} ${template === item.id ? "active" : ""}`}
+                    onClick={() => setTemplate(item.id)}
+                  >
+                    <UiIcon name={item.icon} />
+                    {item.label[language] || item.label.fr}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="tone-selector">
+              <span>{copy.colorLabel}</span>
+              <div className="cv-color-switch">
+                {THEME_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    className={`cv-color-swatch ${letterColor === preset.id ? "active" : ""}`}
+                    style={{ "--swatch-color": preset.vars["--primary"] }}
+                    title={preset.label[language] || preset.label.fr}
+                    aria-label={preset.label[language] || preset.label.fr}
+                    aria-pressed={letterColor === preset.id}
+                    onClick={() => setLetterColor(preset.id)}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {error ? <p className="field-error">{error}</p> : null}
+
+            {letter ? (
+              <>
+                {!isEditing ? (
+                  <button type="button" className="btn-main ready" onClick={handleGenerate} disabled={isGenerating}>
+                    {isGenerating ? <span className="btn-spinner" /> : null}{" "}
+                    {hasUnlimitedTokens ? copy.regenerateUnlimited : copy.regenerate}
+                  </button>
+                ) : null}
+                <div className="letter-document-card">
+                  <div className="letter-toolbar no-print">
+                    {isEditing ? (
+                      <>
+                        <button type="button" className="btn-ghost" onClick={cancelEditing}>
+                          {copy.cancelEdit}
+                        </button>
+                        <button type="button" className="btn-main" onClick={saveEditing}>
+                          {copy.saveEdit}
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" className="btn-ghost" onClick={startEditing}>
+                          <UiIcon name="edit" /> {copy.edit}
+                        </button>
+                        <button type="button" className="btn-ghost" onClick={handleCopy}>
+                          {copied ? copy.copied : copy.copy}
+                        </button>
+                        <button type="button" className="btn-main" onClick={handleDownload} disabled={isDownloadingPdf}>
+                          {isDownloadingPdf ? <span className="btn-spinner" /> : <UiIcon name="download" />} {copy.download}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  {isEditing ? (
+                    <textarea
+                      className={`letter-document letter-document-edit template-${template}`}
+                      style={letterColorVars}
+                      value={draftLetter}
+                      onChange={(event) => setDraftLetter(event.target.value)}
+                    />
+                  ) : (
+                    <div className={`letter-document template-${template}`} style={letterColorVars} id="cover-letter-document">
+                      {subject ? <p className="letter-subject">{subject}</p> : null}
+                      {letter.split("\n\n").map((paragraph, index) => (
+                        <p key={`para-${index}`}>{paragraph}</p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
-      )}
+
+        <div className="cover-letter-block">
+          <div className="cover-letter-block-header">
+            <UiIcon name="at" />
+            <h3>{copy.emailSectionTitle}</h3>
+          </div>
+          <div className="cover-letter-config-card">
+            <EmailSettingsFields
+              copy={copy}
+              tones={tones}
+              recipientName={recipientName}
+              setRecipientName={setRecipientName}
+              recipientEmail={recipientEmail}
+              setRecipientEmail={setRecipientEmail}
+              emailType={emailType}
+              setEmailType={setEmailType}
+              emailLength={emailLength}
+              setEmailLength={setEmailLength}
+              emailTone={emailTone}
+              setEmailTone={setEmailTone}
+              emailError={emailError}
+            />
+
+            {letter ? (
+              <button type="button" className="btn-main ready" onClick={handleGenerateEmail} disabled={isGeneratingEmail}>
+                {isGeneratingEmail ? (
+                  <>
+                    <span className="btn-spinner" /> {copy.generatingEmail}
+                  </>
+                ) : emailBody ? (
+                  hasUnlimitedTokens ? copy.regenerateEmailUnlimited : copy.regenerateEmail
+                ) : hasUnlimitedTokens ? (
+                  copy.generateEmailUnlimited
+                ) : (
+                  copy.generateEmail
+                )}
+              </button>
+            ) : null}
+
+            {emailBody ? (
+              <div className="letter-document-card application-email-result">
+                <label>
+                  {copy.emailSubjectLabel}
+                  <input type="text" value={emailSubject} onChange={(event) => setEmailSubject(event.target.value)} />
+                </label>
+                <textarea
+                  className="letter-document-edit"
+                  value={emailBody}
+                  onChange={(event) => setEmailBody(event.target.value)}
+                />
+                <div className="letter-toolbar no-print">
+                  <button type="button" className="btn-ghost" onClick={() => handleCopyEmail("subject")}>
+                    {copiedEmailField === "subject" ? copy.copied : copy.copySubject}
+                  </button>
+                  <button type="button" className="btn-ghost" onClick={() => handleCopyEmail("body")}>
+                    {copiedEmailField === "body" ? copy.copied : copy.copyBody}
+                  </button>
+                  <button type="button" className="btn-ghost" onClick={() => handleCopyEmail("both")}>
+                    {copiedEmailField === "both" ? copy.copied : copy.copyBoth}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+
+        {!letter ? (
+          <div className="cover-letter-empty">
+            <div className="cover-letter-empty-illustrations">
+              <CoverLetterIllustration />
+              <span className="cover-letter-empty-plus" aria-hidden="true">+</span>
+              <CoverLetterEmailIllustration />
+            </div>
+            {missingTokensForBoth ? (
+              <p className="field-hint">
+                {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
+              </p>
+            ) : null}
+            <button
+              type="button"
+              className="btn-main ready"
+              onClick={handleGenerateBoth}
+              disabled={isGenerating || isGeneratingEmail}
+            >
+              {isGenerating || isGeneratingEmail ? (
+                <>
+                  <span className="btn-spinner" /> {copy.generating}
+                </>
+              ) : hasUnlimitedTokens ? (
+                copy.generateUnlimited
+              ) : (
+                copy.generate
+              )}
+            </button>
+          </div>
+        ) : null}
+      </div>
       </section>
     </div>
   );

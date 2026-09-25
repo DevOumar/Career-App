@@ -18,6 +18,13 @@
 }
 
 :root {
+  /* Empêche le navigateur d'appliquer son rendu natif sombre (fond des
+     champs de saisie, listes déroulantes, sélecteurs de date...) quand l'OS
+     ou le navigateur de l'utilisateur est en mode sombre alors que le thème
+     de l'app (piloté par [data-theme], pas par prefers-color-scheme) est
+     encore clair — sans cette déclaration, ces contrôles natifs peuvent
+     s'afficher avec un fond sombre illisible malgré var(--surface) blanc. */
+  color-scheme: light;
   --bg: #f5f3ee;
   --bg-accent: #f4ede4;
   --surface: #ffffff;
@@ -45,6 +52,7 @@
 }
 
 :root[data-theme="dark"] {
+  color-scheme: dark;
   --bg: #0c0c10;
   --bg-accent: #16151a;
   --surface: #16151a;
@@ -8571,31 +8579,104 @@ input[aria-invalid="true"] {
 /* Cover letter */
 
 .cover-letter-page {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Override ponctuel de .negotiation-layout (partagée avec la page
+   Négociation, styles.css:9631) : la mise en page 2 colonnes (lettre +
+   email côte à côte) a besoin de plus de largeur que le contenu empilé de
+   la Négociation — 2 classes pour l'emporter sur .negotiation-layout seule
+   sans dépendre de l'ordre des règles dans la feuille. */
+.negotiation-layout.cover-letter-layout {
+  max-width: 1400px;
+}
+
+/* Une seule colonne, avant ET après génération (états cohérents entre eux) :
+   les blocs Lettre et Email s'empilent verticalement, chacun dans sa propre
+   carte (.cover-letter-block). */
+.cover-letter-single-column {
   max-width: 780px;
   margin: 0 auto;
 }
 
+.cover-letter-recipient-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.8rem;
+}
+
+@media (max-width: 480px) {
+  .cover-letter-recipient-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Carte englobant un bloc (Lettre ou Email) : en-tête + contenu. overflow
+   hidden pour que .cover-letter-block-header garde les coins arrondis du
+   haut de la carte. */
+.cover-letter-block {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+}
+
+/* En-tête de bloc : même fond/couleur de texte pour Lettre ET Email (seuls
+   l'icône et le libellé diffèrent) — même orange pâle que .cover-letter-empty
+   ci-dessous, pour une cohérence visuelle sur toute la page. */
+.cover-letter-block-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 1.6rem;
+  background: var(--bg-accent);
+  border-bottom: 1px solid var(--line);
+  color: var(--primary-ink);
+}
+
+.cover-letter-block-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: inherit;
+}
+
+.cover-letter-block-header .ui-icon {
+  width: 1.15em;
+  height: 1.15em;
+}
+
+/* .application-email-result n'a pas de padding propre (hérité de
+   .letter-document-card, qui n'en a pas non plus — seul .letter-toolbar
+   en a un) : on le cible directement sur le label/textarea, pour ne pas
+   doubler le padding déjà présent sur .letter-toolbar. */
+.application-email-result > label,
+.application-email-result > textarea {
+  display: block;
+  margin: 0.9rem 1.1rem;
+  width: calc(100% - 2.2rem);
+}
+
+.application-email-result > label input {
+  display: block;
+  width: 100%;
+  margin-top: 0.3rem;
+}
+
+.application-email-result > textarea {
+  min-height: 220px;
+}
+
+/* Contenu d'un .cover-letter-block, sous son .cover-letter-block-header —
+   la carte (fond, bordure, radius) est portée par .cover-letter-block, pas
+   ici, pour ne pas la dupliquer sous l'en-tête. */
 .cover-letter-config-card {
   display: flex;
   flex-direction: column;
   gap: 1.1rem;
-  background: #fff;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
   padding: 1.4rem 1.6rem;
-  margin-bottom: 1.5rem;
-  position: relative;
-  overflow: hidden;
-}
-
-.cover-letter-config-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 3px;
-  background: linear-gradient(90deg, var(--primary), var(--primary-2));
 }
 
 .tone-selector {
@@ -9507,17 +9588,38 @@ input[aria-invalid="true"] {
   }
 }
 
+/* Même fond orange pâle que .cover-letter-block-header, pour la cohérence
+   visuelle avec les en-têtes de bloc au-dessus. */
 .cover-letter-empty {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 1.5rem;
   padding: 3rem 1.5rem;
-  background: linear-gradient(180deg, var(--bg-accent), var(--surface-2));
+  background: var(--bg-accent);
   border: 1px solid var(--line);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-sm);
   text-align: center;
+}
+
+.cover-letter-empty-illustrations {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.cover-letter-empty-illustrations .module-illustration {
+  max-width: 200px;
+}
+
+.cover-letter-empty-plus {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: var(--primary-ink);
+  line-height: 1;
 }
 
 .letter-document-card {
@@ -9638,6 +9740,14 @@ input[aria-invalid="true"] {
 
 .negotiation-history {
   flex: 0 0 260px;
+  /* min-width:0 annule le min-width:auto par défaut d'un flex item, qui
+     sinon se cale sur la taille de contenu minimale de ses enfants (ex :
+     .negotiation-new-btn non replié) et pousse la colonne au-delà de ses
+     260px déclarés — bug constaté : 290px dès qu'une entrée d'historique
+     existe. Avec min-width:0, flex:0 0 260px est enfin respecté à la
+     lettre, quel que soit le contenu (qui se replie/tronque à l'intérieur
+     à la place). */
+  min-width: 0;
   position: sticky;
   top: 1rem;
   background: var(--surface);
@@ -9656,6 +9766,7 @@ input[aria-invalid="true"] {
   align-items: center;
   gap: 0.55rem;
   width: 100%;
+  min-width: 0;
   padding: 0.6rem 0.7rem;
   font-size: 0.85rem;
   font-weight: 600;
@@ -9665,6 +9776,10 @@ input[aria-invalid="true"] {
   border-radius: var(--radius-md);
   cursor: pointer;
   text-align: left;
+  /* Le libellé peut désormais dépasser une ligne ("+ Nouvelle lettre &
+     email") : s'enroule proprement plutôt que de forcer le bouton (et donc
+     .negotiation-history) à s'élargir au-delà de 260px. */
+  white-space: normal;
 }
 
 .negotiation-new-btn:hover {
@@ -9732,6 +9847,41 @@ input[aria-invalid="true"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* .negotiation-history-main enveloppe titre+badges dans un seul enfant
+   flex de .negotiation-history-item (qui reste en display:flex +
+   justify-content:space-between, partagé avec SalaryNegotiationPage) —
+   évite de casser cet espacement en ajoutant un 3e enfant flex direct. */
+.negotiation-history-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.negotiation-history-badges {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.history-badge {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.history-badge-email {
+  color: var(--primary-ink, var(--text));
+  background: var(--bg-accent, var(--surface-2));
+  border-color: transparent;
 }
 
 .negotiation-history-delete {

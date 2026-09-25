@@ -243,6 +243,14 @@ export function UiIcon({ name, className = "" }) {
         <path d="M8 13h4" stroke="var(--surface, #fff)" strokeWidth="1.1" strokeLinecap="round" />
         <path d="M2.5 9v2M17.5 9v2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
       </>
+    ),
+    // Symbole "@" pour l'en-tête du bloc email (Lettre & Email IA) — rendu
+    // en tant que caractère plutôt qu'un tracé dessiné à la main, pour
+    // garantir un glyphe "@" fidèle.
+    at: (
+      <text x="10" y="14.5" textAnchor="middle" fontSize="14" fontWeight="700" fill="currentColor">
+        @
+      </text>
     )
   };
 
