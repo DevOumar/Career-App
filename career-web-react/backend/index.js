@@ -2011,11 +2011,24 @@ function sanitizeAiJobExtraction(raw, sourceText) {
     missions: normalizeAiList(parsed.missions, 10).length ? normalizeAiList(parsed.missions, 10) : fallback.missions,
     // contactName : uniquement ce que l'IA a explicitement trouvé (jamais
     // le fallback local, qui ne déduit jamais de nom, cf.
-    // extractLocalJobSummary). contactEmail : repli sur le regex local si
-    // l'IA n'a rien trouvé (ceinture-bretelles — l'email est syntaxiquement
-    // détectable, autant ne pas dépendre uniquement du LLM pour ça).
+    // extractLocalJobSummary).
     contactName: coerceString(parsed.contactName) || null,
-    contactEmail: coerceString(parsed.contactEmail) || fallback.contactEmail
+    // contactEmail : ne fait confiance à l'IA que si la chaîne renvoyée
+    // apparaît telle quelle dans le texte source. Un LLM ne "copie" pas
+    // forcément l'email caractère par caractère, il peut le regénérer de
+    // mémoire lors de la génération JSON et introduire une faute de frappe
+    // (ex: "jeanne.dupont@..." -> "jeanne.dupout@..."). Un email est en
+    // revanche un pattern syntaxique fiable à 100% par regex : si l'IA a
+    // renvoyé une adresse absente du texte source, elle est rejetée au
+    // profit de l'extraction regex locale (fallback.contactEmail), exacte
+    // par construction.
+    contactEmail: (() => {
+      const aiContactEmail = coerceString(parsed.contactEmail);
+      if (aiContactEmail && normalizedSource.includes(normalizeEmail(aiContactEmail))) {
+        return aiContactEmail;
+      }
+      return fallback.contactEmail;
+    })()
   };
 }
 
