@@ -699,8 +699,19 @@ app.delete("/api/account", async (req, res) => {
     await db.query("DELETE FROM user_email_addresses WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM cvs WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM match_runs WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM match_feedback WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM negotiation_conversations WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM cover_letters WHERE user_id = $1", [userId]);
+    // interview_conversations/skills_tests : memes tables payload_json que
+    // cover_letters/negotiation_conversations ci-dessus, oubliees lors de
+    // leur ajout respectif — trouve en auditant exhaustivement les tables
+    // liees a user_id pour ce correctif RGPD. job_applications et
+    // satisfaction_surveys : donnees personnelles liees a user_id, meme
+    // constat.
+    await db.query("DELETE FROM interview_conversations WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM skills_tests WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM job_applications WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM satisfaction_surveys WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_candidate_profiles WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_recruiter_profiles WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_org_profiles WHERE user_id = $1", [userId]);
