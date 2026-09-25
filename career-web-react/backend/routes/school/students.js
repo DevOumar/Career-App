@@ -450,9 +450,9 @@ app.post("/api/school/students/bulk-invite", async (req, res) => {
             </p>
             <p style="margin:0 0 14px;color:#1f2634;">Votre code de licence : <strong>${activeCode.code}</strong></p>
             <p style="margin:0 0 14px;color:#1f2634;">Créez votre compte puis renseignez ce code depuis la page Tarifs pour activer votre accès gratuitement.</p>
-            <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career CV</p>
+            <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">L'équipe Career CV</p>
           </div>`;
-        const text = `Bonjour,\n\n${organizationName} vous invite à rejoindre Career CV.\nVotre code de licence : ${activeCode.code}\nCréez votre compte puis renseignez ce code depuis la page Tarifs.\n\n— L'équipe Career CV`;
+        const text = `Bonjour,\n\n${organizationName} vous invite à rejoindre Career CV.\nVotre code de licence : ${activeCode.code}\nCréez votre compte puis renseignez ce code depuis la page Tarifs.\n\nL'équipe Career CV`;
         const recipient = AUTH_EMAIL_TO || email;
         try {
           await transporter.sendMail({ from: MAIL_FROM, to: recipient, subject: "Invitation Career CV", html, text });

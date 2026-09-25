@@ -44,6 +44,8 @@ import { registerCoverLetterRoutes } from "./routes/coverLetter.js";
 import { registerNegotiationRoutes } from "./routes/negotiation.js";
 import { registerApplicationsRoutes } from "./routes/applications.js";
 import { registerInterviewRoutes } from "./routes/interview.js";
+import { registerMfaRoutes } from "./routes/mfa.js";
+import { createMfaService, MFA_SCHEMA_SQL } from "./mfa.js";
 
 dnsCore.setDefaultResultOrder("ipv4first");
 
@@ -126,6 +128,9 @@ const AUTH_EMAIL_TO = String(process.env.AUTH_EMAIL_TO || "").trim();
 const AUTH_SKIP_SIGNUP_OTP = String(process.env.AUTH_SKIP_SIGNUP_OTP || "").trim() === "true";
 const DATABASE_URL = String(process.env.DATABASE_URL || process.env.SUPABASE_DB_URL || "").trim();
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
+// Clé AES-256 (64 caractères hexadécimaux) qui chiffre les secrets TOTP en
+// base. Identique sur tous les environnements qui partagent la même base.
+const MFA_ENCRYPTION_KEY = String(process.env.MFA_ENCRYPTION_KEY || "").trim();
 const googleOAuthClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 const STRIPE_SECRET_KEY = String(process.env.STRIPE_SECRET_KEY || "").trim();
 const STRIPE_WEBHOOK_SECRET = String(process.env.STRIPE_WEBHOOK_SECRET || "").trim();
@@ -389,6 +394,7 @@ app.use(express.json({ limit: "10mb" }));
 // simple navigation normale dans l'app peut épuiser la limite sans qu'aucune
 // vraie tentative n'ait eu lieu.
 const AUTH_RATE_LIMIT_EXEMPT_PATHS = new Set(["/session", "/logout"]);
+const MFA_LOGIN_PATHS = new Set(["/mfa/verify", "/mfa/key-options"]);
 // La suite de tests (backend/tests/api.test.mjs) enchaîne volontairement
 // beaucoup d'appels /api/auth/* en rafale sur 127.0.0.1 (inscriptions,
 // tentatives de connexion pour tester le verrouillage...) — sans ce garde-fou
@@ -402,7 +408,14 @@ const authRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "Trop de tentatives. Réessayez dans quelques minutes." },
-  skip: (req) => authRateLimitDisabledForTests || AUTH_RATE_LIMIT_EXEMPT_PATHS.has(req.path)
+  skip: (req) =>
+    authRateLimitDisabledForTests ||
+    AUTH_RATE_LIMIT_EXEMPT_PATHS.has(req.path) ||
+    // Gestion de la double authentification (session obligatoire, et la
+    // confirmation d'identité a sa propre limite d'échecs) : ouvrir le
+    // panneau Sécurité ne doit pas consommer le quota des connexions. Seules
+    // les étapes de connexion (/mfa/verify, /mfa/key-options) restent limitées.
+    (req.path.startsWith("/mfa/") && !MFA_LOGIN_PATHS.has(req.path))
 });
 app.use("/api/auth", authRateLimiter);
 
@@ -993,6 +1006,42 @@ await db.exec(`
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
 `);
 
+await db.exec(MFA_SCHEMA_SQL);
+
+// Migration unique (marquée dans platform_settings) à l'arrivée de la
+// vérification d'e-mail obligatoire et de la connexion par mot de passe :
+//  - les comptes EXISTANTS sont considérés vérifiés (ils se connectaient
+//    jusqu'ici par un code reçu sur cette adresse) ;
+//  - les comptes créés via Google n'ont jamais choisi de mot de passe (le
+//    serveur leur en avait attribué un aléatoire) : on les marque « sans mot
+//    de passe » s'ils n'ont aucune trace d'usage d'un mot de passe.
+{
+  const { rows: migrationRows } = await db.query("SELECT value FROM platform_settings WHERE key = 'migration_auth_password_v1'");
+  if (!migrationRows.length) {
+    await db.query("UPDATE users SET email_verified_at = created_at WHERE email_verified_at = ''");
+    await db.query(
+      `UPDATE users SET password_set = 0
+       WHERE google_id <> ''
+         AND NOT EXISTS (
+           SELECT 1 FROM account_security_events e
+           WHERE e.user_id = users.id
+             AND e.event_type IN ('login_password', 'password_changed', 'password_reset_completed', 'signup_email_code')
+         )`
+    );
+    await db.query(
+      "INSERT INTO platform_settings (key, value, updated_at) VALUES ('migration_auth_password_v1', 'done', $1) ON CONFLICT (key) DO NOTHING",
+      [nowIso()]
+    );
+  }
+}
+await db.query("DELETE FROM mfa_login_tickets WHERE expires_at < $1", [nowIso()]);
+await db.query("DELETE FROM mfa_key_challenges WHERE expires_at < $1", [nowIso()]);
+
+const mfa = createMfaService({ db, nowIso, encryptionKey: MFA_ENCRYPTION_KEY, origins: ALLOWED_ORIGINS });
+if (!mfa.available) {
+  console.warn("[mfa] MFA_ENCRYPTION_KEY absente ou invalide : l'application d'authentification (TOTP) est désactivée.");
+}
+
 // Sessions déjà expirées avant l'ajout de la colonne expires_at (créées
 // sans date d'expiration) : on leur donne 30 jours à partir de maintenant
 // plutôt que de les supprimer immédiatement (déconnexion surprise de tout
@@ -1282,10 +1331,10 @@ function buildAnnouncementEmail({ subject, message, firstName }) {
       <h2 style="color:#2f5bff;margin:0 0 18px;">Career CV</h2>
       <p style="margin:0 0 14px;color:#1f2634;">${greeting}</p>
       ${paragraphs}
-      <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career CV</p>
+      <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">L'équipe Career CV</p>
     </div>`;
 
-  const text = `${greeting}\n\n${message}\n\n— L'équipe Career CV`;
+  const text = `${greeting}\n\n${message}\n\nL'équipe Career CV`;
 
   return { subject, html, text };
 }
@@ -3302,7 +3351,8 @@ async function extractCvWithAi(sourceText) {
 function requireFields(payload, fields) {
   for (const field of fields) {
     if (!String(payload?.[field] || "").trim()) {
-      throw new Error(`Champ requis: ${field}`);
+      // 400 : erreur de saisie, pas une panne serveur.
+      throw Object.assign(new Error(`Champ requis: ${field}`), { statusCode: 400 });
     }
   }
 }
@@ -3573,6 +3623,10 @@ function toPublicUser(userRow, relations) {
     updatedAt: userRow.updated_at,
     roleType: accountType,
     googleLinked: Boolean(userRow.google_id),
+    // Compte créé via Google sans mot de passe choisi : l'écran Sécurité
+    // propose « Définir un mot de passe » plutôt que « Modifier ».
+    hasPassword: Number(userRow.password_set ?? 1) === 1,
+    emailVerified: Boolean(userRow.email_verified_at),
     adminModules: accountType === "admin" ? parseJsonField(userRow.admin_modules_json, []) : undefined,
     avatarDataUrl,
     profile,
@@ -4545,23 +4599,23 @@ async function runSchoolWeeklyDigests() {
           const organizationName = orgProfileRows[0]?.organization_name || school.first_name || "votre établissement";
           const html = `
             <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
-              <h2 style="color:#b83309;margin:0 0 18px;">Career CV — Résumé hebdomadaire</h2>
+              <h2 style="color:#b83309;margin:0 0 18px;">Career CV · Résumé hebdomadaire</h2>
               <p style="margin:0 0 14px;color:#1f2634;">Bonjour,</p>
               <p style="margin:0 0 14px;color:#1f2634;">Voici les points d'attention pour <strong>${escapeHtml(organizationName)}</strong> cette semaine :</p>
               <ul style="margin:0 0 18px;padding-left:20px;color:#1f2634;line-height:1.7;">
-                ${alerts.map((alert) => `<li><strong>${escapeHtml(alert.title)}</strong> — ${escapeHtml(alert.body)}</li>`).join("")}
+                ${alerts.map((alert) => `<li><strong>${escapeHtml(alert.title)}</strong> : ${escapeHtml(alert.body)}</li>`).join("")}
               </ul>
               <p style="margin:0 0 14px;color:#1f2634;">Connectez-vous à votre espace École pour plus de détails.</p>
-              <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career CV</p>
+              <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">L'équipe Career CV</p>
             </div>`;
           const text = `Résumé hebdomadaire Career CV pour ${organizationName} :\n\n${alerts
             .map((alert) => `- ${alert.title} : ${alert.body}`)
-            .join("\n")}\n\n— L'équipe Career CV`;
+            .join("\n")}\n\nL'équipe Career CV`;
           const recipient = AUTH_EMAIL_TO || school.email;
           await transporter.sendMail({
             from: MAIL_FROM,
             to: recipient,
-            subject: `Career CV — Résumé hebdomadaire (${alerts.length} point${alerts.length > 1 ? "s" : ""} d'attention)`,
+            subject: `Career CV · Résumé hebdomadaire (${alerts.length} point${alerts.length > 1 ? "s" : ""} d'attention)`,
             html,
             text
           });
@@ -4609,23 +4663,23 @@ async function runCabinetWeeklyDigests() {
           const organizationName = profileRows[0]?.organization_name || cabinet.first_name || "votre cabinet";
           const html = `
             <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
-              <h2 style="color:#b83309;margin:0 0 18px;">Career CV — Résumé hebdomadaire</h2>
+              <h2 style="color:#b83309;margin:0 0 18px;">Career CV · Résumé hebdomadaire</h2>
               <p style="margin:0 0 14px;color:#1f2634;">Bonjour,</p>
               <p style="margin:0 0 14px;color:#1f2634;">Voici les points d'attention pour <strong>${escapeHtml(organizationName)}</strong> cette semaine :</p>
               <ul style="margin:0 0 18px;padding-left:20px;color:#1f2634;line-height:1.7;">
-                ${alerts.map((alert) => `<li><strong>${escapeHtml(alert.title)}</strong> — ${escapeHtml(alert.body)}</li>`).join("")}
+                ${alerts.map((alert) => `<li><strong>${escapeHtml(alert.title)}</strong> : ${escapeHtml(alert.body)}</li>`).join("")}
               </ul>
               <p style="margin:0 0 14px;color:#1f2634;">Connectez-vous à votre espace Cabinet pour plus de détails.</p>
-              <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">— L'équipe Career CV</p>
+              <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">L'équipe Career CV</p>
             </div>`;
           const text = `Résumé hebdomadaire Career CV pour ${organizationName} :\n\n${alerts
             .map((alert) => `- ${alert.title} : ${alert.body}`)
-            .join("\n")}\n\n— L'équipe Career CV`;
+            .join("\n")}\n\nL'équipe Career CV`;
           const recipient = AUTH_EMAIL_TO || cabinet.email;
           await transporter.sendMail({
             from: MAIL_FROM,
             to: recipient,
-            subject: `Career CV — Résumé hebdomadaire (${alerts.length} point${alerts.length > 1 ? "s" : ""} d'attention)`,
+            subject: `Career CV · Résumé hebdomadaire (${alerts.length} point${alerts.length > 1 ? "s" : ""} d'attention)`,
             html,
             text
           });
@@ -4870,6 +4924,7 @@ await loadPlatformSettings();
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
   requireMatchingSession,
+  mfa,
   cors,
   crypto,
   express,
@@ -5128,6 +5183,7 @@ app.locals.ctx = {
 
 registerHealthRoutes(app);
 registerAuthRoutes(app);
+registerMfaRoutes(app);
 registerProfileRoutes(app);
 registerPremiumRoutes(app);
 registerBillingRoutes(app);

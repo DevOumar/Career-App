@@ -81,7 +81,60 @@ function getStoredSessionToken() {
   }
 }
 
+// --- Second facteur pour les actions sensibles --------------------------------
+// Quand la double authentification est active, le serveur répond
+// STEP_UP_REQUIRED aux actions sensibles (mot de passe, e-mails, Google,
+// suppression du compte…). Un « hôte » (StepUpHost, monté dans main.jsx)
+// affiche alors la fenêtre de confirmation ; la requête est rejouée avec la
+// preuve, sans que chaque écran ait à gérer ce cas. Les routes /auth/mfa/*
+// gèrent elles-mêmes leur confirmation (voir useStepUp) et sont exclues.
+let stepUpHost = null;
+export function registerStepUpHost(host) {
+  stepUpHost = host;
+  return () => {
+    if (stepUpHost === host) stepUpHost = null;
+  };
+}
+
 async function request(path, options = {}) {
+  try {
+    return await rawRequest(path, options);
+  } catch (error) {
+    const eligible =
+      error.code === "STEP_UP_REQUIRED" &&
+      stepUpHost &&
+      options.body &&
+      typeof options.body === "object" &&
+      !options.body.stepUp &&
+      !path.startsWith("/auth/mfa/");
+    if (!eligible) throw error;
+
+    let lastError = "";
+    // Plusieurs essais possibles (code mal saisi) ; l'annulation abandonne.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const proof = await stepUpHost.ask({ methods: error.methods || [], userId: options.body.userId, error: lastError });
+      if (!proof) {
+        stepUpHost.close();
+        throw Object.assign(new Error("Action annulée."), { code: "STEP_UP_CANCELLED", cancelled: true });
+      }
+      try {
+        const result = await rawRequest(path, { ...options, body: { ...options.body, stepUp: proof } });
+        stepUpHost.close();
+        return result;
+      } catch (retryError) {
+        if (retryError.code !== "STEP_UP_FAILED") {
+          stepUpHost.close();
+          throw retryError;
+        }
+        lastError = retryError.message;
+      }
+    }
+    stepUpHost.close();
+    throw error;
+  }
+}
+
+async function rawRequest(path, options = {}) {
   const apiBase = await resolveApiBase();
   const headers = { "Content-Type": "application/json", ...(options.headers || {}) };
 
@@ -200,6 +253,61 @@ export async function loginWithGoogle(credential, intent = "signup") {
   });
 }
 
+// --- Double authentification (voir backend/routes/mfa.js) -------------------
+// Connexion : le 1er facteur a renvoyé { mfaRequired, mfaTicket, methods }.
+export async function verifyMfaLogin({ ticket, method, code, response }) {
+  return request("/auth/mfa/verify", { method: "POST", body: { ticket, method, code, response } });
+}
+
+export async function getMfaLoginKeyOptions(ticket) {
+  return request("/auth/mfa/key-options", { method: "POST", body: { ticket } });
+}
+
+// Gestion (session requise). `stepUp` : confirmation d'identité, jointe quand
+// le serveur a répondu STEP_UP_REQUIRED.
+export async function getMfaStatus(userId) {
+  return request(`/auth/mfa/status?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function getStepUpKeyOptions(userId) {
+  return request("/auth/mfa/step-up/key-options", { method: "POST", body: { userId } });
+}
+
+export async function startTotpEnrollment(userId, stepUp) {
+  return request("/auth/mfa/totp/start", { method: "POST", body: { userId, stepUp } });
+}
+
+export async function confirmTotpEnrollment(userId, code) {
+  return request("/auth/mfa/totp/confirm", { method: "POST", body: { userId, code } });
+}
+
+export async function cancelTotpEnrollment(userId) {
+  return request("/auth/mfa/totp/cancel", { method: "POST", body: { userId } });
+}
+
+export async function disableTotp(userId, stepUp) {
+  return request("/auth/mfa/totp/disable", { method: "POST", body: { userId, stepUp } });
+}
+
+export async function regenerateRecoveryCodes(userId, stepUp) {
+  return request("/auth/mfa/recovery-codes", { method: "POST", body: { userId, stepUp } });
+}
+
+export async function startSecurityKeyRegistration(userId, stepUp) {
+  return request("/auth/mfa/keys/options", { method: "POST", body: { userId, stepUp } });
+}
+
+export async function finishSecurityKeyRegistration(userId, name, response) {
+  return request("/auth/mfa/keys", { method: "POST", body: { userId, name, response } });
+}
+
+export async function revokeSecurityKey(userId, keyId, stepUp) {
+  return request(`/auth/mfa/keys/${encodeURIComponent(keyId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE",
+    body: { userId, stepUp }
+  });
+}
+
 export async function getUserFromSession(token) {
   if (!token) return null;
   try {
@@ -217,6 +325,10 @@ export async function revokeSession({ userId, sessionId }) {
   return request(`/auth/sessions/${encodeURIComponent(sessionId)}?userId=${encodeURIComponent(userId)}`, {
     method: "DELETE"
   });
+}
+
+export async function revokeOtherSessions(userId) {
+  return request("/auth/sessions/revoke-others", { method: "POST", body: { userId } });
 }
 
 export async function logoutUser(token) {
@@ -747,6 +859,13 @@ export async function getAdminCvs(adminUserId, { search = "", status = "", segme
   return request(`/admin/cvs?${params.toString()}`);
 }
 
+export async function deleteAdminAnnouncement({ adminUserId, announcementId }) {
+  return request(`/admin/announcements/${encodeURIComponent(announcementId)}`, {
+    method: "DELETE",
+    body: { adminUserId }
+  });
+}
+
 export async function deleteAdminCv({ adminUserId, cvId }) {
   return request(`/admin/cvs/${encodeURIComponent(cvId)}`, {
     method: "DELETE",
@@ -906,6 +1025,13 @@ export async function generateSchoolReport(userId, period = "monthly", promotion
   return request("/school/reports/generate", {
     method: "POST",
     body: { userId, period, promotionId }
+  });
+}
+
+export async function updateSchoolPromotion(userId, promotionId, payload) {
+  return request(`/school/promotions/${encodeURIComponent(promotionId)}`, {
+    method: "PUT",
+    body: { userId, ...payload }
   });
 }
 

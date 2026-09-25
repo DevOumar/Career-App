@@ -423,8 +423,8 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
           <UiIcon name="alert" />
           <span>
             {language === "en"
-              ? "No real market data found for this role — figures below are AI estimates only."
-              : "Aucune donnée de marché réelle trouvée pour ce poste — les montants ci-dessous sont des estimations IA uniquement."}
+              ? "No real market data found for this role, figures below are AI estimates only."
+              : "Aucune donnée de marché réelle trouvée pour ce poste, les montants ci-dessous sont des estimations IA uniquement."}
           </span>
         </div>
       )}

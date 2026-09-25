@@ -281,17 +281,22 @@ app.get("/api/admin/overview", async (req, res) => {
       const weeksAgo = weekCount - 1 - index;
       const start = now - (weeksAgo + 1) * WEEK_MS;
       const end = now - weeksAgo * WEEK_MS;
-      return { start, end, count: 0 };
+      return { start, end, count: 0, paidCount: 0 };
     });
     for (const row of userRows) {
       const createdAt = new Date(row.created_at).getTime();
       if (Number.isNaN(createdAt)) continue;
       const bucket = buckets.find((item) => createdAt >= item.start && createdAt < item.end);
-      if (bucket) bucket.count += 1;
+      if (!bucket) continue;
+      bucket.count += 1;
+      // Inscrits de la semaine dont le plan actif est payant (série "or" du graphique).
+      const subscription = parseJsonField(row.subscription_json, {});
+      if (getPlanById(subscription.planId)?.grantsPremium) bucket.paidCount += 1;
     }
     const signupsTrend = buckets.map((bucket) => ({
       weekStart: new Date(bucket.start).toISOString(),
-      count: bucket.count
+      count: bucket.count,
+      paidCount: bucket.paidCount
     }));
 
     // Taux de conversion gratuit -> payant : part des comptes dont le plan
@@ -405,7 +410,7 @@ app.get("/api/admin/notifications", async (req, res) => {
 
     const [signupRes, paymentRes, fullCodesRes, failedAnnouncementsRes] = await Promise.all([
       db.query(
-        "SELECT id, first_name, last_name, role_type, created_at FROM users WHERE created_at >= $1 ORDER BY created_at DESC LIMIT 10",
+        "SELECT id, first_name, last_name, role_type, created_at FROM users WHERE created_at >= $1 ORDER BY created_at DESC LIMIT 100",
         [sevenDaysAgo]
       ),
       db.query(
@@ -413,7 +418,7 @@ app.get("/api/admin/notifications", async (req, res) => {
          FROM transactions t
          LEFT JOIN users u ON u.id = t.user_id
          WHERE t.source = 'stripe' AND t.amount_collected > 0 AND t.created_at >= $1
-         ORDER BY t.created_at DESC LIMIT 10`,
+         ORDER BY t.created_at DESC LIMIT 100`,
         [sevenDaysAgo]
       ),
       db.query(
@@ -421,10 +426,10 @@ app.get("/api/admin/notifications", async (req, res) => {
          FROM license_codes
          LEFT JOIN users u ON u.id = license_codes.owner_user_id
          WHERE COALESCE(revoked,0) = 0 AND seats_total > 0 AND seats_used >= seats_total
-         ORDER BY license_codes.created_at DESC LIMIT 10`
+         ORDER BY license_codes.created_at DESC LIMIT 100`
       ),
       db.query(
-        "SELECT id, subject, audience, failed_count, created_at FROM announcements WHERE failed_count > 0 ORDER BY created_at DESC LIMIT 10"
+        "SELECT id, subject, audience, failed_count, created_at FROM announcements WHERE failed_count > 0 ORDER BY created_at DESC LIMIT 100"
       )
     ]);
 

@@ -274,6 +274,46 @@ app.get("/api/school/overview", async (req, res) => {
       count: bucket.count
     }));
 
+    // Usage réel du produit par les étudiants de l'école (indicateurs
+    // d'engagement et d'employabilité de l'Accueil) — lecture seule.
+    const studentIds = students.map((student) => student.id);
+    const countFor = async (table) =>
+      studentIds.length
+        ? Number((await db.query(`SELECT COUNT(*)::int AS n FROM ${table} WHERE user_id = ANY($1)`, [studentIds])).rows[0]?.n || 0)
+        : 0;
+    const applicationsByStatus = {};
+    let studentsWithApplication = 0;
+    if (studentIds.length) {
+      const { rows: statusRows } = await db.query(
+        "SELECT status, COUNT(*)::int AS n FROM job_applications WHERE user_id = ANY($1) GROUP BY status",
+        [studentIds]
+      );
+      for (const row of statusRows) applicationsByStatus[row.status] = Number(row.n || 0);
+      const { rows: distinctRows } = await db.query(
+        "SELECT COUNT(DISTINCT user_id)::int AS n FROM job_applications WHERE user_id = ANY($1)",
+        [studentIds]
+      );
+      studentsWithApplication = Number(distinctRows[0]?.n || 0);
+    }
+    // Dernier score de matching de chaque étudiant : « prêt à l'emploi » = 60 % et plus.
+    const latestScoreByStudent = {};
+    for (const row of [...metrics.matchRows].sort((a, b) => new Date(b.created_at) - new Date(a.created_at))) {
+      if (latestScoreByStudent[row.user_id] !== undefined) continue;
+      const score = parseJsonField(row.payload_json, {})?.matchInsights?.score;
+      if (typeof score === "number") latestScoreByStudent[row.user_id] = score;
+    }
+    const latestScores = Object.values(latestScoreByStudent);
+    const engagement = {
+      coverLetters: await countFor("cover_letters"),
+      interviews: await countFor("interview_conversations"),
+      negotiations: await countFor("negotiation_conversations"),
+      applications: Object.values(applicationsByStatus).reduce((sum, n) => sum + n, 0),
+      applicationsByStatus,
+      studentsWithApplication,
+      studentsWithScore: latestScores.length,
+      readyStudents: latestScores.filter((score) => score >= 60).length
+    };
+
     return res.json({
       totalStudents: students.length,
       seatsTotal: metrics.seatsTotal,
@@ -289,6 +329,7 @@ app.get("/api/school/overview", async (req, res) => {
       topSkills: metrics.topSkills,
       alerts: buildSchoolAlerts(metrics, coerceString(req.query?.language || "fr")),
       signupsTrend,
+      engagement,
       // Ids exposés pour les actions de relance ciblée (bouton "Relancer" —
       // envoie une annonce uniquement à ce segment via
       // POST /api/school/announcements/send avec studentIds).

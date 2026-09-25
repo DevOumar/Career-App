@@ -79,7 +79,7 @@ export default function CabinetPublicPage({ slug }) {
                     <span className="history-card-icon"><UiIcon name="briefcase" /></span>
                     <div>
                       <h3>{mission.title}</h3>
-                      <p>{mission.location || "—"} · {formatDate(mission.createdAt)}</p>
+                      <p>{mission.location || "-"} · {formatDate(mission.createdAt)}</p>
                     </div>
                   </div>
                 </div>

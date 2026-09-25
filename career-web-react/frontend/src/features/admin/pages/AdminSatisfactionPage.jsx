@@ -26,7 +26,7 @@ import AccountDrawer from "../../account/AccountDrawer.jsx";
 import { ConnectedFooter, ADMIN_ACCOUNT_TYPES } from "../../../App.jsx";
 import { PLANS, PLAN_SEGMENTS, getPlanById } from "../../../data/plans.js";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
-import { formatDate, formatShortDate, formatAmountInCurrency, formatPlanPrice } from "../../../lib/format.js";
+import { formatDate, formatDateTime, formatShortDate, formatAmountInCurrency, formatPlanPrice } from "../../../lib/format.js";
 import { fileToBase64 } from "../../../lib/cvService.js";
 import { getAccountLabel } from "../../../lib/accounts.js";
 import { satisfactionTierFor } from "../../satisfaction/SatisfactionSurveyModal.jsx";
@@ -80,46 +80,46 @@ import {
   markSchoolNotificationsRead,
   generateSchoolReport
 } from "../../../lib/inMemoryDb.js";
-import { AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
+import { AdminLineIcon, JyBarChart, AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
 
 export default function AdminSatisfactionPage({ user, language }) {
   const copy =
     language === "en"
       ? {
           title: "Satisfaction",
-          subtitle: "CSAT survey results collected across the platform (1-10 scale).",
+          subtitle: "Customer Satisfaction Score (CSAT) survey results collected across the platform, on a 1 to 10 scale.",
           average: "Average score",
-          nps: "NPS",
+          nps: "Net Promoter Score (NPS)",
           responses: "Total responses",
           promoters: "Promoters (9-10)",
           passives: "Passives (7-8)",
           detractors: "Detractors (1-6)",
-          trendTitle: "Average score — last 8 weeks",
+          trendTitle: "Average score, last 8 weeks",
           recentTitle: "Recent responses",
           colUser: "User",
           colScore: "Score",
           colComment: "Comment",
           colDate: "Date",
           empty: "No response yet.",
-          noComment: "—"
+          noComment: "No comment"
         }
       : {
           title: "Satisfaction",
-          subtitle: "Résultats du sondage CSAT collectés sur la plateforme (échelle 1-10).",
+          subtitle: "Résultats du sondage de satisfaction client (CSAT) collectés sur la plateforme, sur une échelle de 1 à 10.",
           average: "Score moyen",
-          nps: "NPS",
+          nps: "Indice de recommandation (NPS)",
           responses: "Réponses totales",
           promoters: "Promoteurs (9-10)",
           passives: "Passifs (7-8)",
           detractors: "Détracteurs (1-6)",
-          trendTitle: "Score moyen — 8 dernières semaines",
+          trendTitle: "Score moyen, 8 dernières semaines",
           recentTitle: "Réponses récentes",
           colUser: "Utilisateur",
           colScore: "Score",
           colComment: "Commentaire",
           colDate: "Date",
           empty: "Aucune réponse pour l'instant.",
-          noComment: "—"
+          noComment: "Aucun commentaire"
         };
 
   const [data, setData] = useState(null);
@@ -144,8 +144,8 @@ export default function AdminSatisfactionPage({ user, language }) {
       </header>
 
       <div className="admin-kpi-grid">
-        <AdminKpiCard tone="primary" icon="chart" value={data.average != null ? data.average.toFixed(1) : "—"} label={copy.average} />
-        <AdminKpiCard tone="success" icon="shield" value={data.nps != null ? data.nps : "—"} label={copy.nps} />
+        <AdminKpiCard tone="primary" icon="chart" value={data.average != null ? data.average.toFixed(1) : "-"} label={copy.average} />
+        <AdminKpiCard tone="success" icon="shield" value={data.nps != null ? data.nps : "-"} label={copy.nps} />
         <AdminKpiCard tone="primary" icon="profile" value={data.totalResponses} label={copy.responses} />
         <AdminKpiCard tone="success" icon="check" value={data.promoters} label={copy.promoters} />
         <AdminKpiCard tone="warning" icon="chat" value={data.passives} label={copy.passives} />
@@ -154,7 +154,7 @@ export default function AdminSatisfactionPage({ user, language }) {
 
       <article className="card block admin-satisfaction-trend">
         <h3>{copy.trendTitle}</h3>
-        <AdminTrendChart trend={trendForChart} language={language} valueKey="average" />
+        <JyBarChart trend={trendForChart} language={language} fixedMax={10} series={[{ key: "average", label: copy.trendTitle, tone: "gold" }]} />
       </article>
 
       <article className="card block">
@@ -171,16 +171,58 @@ export default function AdminSatisfactionPage({ user, language }) {
             </thead>
             <tbody>
               {data.responses.length ? (
-                data.responses.map((item) => (
+                data.responses.map((rawItem) => {
+                  // Un ancien serveur renvoie "—" quand le répondant n'existe plus.
+                  const item = { ...rawItem, userName: /^[\s\-—]*$/.test(rawItem.userName || "") ? "" : rawItem.userName };
+                  return (
                   <tr key={item.id}>
-                    <td>{item.userName}</td>
                     <td>
-                      <span className={`satisfaction-score-pill ${satisfactionTierFor(item.score).tone}`}>{item.score}</span>
+                      <div className="admin-table-name">
+                        {item.userFirstName || item.userLastName || item.userAvatarDataUrl ? (
+                          <AvatarCircle
+                            user={{ firstName: item.userFirstName, lastName: item.userLastName, avatarDataUrl: item.userAvatarDataUrl }}
+                          />
+                        ) : (
+                          <span className="jy-feed-ghost" aria-hidden="true">
+                            <AdminLineIcon name="profile" />
+                          </span>
+                        )}
+                        <div>
+                          <strong>{item.userName || (language === "en" ? "Deleted account" : "Compte supprimé")}</strong>
+                          {item.userEmail && item.userEmail !== item.userName ? <span className="muted">{item.userEmail}</span> : null}
+                        </div>
+                      </div>
                     </td>
-                    <td>{item.comment || copy.noComment}</td>
-                    <td>{formatDate(item.createdAt)}</td>
+                    <td>
+                      {(() => {
+                        const tier = item.score >= 9 ? "promoter" : item.score >= 7 ? "passive" : "detractor";
+                        const meta = {
+                          promoter: { icon: "smile", tone: "tag-success", label: language === "en" ? "Promoter" : "Promoteur" },
+                          passive: { icon: "meh", tone: "tag-warning", label: language === "en" ? "Passive" : "Passif" },
+                          detractor: { icon: "frown", tone: "tag-danger", label: language === "en" ? "Detractor" : "Détracteur" }
+                        }[tier];
+                        return (
+                          <span className={`tag jy-event-tag ${meta.tone}`} title={meta.label}>
+                            <AdminLineIcon name={meta.icon} />
+                            <strong>{item.score}</strong>/10 · {meta.label}
+                          </span>
+                        );
+                      })()}
+                    </td>
+                    <td>
+                      {item.comment ? (
+                        <span className="jy-comment">
+                          <AdminLineIcon name="quote" />
+                          {item.comment}
+                        </span>
+                      ) : (
+                        <span className="muted">{copy.noComment}</span>
+                      )}
+                    </td>
+                    <td className="muted jy-nowrap">{formatDateTime(item.createdAt, language)}</td>
                   </tr>
-                ))
+                  );
+                })
               ) : (
                 <tr>
                   <td colSpan={4} className="admin-table-empty muted">

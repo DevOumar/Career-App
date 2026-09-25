@@ -375,7 +375,7 @@ app.post("/api/admin/transactions/:id/refund", async (req, res) => {
     if (txn.source !== "stripe" || !txn.stripe_payment_intent_id) {
       return res.status(400).json({
         error:
-          "Remboursement impossible pour cette transaction (pas de paiement Stripe direct — probablement un abonnement, à gérer depuis le dashboard Stripe)."
+          "Remboursement impossible pour cette transaction (pas de paiement Stripe direct, probablement un abonnement, à gérer depuis le dashboard Stripe)."
       });
     }
     if (Number(txn.refunded)) {

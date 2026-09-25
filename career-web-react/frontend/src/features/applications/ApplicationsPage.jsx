@@ -70,7 +70,7 @@ function ApplicationsPage({ language, userId, cvHistory }) {
           toast: true,
           position: "top-end",
           icon: STATUS_TOAST_ICONS[status] || "success",
-          title: fillTemplate(template, { title: item.title || "—", company: item.company || "—" }),
+          title: fillTemplate(template, { title: item.title || "-", company: item.company || "-" }),
           showConfirmButton: false,
           timer: 3800,
           timerProgressBar: true,
@@ -179,7 +179,7 @@ function ApplicationsPage({ language, userId, cvHistory }) {
                         onDragStart={(event) => event.dataTransfer.setData("text/plain", item.id)}
                       >
                         <div className="kanban-card-head">
-                          <strong>{item.title || "—"}</strong>
+                          <strong>{item.title || "-"}</strong>
                           {typeof item.matchScore === "number" ? <span className="kanban-score">{item.matchScore}%</span> : null}
                         </div>
                         {item.company ? <p className="kanban-company">{item.company}</p> : null}

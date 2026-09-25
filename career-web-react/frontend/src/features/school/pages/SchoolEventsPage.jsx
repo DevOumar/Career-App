@@ -16,7 +16,7 @@ export default function SchoolEventsPage({ user, language }) {
     language === "en"
       ? {
           title: "Events",
-          subtitle: "Key dates for your students — job fairs, deadlines, workshops.",
+          subtitle: "Key dates for your students: job fairs, deadlines, workshops.",
           titleLabel: "Event title",
           dateLabel: "Date",
           descriptionLabel: "Description (optional)",
@@ -29,7 +29,7 @@ export default function SchoolEventsPage({ user, language }) {
         }
       : {
           title: "Événements",
-          subtitle: "Dates clés pour vos étudiants — forums emploi, deadlines, ateliers.",
+          subtitle: "Dates clés pour vos étudiants : forums emploi, deadlines, ateliers.",
           titleLabel: "Titre de l'événement",
           dateLabel: "Date",
           descriptionLabel: "Description (optionnel)",

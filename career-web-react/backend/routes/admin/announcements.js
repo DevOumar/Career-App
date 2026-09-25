@@ -297,6 +297,12 @@ app.post("/api/admin/announcements/send", async (req, res) => {
     if (!subject || !message) {
       return res.status(400).json({ error: "Objet et message requis." });
     }
+    // U+FFFD = caractère illisible : le texte a été envoyé dans un mauvais
+    // encodage (ex. script en Windows-1252). On refuse plutôt que d'expédier
+    // un e-mail avec des lettres cassées à tous les destinataires.
+    if (subject.includes("�") || message.includes("�")) {
+      return res.status(400).json({ error: "Le texte contient des caractères illisibles (problème d'encodage). Corrigez les accents puis renvoyez." });
+    }
 
     let attachments = [];
     if (attachment?.content && attachment?.name) {
@@ -354,6 +360,24 @@ app.post("/api/admin/announcements/send", async (req, res) => {
     return res.json({ ok: true, recipientCount: recipients.length, failedCount });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Retire une annonce de l'historique (les e-mails déjà partis ne sont évidemment
+// pas rappelés) : utile pour nettoyer les envois de test avant la mise en prod.
+app.delete("/api/admin/announcements/:id", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
+    await requireAdminModule(adminUserId, "announcements");
+    const announcementId = coerceString(req.params.id);
+    const { rows } = await db.query("SELECT subject FROM announcements WHERE id = $1", [announcementId]);
+    if (!rows.length) return res.status(404).json({ error: "Annonce introuvable." });
+    await db.query("DELETE FROM announcements WHERE id = $1", [announcementId]);
+    await logSecurityEvent(req, adminUserId, "admin_announcement_deleted", { subject: rows[0].subject });
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Suppression impossible." });
   }
 });
 }

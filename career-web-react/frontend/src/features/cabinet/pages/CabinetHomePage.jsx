@@ -34,9 +34,9 @@ export default function CabinetHomePage({ user, language, onGoTo, isCabinetOwner
           relanceStaleMissions: (n) => `${n} mission(s) without a candidate`,
           relanceUncontacted: (n) => `${n} candidate(s) never contacted`,
           relanceStaleMissionsSubject: "Missions waiting for candidates",
-          relanceStaleMissionsMessage: "Some open missions still have no candidate assigned — take a look at the pipeline when you can.",
+          relanceStaleMissionsMessage: "Some open missions still have no candidate assigned, take a look at the pipeline when you can.",
           relanceUncontactedSubject: "Candidates still uncontacted",
-          relanceUncontactedMessage: "Some candidates in the pool haven't been contacted yet — worth a follow-up.",
+          relanceUncontactedMessage: "Some candidates in the pool haven't been contacted yet, worth a follow-up.",
           relanceSent: "Reminder sent to the team."
         }
       : {
@@ -63,9 +63,9 @@ export default function CabinetHomePage({ user, language, onGoTo, isCabinetOwner
           relanceStaleMissions: (n) => `${n} mission(s) sans candidat`,
           relanceUncontacted: (n) => `${n} candidat(s) jamais contacté(s)`,
           relanceStaleMissionsSubject: "Missions en attente de candidats",
-          relanceStaleMissionsMessage: "Certaines missions ouvertes n'ont toujours aucun candidat affecté — un coup d'œil au pipeline serait utile.",
+          relanceStaleMissionsMessage: "Certaines missions ouvertes n'ont toujours aucun candidat affecté, un coup d'œil au pipeline serait utile.",
           relanceUncontactedSubject: "Candidats encore non contactés",
-          relanceUncontactedMessage: "Certains candidats du vivier n'ont pas encore été contactés — ça vaut le coup de relancer.",
+          relanceUncontactedMessage: "Certains candidats du vivier n'ont pas encore été contactés, ça vaut le coup de relancer.",
           relanceSent: "Relance envoyée à l'équipe.",
           performanceTitle: "Performance de l'équipe",
           performanceSourced: (n) => `${n} sourcé(s)`,

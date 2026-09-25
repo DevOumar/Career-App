@@ -272,6 +272,20 @@ app.put("/api/school/profile", async (req, res) => {
     if (!requireMatchingSession(req, res, userId)) return;
     await requireSchoolOwner(userId);
     const profile = req.body?.profile || {};
+    // Validation serveur (mêmes règles que le formulaire) : code
+    // « field:<champ> » pour que l'interface signale le bon champ.
+    const invalid = (field, message) => res.status(400).json({ error: message, code: `field:${field}` });
+    const orgName = coerceString(profile.organizationName);
+    if (orgName.length < 2) return invalid("organizationName", "Le nom officiel de l'établissement doit contenir au moins 2 caractères.");
+    const contactEmail = coerceString(profile.contactEmail);
+    if (contactEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(contactEmail)) return invalid("contactEmail", "L'e-mail de contact n'est pas valide.");
+    const website = coerceString(profile.website);
+    if (website && !/^(https?:\/\/)?([a-z0-9-]+\.)+[a-z]{2,}(\/\S*)?$/i.test(website)) return invalid("website", "Le site web n'est pas valide (ex. www.ecole.fr).");
+    const emailDomain = coerceString(profile.emailDomain);
+    if (emailDomain && !/^@?([a-z0-9-]+\.)+[a-z]{2,}$/i.test(emailDomain)) return invalid("emailDomain", "Le domaine e-mail n'est pas valide (ex. @ecole.fr).");
+    const phone = coerceString(profile.contactPhone);
+    if (phone && !/^\+?[0-9 ]{6,20}$/.test(phone)) return invalid("contactPhone", "Le téléphone de contact doit contenir uniquement des chiffres (6 à 20, + accepté en tête).");
+    if (String(profile.logoDataUrl || "").length > 2_800_000) return invalid("logoDataUrl", "Le logo est trop lourd (2 Mo maximum).");
     await db.query(
       `INSERT INTO user_org_profiles (
         user_id, organization_name, acronym, organization_type, department, website, size_range, industry, contact_role, notes,

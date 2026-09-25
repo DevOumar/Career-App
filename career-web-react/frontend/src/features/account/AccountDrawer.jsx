@@ -8,6 +8,9 @@ import { LanguageSwitch } from "../../components/LanguageSwitch.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
 import { formatDate, CURRENCY_OPTIONS } from "../../lib/format.js";
 import { getUsernameValidation } from "../../lib/accounts.js";
+import MfaSection from "./mfa/MfaSection.jsx";
+import ActiveDevices from "./ActiveDevices.jsx";
+import { PasswordInput } from "../../components/PasswordInput.jsx";
 import { resizeImageFileToDataUrl } from "../../lib/images.js";
 // GoogleSignInButton/GoogleLogo restent dans App.jsx (utilisés aussi par
 // l'écran de connexion) — import "arrière" volontaire et sûr : ils ne sont
@@ -46,6 +49,7 @@ export function AccountDrawer({
   securitySaving,
   onSubmitPassword,
   onRevokeSession,
+  onRevokeOtherSessions,
   currentSessionId,
   onExportData,
   onExportSummary,
@@ -675,7 +679,7 @@ export function AccountDrawer({
               <div className="account-rows">
                 <div className="account-row account-row-preference">
                   <span>{copy.language}</span>
-                  <LanguageSwitch language={language} setLanguage={setLanguage} />
+                  <LanguageSwitch language={language} setLanguage={setLanguage} variant="menu" />
                 </div>
                 <div className="account-row account-row-preference">
                   <span>{copy.currency}</span>
@@ -748,28 +752,39 @@ export function AccountDrawer({
               <div className="account-rows">
                 <div className="account-row">
                   <span>{copy.password}</span>
-                  <strong>{copy.setPassword}</strong>
+                  {/* Compte créé avec Google : pas encore de mot de passe. On
+                      en définit un ici (sans « mot de passe actuel »), pour
+                      pouvoir aussi se connecter par e-mail + mot de passe. */}
+                  <strong>
+                    {user.hasPassword === false
+                      ? language === "en"
+                        ? "Not set (Google sign-in)"
+                        : "Non défini (connexion Google)"
+                      : "••••••••"}
+                  </strong>
                   <button type="button" className="account-link" onClick={() => setPasswordOpen((prev) => !prev)}>
-                    {copy.updatePassword}
+                    {user.hasPassword === false ? copy.setPassword : copy.updatePassword}
                   </button>
                 </div>
 
                 {passwordOpen ? (
                   <form className="account-security-card" onSubmit={onSubmitPassword}>
-                    <h4>{copy.updatePassword}</h4>
-                    <label>
-                      {copy.currentPassword}
-                      <input
-                        type="password"
-                        value={securityForm.currentPassword}
-                        onChange={(event) => setSecurityForm((prev) => ({ ...prev, currentPassword: event.target.value }))}
-                        required
-                      />
-                    </label>
+                    <h4>{user.hasPassword === false ? copy.setPassword : copy.updatePassword}</h4>
+                    {user.hasPassword === false ? null : (
+                      <label>
+                        {copy.currentPassword}
+                        <PasswordInput
+                          language={language}
+                          value={securityForm.currentPassword}
+                          onChange={(event) => setSecurityForm((prev) => ({ ...prev, currentPassword: event.target.value }))}
+                          required
+                        />
+                      </label>
+                    )}
                     <label>
                       {copy.newPassword}
-                      <input
-                        type="password"
+                      <PasswordInput
+                        language={language}
                         minLength={8}
                         value={securityForm.newPassword}
                         onChange={(event) => setSecurityForm((prev) => ({ ...prev, newPassword: event.target.value }))}
@@ -781,8 +796,8 @@ export function AccountDrawer({
                     </label>
                     <label>
                       {copy.confirmPassword}
-                      <input
-                        type="password"
+                      <PasswordInput
+                        language={language}
                         minLength={8}
                         value={securityForm.confirmPassword}
                         onChange={(event) => setSecurityForm((prev) => ({ ...prev, confirmPassword: event.target.value }))}
@@ -806,7 +821,7 @@ export function AccountDrawer({
                       </button>
                       <button
                         className="btn-main"
-                        disabled={securitySaving || !securityForm.currentPassword || securityForm.newPassword.length < 8}
+                        disabled={securitySaving || (user.hasPassword !== false && !securityForm.currentPassword) || securityForm.newPassword.length < 8}
                       >
                         {securitySaving ? "..." : copy.save}
                       </button>
@@ -814,39 +829,15 @@ export function AccountDrawer({
                   </form>
                 ) : null}
 
-                <div className="account-row">
-                  <span>{copy.activeDevices}</span>
-                  <div className="device-list">
-                    {user.sessions?.length ? (
-                      user.sessions.map((deviceSession) => {
-                        const isCurrent = currentSessionId && deviceSession.id === currentSessionId;
-                        return (
-                          <div className="device-info" key={deviceSession.id}>
-                            <span className="device-screen" />
-                            <div>
-                              <strong>
-                                {deviceSession.device || "—"} {isCurrent ? <em>{language === "en" ? "This device" : "Cet appareil"}</em> : null}
-                              </strong>
-                              <small>{deviceSession.browser || "—"} · {deviceSession.ipAddress || "—"}</small>
-                              <small>{formatDate(deviceSession.lastSeenAt || deviceSession.createdAt)}</small>
-                            </div>
-                            {!isCurrent && onRevokeSession ? (
-                              <button
-                                type="button"
-                                className="device-revoke"
-                                onClick={() => onRevokeSession(deviceSession.id)}
-                              >
-                                {language === "en" ? "Disconnect" : "Déconnecter"}
-                              </button>
-                            ) : null}
-                          </div>
-                        );
-                      })
-                    ) : (
-                      <p className="muted">{language === "en" ? "No active session." : "Aucune session active."}</p>
-                    )}
-                  </div>
-                </div>
+                <MfaSection user={user} language={language} />
+
+                <ActiveDevices
+                  sessions={user.sessions || []}
+                  currentSessionId={currentSessionId}
+                  language={language}
+                  onRevokeSession={onRevokeSession}
+                  onRevokeOtherSessions={onRevokeOtherSessions}
+                />
 
                 {onExportData ? (
                   <div className="account-row">

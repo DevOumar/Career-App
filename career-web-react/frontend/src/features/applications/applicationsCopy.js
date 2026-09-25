@@ -40,7 +40,7 @@ export const APPLICATIONS_COPY = {
     statusMessageApplied: "Bravo, vous avez postulé pour {title} chez {company} ! Encore un pas de plus 💪",
     statusMessageInterview: "Un entretien pour {title} chez {company} ? Félicitations, préparez-vous bien 🎯",
     statusMessageOffer: "Une offre pour {title} chez {company} ! Bravo, quelle belle nouvelle 🎉",
-    statusMessageRejected: "{title} chez {company} n'a pas abouti cette fois. Ce n'est qu'une étape — la bonne offre arrive."
+    statusMessageRejected: "{title} chez {company} n'a pas abouti cette fois. Ce n'est qu'une étape, la bonne offre arrive."
   },
   en: {
     title: "Application tracker",
@@ -80,6 +80,6 @@ export const APPLICATIONS_COPY = {
     statusMessageApplied: "Nice, you applied to {title} at {company}! One step closer 💪",
     statusMessageInterview: "An interview for {title} at {company}? Congrats, go prepare well 🎯",
     statusMessageOffer: "An offer for {title} at {company}! Congratulations, what great news 🎉",
-    statusMessageRejected: "{title} at {company} didn't work out this time. It's just one step — the right offer is coming."
+    statusMessageRejected: "{title} at {company} didn't work out this time. It's just one step, the right offer is coming."
   }
 };

@@ -305,7 +305,13 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
     if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdminModule(adminUserId, "aiMonitoring");
 
-    const { rows: cvRows } = await db.query("SELECT id, created_at, parsed_json FROM cvs ORDER BY created_at DESC LIMIT 500");
+    const { rows: cvRows } = await db.query(
+      `SELECT c.id, c.user_id, c.file_name, c.created_at, c.parsed_json,
+              u.first_name, u.last_name, u.email, u.avatar_data_url
+       FROM cvs c
+       LEFT JOIN users u ON u.id = c.user_id
+       ORDER BY c.created_at DESC LIMIT 500`
+    );
     const { rows: matchRows } = await db.query("SELECT id, created_at, payload_json FROM match_runs ORDER BY created_at DESC LIMIT 500");
     const { rows: eventRows } = await db.query(
       `SELECT event_type, COUNT(*)::int AS count
@@ -340,7 +346,7 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
     );
     const totalRevenueCollected = Number(revenueRows[0]?.total || 0);
 
-    const cvStatuses = cvRows.map((row) => getCvExtractionStatus(parseJsonField(row.parsed_json, {})));
+    const cvStatuses = cvRows.map((row) => ({ ...getCvExtractionStatus(parseJsonField(row.parsed_json, {})), row }));
     const successfulExtractions = cvStatuses.filter((item) => item.status === "extracted").length;
     const partialExtractions = cvStatuses.filter((item) => item.status === "partial").length;
     const failedExtractions = cvStatuses.filter((item) => item.status === "needs_review").length;
@@ -383,7 +389,7 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
       estimatedCost: {
         currency: "EUR",
         amount: totalEstimatedCost,
-        note: "Estimation indicative — nombre d'appels IA enregistrés × coût moyen par appel, tous modules confondus (CV, matching, lettre, négociation, entretien, Email Scout)."
+        note: "Estimation indicative : nombre d'appels IA enregistrés × coût moyen par appel, tous modules confondus (CV, matching, lettre, négociation, entretien, Email Scout)."
       },
       costByModule,
       totalRevenueCollected,
@@ -392,9 +398,15 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
       averageAnalysisTimeSeconds: null,
       apiErrors: failedExtractions,
       eventCounts,
-      invalidResponses: invalidResponses.slice(0, 12).map((status, index) => ({
-        id: cvRows[index]?.id || `invalid-${index}`,
-        createdAt: cvRows[index]?.created_at || "",
+      invalidResponses: invalidResponses.slice(0, 50).map((status) => ({
+        id: status.row.id,
+        fileName: status.row.file_name || "",
+        createdAt: status.row.created_at || "",
+        userId: status.row.user_id || "",
+        userFirstName: status.row.first_name || "",
+        userLastName: status.row.last_name || "",
+        userEmail: status.row.email || "",
+        userAvatarDataUrl: status.row.avatar_data_url || "",
         missing: status.missing,
         suspicious: status.suspicious,
         score: status.score

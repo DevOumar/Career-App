@@ -356,6 +356,47 @@ app.post("/api/school/promotions", async (req, res) => {
   }
 });
 
+// Modification d'une promotion existante (mêmes règles que la création). Seule
+// l'école propriétaire peut la modifier.
+app.put("/api/school/promotions/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    await requireSchoolOwner(userId);
+    const promotionId = coerceString(req.params.id);
+    const { rows } = await db.query("SELECT id FROM school_promotions WHERE id = $1 AND school_user_id = $2", [promotionId, userId]);
+    if (!rows.length) return res.status(404).json({ error: "Promotion introuvable." });
+    const name = coerceString(req.body?.name).trim();
+    if (name.length < 2) return res.status(400).json({ error: "Le nom de la promotion doit contenir au moins 2 caractères.", code: "field:name" });
+    const academicYear = coerceString(req.body?.academicYear).trim();
+    if (academicYear && !/^\d{4}-\d{4}$/.test(academicYear)) {
+      return res.status(400).json({ error: "L'année académique doit suivre le format AAAA-AAAA (ex. 2025-2026).", code: "field:academicYear" });
+    }
+    const { rows: duplicates } = await db.query(
+      "SELECT id FROM school_promotions WHERE school_user_id = $1 AND id <> $2 AND LOWER(name) = LOWER($3) AND academic_year = $4",
+      [userId, promotionId, name, academicYear]
+    );
+    if (duplicates.length) return res.status(409).json({ error: "Une promotion porte déjà ce nom pour cette année académique.", code: "field:name" });
+    await db.query(
+      "UPDATE school_promotions SET name = $1, program = $2, level = $3, campus = $4, academic_year = $5, updated_at = $6 WHERE id = $7 AND school_user_id = $8",
+      [
+        name,
+        coerceString(req.body?.program).trim().slice(0, 80),
+        coerceString(req.body?.level).trim().slice(0, 40),
+        coerceString(req.body?.campus).trim().slice(0, 80),
+        academicYear,
+        nowIso(),
+        promotionId,
+        userId
+      ]
+    );
+    await logSecurityEvent(req, userId, "school_promotion_updated", { promotionId });
+    return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.post("/api/school/promotions/:id/students", async (req, res) => {
   try {
     const userId = coerceString(req.body?.userId);

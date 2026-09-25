@@ -233,7 +233,7 @@ export default function CabinetCandidatesPage({ user, language }) {
                   </span>
                   <div>
                     <h3>{item.firstName} {item.lastName}</h3>
-                    <p>{item.headline || item.email || "—"}</p>
+                    <p>{item.headline || item.email || "-"}</p>
                   </div>
                 </div>
                 <div className="cabinet-card-badges">

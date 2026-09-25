@@ -5,6 +5,7 @@
 export function registerProfileRoutes(app) {
   const {
     requireMatchingSession,
+    mfa,
     cors,
     crypto,
     express,
@@ -312,6 +313,11 @@ app.patch("/api/account", async (req, res) => {
       if (owner && owner.id !== userId) {
         return res.status(409).json({ error: "Ce nom d'utilisateur est déjà utilisé." });
       }
+      // Le nom d'utilisateur sert d'identifiant de connexion : le changer
+      // exige le second facteur si la double authentification est active.
+      if (accountUserPatch.username !== user.username) {
+      if (!(await mfa.requireSecondFactor(req, res, userId))) return;
+      }
     }
 
     if (Object.keys(accountUserPatch).length) {
@@ -396,6 +402,7 @@ app.post("/api/account/emails/request", async (req, res) => {
     if (ownEmails.some((item) => normalizeEmail(item.email) === email)) {
       return res.status(409).json({ error: "Cette adresse e-mail est déjà liée à votre compte." });
     }
+    if (!(await mfa.requireSecondFactor(req, res, userId))) return;
 
     const verification = await createEmailVerificationCode(user, "add_email", email);
     return res.json({
@@ -487,6 +494,7 @@ app.patch("/api/account/emails/primary", async (req, res) => {
     if (!Number(target.is_verified || 0)) {
       return res.status(400).json({ error: "Cette adresse doit être vérifiée avant de devenir principale." });
     }
+    if (!(await mfa.requireSecondFactor(req, res, userId))) return;
 
     const timestamp = nowIso();
     await db.query("UPDATE user_email_addresses SET is_primary = 0, updated_at = $1 WHERE user_id = $2", [timestamp, userId]);
@@ -516,6 +524,7 @@ app.delete("/api/account/emails", async (req, res) => {
     if (Number(target.is_primary || 0)) {
       return res.status(400).json({ error: "Impossible de supprimer l'adresse principale." });
     }
+    if (!(await mfa.requireSecondFactor(req, res, userId))) return;
 
     await db.query("DELETE FROM user_email_addresses WHERE id = $1 AND user_id = $2", [emailId, userId]);
     const user = await getUserRowById(userId);
@@ -537,6 +546,7 @@ app.post("/api/account/connected-accounts/link-google", async (req, res) => {
     if (!user || !credential) {
       return res.status(400).json({ error: "Paramètres invalides." });
     }
+    if (!(await mfa.requireSecondFactor(req, res, userId))) return;
 
     const ticket = await googleOAuthClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
     const payload = ticket.getPayload();
@@ -571,6 +581,7 @@ app.post("/api/account/connected-accounts/remove", async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
+    if (!(await mfa.requireSecondFactor(req, res, userId))) return;
 
     if (provider === "google") {
       await db.query("UPDATE users SET google_id = '' WHERE id = $1", [userId]);
@@ -652,6 +663,7 @@ app.delete("/api/account", async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
+    if (!(await mfa.requireSecondFactor(req, res, userId))) return;
 
     await logSecurityEvent(req, userId, "account_deleted", { email: user.email });
 

@@ -277,6 +277,22 @@ const LEGACY_PLAN_ID_ALIASES = {
   school_license: "school_institut"
 };
 
+// Identifiant canonique d'un plan (les anciens ids pointent vers leur palier
+// actuel). À utiliser pour tout regroupement ou filtre par plan.
+export function resolvePlanId(planId) {
+  return LEGACY_PLAN_ID_ALIASES[planId] || planId;
+}
+
+// Fusionne un objet { planId: nombre } sur les ids canoniques.
+export function mergeByResolvedPlan(values) {
+  const merged = {};
+  for (const [planId, value] of Object.entries(values || {})) {
+    const id = resolvePlanId(planId);
+    merged[id] = (merged[id] || 0) + Number(value || 0);
+  }
+  return merged;
+}
+
 export function getPlanById(planId) {
   const resolvedId = LEGACY_PLAN_ID_ALIASES[planId] || planId;
   return PLANS.find((plan) => plan.id === resolvedId) || null;

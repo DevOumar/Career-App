@@ -67,7 +67,7 @@ export default function CabinetReportsPage({ user, language }) {
     const p = item.payload || {};
     const esc = (value) => String(value ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
     const rows = (p.candidates || [])
-      .map((c) => `<tr><td>${esc(c.firstName)} ${esc(c.lastName)}</td><td>${esc(c.headline)}</td><td>${esc(c.stage)}</td><td>${c.score != null ? esc(c.score) : "—"}</td></tr>`)
+      .map((c) => `<tr><td>${esc(c.firstName)} ${esc(c.lastName)}</td><td>${esc(c.headline)}</td><td>${esc(c.stage)}</td><td>${c.score != null ? esc(c.score) : "-"}</td></tr>`)
       .join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"/><title>${esc(item.title)}</title>
       <style>body{font-family:Arial,Helvetica,sans-serif;color:#101828;padding:2rem;max-width:720px;margin:0 auto;}
@@ -75,7 +75,7 @@ export default function CabinetReportsPage({ user, language }) {
       th,td{text-align:left;padding:0.4rem 0.5rem;border-bottom:1px solid #eee;} .muted{color:#667085;font-size:0.85rem;}</style>
       </head><body><h1>${esc(item.title)}</h1>
       <p class="muted">${esc(p.clientName || "")} · ${formatDate(item.createdAt)}</p>
-      <table><thead><tr><th>${copy.candidate}</th><th>—</th><th>${copy.stage}</th><th>${copy.score}</th></tr></thead>
+      <table><thead><tr><th>${copy.candidate}</th><th>-</th><th>${copy.stage}</th><th>${copy.score}</th></tr></thead>
       <tbody>${rows}</tbody></table></body></html>`;
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;

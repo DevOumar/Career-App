@@ -275,7 +275,15 @@ app.get("/", (_req, res) => {
 });
 
 app.get("/api/health", async (_req, res) => {
-  const ping = await db.query("SELECT 1 AS ok");
+  // Express 4 ne rattrape pas les erreurs des routes async : sans ce
+  // try/catch, une coupure réseau vers la base (ENOTFOUND…) faisait planter
+  // tout le serveur au lieu de simplement signaler l'indisponibilité.
+  let ping;
+  try {
+    ping = await db.query("SELECT 1 AS ok");
+  } catch (error) {
+    return res.status(503).json({ ok: false, error: "Base de données indisponible.", code: error.code || "DB_UNAVAILABLE" });
+  }
   res.json({
     ok: ping.rows[0]?.ok === 1,
     aiProvider: AI_PROVIDER,

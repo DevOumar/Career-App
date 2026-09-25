@@ -253,7 +253,7 @@ app.get("/api/admin/satisfaction", async (req, res) => {
     await requireAdminModule(adminUserId, "satisfaction");
 
     const { rows } = await db.query(
-      `SELECT s.id, s.user_id, s.score, s.comment, s.created_at, u.first_name, u.last_name, u.email
+      `SELECT s.id, s.user_id, s.score, s.comment, s.created_at, u.first_name, u.last_name, u.email, u.avatar_data_url
        FROM satisfaction_surveys s
        LEFT JOIN users u ON u.id = s.user_id
        ORDER BY s.created_at DESC
@@ -299,7 +299,11 @@ app.get("/api/admin/satisfaction", async (req, res) => {
       responses: rows.map((row) => ({
         id: row.id,
         userId: row.user_id,
-        userName: `${row.first_name || ""} ${row.last_name || ""}`.trim() || row.email || "—",
+        userName: `${row.first_name || ""} ${row.last_name || ""}`.trim() || row.email || "",
+        userFirstName: row.first_name || "",
+        userLastName: row.last_name || "",
+        userEmail: row.email || "",
+        userAvatarDataUrl: row.avatar_data_url || "",
         score: Number(row.score),
         comment: row.comment || "",
         createdAt: row.created_at

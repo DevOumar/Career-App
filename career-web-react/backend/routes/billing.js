@@ -373,7 +373,7 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     }
 
     if (plan.contactSalesOnly) {
-      return res.status(400).json({ error: "Ce plan nécessite un contrat négocié — contactez-nous plutôt que de payer via Stripe." });
+      return res.status(400).json({ error: "Ce plan nécessite un contrat négocié : contactez-nous plutôt que de payer via Stripe." });
     }
 
     // Les plans école/cabinet tarifés "par étudiant" (pricedPerSeat) : la

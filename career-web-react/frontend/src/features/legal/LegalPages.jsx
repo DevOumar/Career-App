@@ -65,7 +65,7 @@ function LegalDocPage({
           <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
         </div>
         <div className="landing-actions">
-          <LanguageSwitch language={language} setLanguage={setLanguage} />
+          <LanguageSwitch language={language} setLanguage={setLanguage} variant="menu" />
           {onLoginClick && (
             <button className="landing-link" type="button" onClick={onLoginClick}>
               {language === "en" ? "Log in" : "Se connecter"}
@@ -177,7 +177,7 @@ function PrivacyPolicyPage({
         {
           heading: "What data do we collect?",
           paragraphs: [
-            "When you register, we ask for your first name, last name, email address, and a password, which we store using salted cryptographic hashing — never in plain text.",
+            "When you register, we ask for your first name, last name, email address, and a password, which we store using salted cryptographic hashing, never in plain text.",
             "When you use the CV analysis or matching tools, we process the content of the CVs you upload and the job offers you submit, purely to generate your results.",
             "We also automatically record basic technical data (IP address, browser, device) and account security events (logins, password changes), kept for fraud prevention and to let you review your own account activity."
           ]
@@ -188,7 +188,7 @@ function PrivacyPolicyPage({
             "To run the CV/offer matching engine and produce your compatibility score and suggestions.",
             "To generate the cover letters and negotiation guidance you request.",
             "To keep your account secure and let you sign in.",
-            "To send you account-related notifications, and — only if you have not opted out — occasional service announcements."
+            "To send you account-related notifications, and, only if you have not opted out, occasional service announcements."
           ]
         },
         {
@@ -199,7 +199,7 @@ function PrivacyPolicyPage({
           list: [
             "An AI inference provider, to analyze the text of your CV and the job offers you submit and generate matching results.",
             "Supabase, which hosts our application database.",
-            "Stripe, which processes subscription payments — we never see or store your card details.",
+            "Stripe, which processes subscription payments, we never see or store your card details.",
             "Google, only if you actively choose to sign in with a Google account.",
             "Our email delivery provider, to send verification codes and, if enabled, announcements."
           ]
@@ -243,7 +243,7 @@ function PrivacyPolicyPage({
         {
           heading: "Quelles données collectons-nous ?",
           paragraphs: [
-            "À l'inscription, nous demandons votre prénom, votre nom, votre adresse email et un mot de passe, que nous stockons via un hachage cryptographique salé — jamais en clair.",
+            "À l'inscription, nous demandons votre prénom, votre nom, votre adresse email et un mot de passe, que nous stockons via un hachage cryptographique salé, jamais en clair.",
             "Lorsque vous utilisez les outils d'analyse de CV ou de matching, nous traitons le contenu des CV que vous téléchargez et des offres que vous soumettez, uniquement pour produire vos résultats.",
             "Nous enregistrons également des données techniques basiques (adresse IP, navigateur, appareil) et des événements de sécurité du compte (connexions, changements de mot de passe), conservés pour prévenir la fraude et vous permettre de consulter l'activité de votre propre compte."
           ]
@@ -265,7 +265,7 @@ function PrivacyPolicyPage({
           list: [
             "Un fournisseur d'inférence IA, pour analyser le texte de votre CV et des offres soumises et générer les résultats de matching.",
             "Supabase, qui héberge notre base de données applicative.",
-            "Stripe, qui traite les paiements d'abonnement — nous ne voyons ni ne stockons jamais vos données bancaires.",
+            "Stripe, qui traite les paiements d'abonnement, nous ne voyons ni ne stockons jamais vos données bancaires.",
             "Google, uniquement si vous choisissez activement de vous connecter avec un compte Google.",
             "Notre prestataire d'envoi d'emails, pour les codes de vérification et, si activées, les annonces."
           ]
@@ -307,8 +307,8 @@ function PrivacyPolicyPage({
       sections={sections}
       closing={{
         body: isEn
-          ? "Questions about how your data is handled, or about exercising your rights? Write to us — we typically reply within a few business days."
-          : "Une question sur le traitement de vos données, ou sur l'exercice de vos droits ? Écrivez-nous — nous répondons en général sous quelques jours ouvrés."
+          ? "Questions about how your data is handled, or about exercising your rights? Write to us, we typically reply within a few business days."
+          : "Une question sur le traitement de vos données, ou sur l'exercice de vos droits ? Écrivez-nous, nous répondons en général sous quelques jours ouvrés."
       }}
       language={language}
       setLanguage={setLanguage}
@@ -340,7 +340,7 @@ function TermsOfServicePage({ language, setLanguage, onBack, onLoginClick, onSig
           ]
         },
         {
-          heading: "What does the service do — and not do?",
+          heading: "What does the service do, and not do?",
           paragraphs: [
             "Career CV analyzes your CV against job offers, scores their compatibility, and can draft cover letters and negotiation guidance using AI.",
             "These outputs are assistance, not guarantees. AI-generated content can contain mistakes, and we make no promise that using Career CV will lead to an interview or a job offer. You are responsible for reviewing anything generated by the platform before you send it to a third party."
@@ -376,7 +376,7 @@ function TermsOfServicePage({ language, setLanguage, onBack, onLoginClick, onSig
         {
           heading: "What is our liability?",
           paragraphs: [
-            "The service is provided on an \"as available\" basis. To the extent permitted by law, we are not liable for indirect or consequential outcomes of using our results — for example, an unsuccessful interview or an approximation in an AI-generated document. Reviewing and validating generated content before you rely on it is your responsibility."
+            "The service is provided on an \"as available\" basis. To the extent permitted by law, we are not liable for indirect or consequential outcomes of using our results, for example, an unsuccessful interview or an approximation in an AI-generated document. Reviewing and validating generated content before you rely on it is your responsibility."
           ]
         },
         {
@@ -400,7 +400,7 @@ function TermsOfServicePage({ language, setLanguage, onBack, onLoginClick, onSig
           ]
         },
         {
-          heading: "Que fait le service — et que ne fait-il pas ?",
+          heading: "Que fait le service, et que ne fait-il pas ?",
           paragraphs: [
             "Career CV analyse votre CV au regard d'offres d'emploi, calcule un score de compatibilité, et peut rédiger des lettres de motivation et des conseils de négociation à l'aide de l'IA.",
             "Ces résultats sont une aide, pas une garantie. Un contenu généré par IA peut contenir des erreurs, et nous ne promettons pas que l'usage de Career CV mène à un entretien ou à une embauche. Il vous appartient de relire tout contenu généré avant de l'envoyer à un tiers."
@@ -436,7 +436,7 @@ function TermsOfServicePage({ language, setLanguage, onBack, onLoginClick, onSig
         {
           heading: "Quelle est notre responsabilité ?",
           paragraphs: [
-            "Le service est fourni « en l'état, selon disponibilité ». Dans la mesure permise par la loi, nous ne sommes pas responsables des conséquences indirectes de l'usage de nos résultats — par exemple un entretien manqué ou une approximation dans un document généré par IA. Il vous appartient de relire et de valider tout contenu généré avant de vous y fier."
+            "Le service est fourni « en l'état, selon disponibilité ». Dans la mesure permise par la loi, nous ne sommes pas responsables des conséquences indirectes de l'usage de nos résultats, par exemple un entretien manqué ou une approximation dans un document généré par IA. Il vous appartient de relire et de valider tout contenu généré avant de vous y fier."
           ]
         },
         {
@@ -461,8 +461,8 @@ function TermsOfServicePage({ language, setLanguage, onBack, onLoginClick, onSig
       sections={sections}
       closing={{
         body: isEn
-          ? "Questions about these terms? Write to us — we typically reply within a few business days."
-          : "Une question sur ces conditions ? Écrivez-nous — nous répondons en général sous quelques jours ouvrés."
+          ? "Questions about these terms? Write to us, we typically reply within a few business days."
+          : "Une question sur ces conditions ? Écrivez-nous, nous répondons en général sous quelques jours ouvrés."
       }}
       language={language}
       setLanguage={setLanguage}

@@ -34,6 +34,20 @@ export function formatDate(value) {
   return new Date(value).toLocaleDateString("fr-FR");
 }
 
+// Date + heure réelles de l'horodatage stocké en base (converti dans le
+// fuseau horaire du navigateur) : « 24/09/2026 à 14:32 ». Une valeur sans
+// heure (AAAA-MM-JJ) reste affichée comme une simple date.
+export function formatDateTime(value, language = "fr") {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  const locale = language === "en" ? "en-GB" : "fr-FR";
+  const day = date.toLocaleDateString(locale);
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return day;
+  const time = date.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+  return language === "en" ? `${day}, ${time}` : `${day} à ${time}`;
+}
+
 export function formatShortDate(value, language) {
   if (!value) return "-";
   const date = new Date(value);

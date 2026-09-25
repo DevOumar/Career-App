@@ -151,7 +151,7 @@ function LandingPage({
           <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
         </button>
         <div className="landing-actions">
-          <LanguageSwitch language={language} setLanguage={setLanguage} />
+          <LanguageSwitch language={language} setLanguage={setLanguage} variant="menu" />
           <button className="landing-link" type="button" onClick={onLoginClick}>
             {copy.login}
           </button>
@@ -492,7 +492,7 @@ function InfoPage({
           <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
         </button>
         <div className="landing-actions">
-          <LanguageSwitch language={language} setLanguage={setLanguage} />
+          <LanguageSwitch language={language} setLanguage={setLanguage} variant="menu" />
           {onLoginClick && (
             <button className="landing-link" type="button" onClick={onLoginClick}>
               {language === "en" ? "Log in" : "Se connecter"}

@@ -87,7 +87,7 @@ export default function AdminPricingPage({ user, language, currency = "EUR" }) {
     language === "en"
       ? {
           title: "Pricing",
-          subtitle: "Plans currently in effect — prices can be edited here.",
+          subtitle: "Plans currently in effect: prices can be edited here.",
           edit: "Edit",
           save: "Save",
           saving: "Saving…",
@@ -102,7 +102,7 @@ export default function AdminPricingPage({ user, language, currency = "EUR" }) {
           customBadge: "Custom price",
           confirmStripeTitle: "Changing this price creates a new Stripe price",
           confirmStripeText:
-            "Stripe prices can't be edited in place — a new one will be created and used from now on for checkout. Existing subscribers keep their current price until they change plans.",
+            "Stripe prices can't be edited in place: a new one will be created and used from now on for checkout. Existing subscribers keep their current price until they change plans.",
           confirmBtn: "Confirm",
           segmentCandidate: "Candidate / Student",
           segmentAgency: "Recruitment firm / Consulting",
@@ -111,7 +111,7 @@ export default function AdminPricingPage({ user, language, currency = "EUR" }) {
         }
       : {
           title: "Tarifs",
-          subtitle: "Grilles tarifaires en vigueur — les prix sont modifiables ici.",
+          subtitle: "Grilles tarifaires en vigueur : les prix sont modifiables ici.",
           edit: "Modifier",
           save: "Enregistrer",
           saving: "Enregistrement…",
@@ -126,7 +126,7 @@ export default function AdminPricingPage({ user, language, currency = "EUR" }) {
           customBadge: "Tarif personnalisé",
           confirmStripeTitle: "Modifier ce tarif crée un nouveau prix Stripe",
           confirmStripeText:
-            "Les tarifs Stripe ne peuvent pas être modifiés sur place — un nouveau sera créé et utilisé désormais pour le paiement. Les abonnés existants gardent leur tarif actuel tant qu'ils ne changent pas de plan.",
+            "Les tarifs Stripe ne peuvent pas être modifiés sur place : un nouveau sera créé et utilisé désormais pour le paiement. Les abonnés existants gardent leur tarif actuel tant qu'ils ne changent pas de plan.",
           confirmBtn: "Confirmer",
           segmentCandidate: "Candidat / Étudiant",
           segmentAgency: "Cabinet de recrutement / Conseil",

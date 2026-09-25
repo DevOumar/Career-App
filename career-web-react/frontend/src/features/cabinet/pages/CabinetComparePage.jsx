@@ -84,7 +84,7 @@ export default function CabinetComparePage({ user, language }) {
                 <tr key={item.id}>
                   <td>
                     <strong>{item.title}</strong>
-                    <div className="muted">{[item.clientName, item.location].filter(Boolean).join(" · ") || "—"}</div>
+                    <div className="muted">{[item.clientName, item.location].filter(Boolean).join(" · ") || "-"}</div>
                   </td>
                   <td>{STATUS_LABELS[language]?.[item.status] || STATUS_LABELS.fr[item.status]}</td>
                   <td>{item.candidateCount}</td>

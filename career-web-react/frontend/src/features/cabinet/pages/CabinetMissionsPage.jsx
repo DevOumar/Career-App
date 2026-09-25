@@ -174,7 +174,7 @@ export default function CabinetMissionsPage({ user, language }) {
                     </span>
                     <div>
                       <h3>{mission.title}</h3>
-                      <p>{[mission.clientName, mission.location].filter(Boolean).join(" · ") || "—"}</p>
+                      <p>{[mission.clientName, mission.location].filter(Boolean).join(" · ") || "-"}</p>
                     </div>
                   </div>
                   <select value={mission.status} onChange={(event) => handleStatusChange(mission, event.target.value)}>

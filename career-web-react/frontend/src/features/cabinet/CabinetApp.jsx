@@ -91,6 +91,7 @@ export default function CabinetApp({
   securitySaving,
   onSubmitPassword,
   onRevokeSession,
+  onRevokeOtherSessions,
   currentSessionId,
   onExportData,
   onExportSummary,
@@ -463,6 +464,7 @@ export default function CabinetApp({
           securitySaving={securitySaving}
           onSubmitPassword={onSubmitPassword}
           onRevokeSession={onRevokeSession}
+          onRevokeOtherSessions={onRevokeOtherSessions}
           currentSessionId={currentSessionId}
           onExportData={onExportData}
           onExportSummary={onExportSummary}

@@ -250,6 +250,28 @@ export function registerAdminCabinetsRoutes(app) {
 
 // Vue plateforme des cabinets — miroir de /api/admin/schools : l'Admin ne
 // pouvait piloter les cabinets qu'un par un via Comptes/Licences.
+// Fiche publique d'une organisation (logo, sigle, coordonnées…) pour la vue
+// admin. Les colonnes ajoutées par migration peuvent manquer sur une vieille
+// base : chaque champ retombe sur une chaîne vide.
+function organizationProfileFields(row = {}, owner = {}) {
+  return {
+    logoDataUrl: row.logo_data_url || "",
+    acronym: row.acronym || "",
+    organizationType: row.organization_type || "",
+    industry: row.industry || "",
+    website: row.website || "",
+    address: row.address || "",
+    city: row.city || "",
+    country: row.country || "",
+    emailDomain: row.email_domain || "",
+    contactEmail: row.contact_email || "",
+    contactPhone: row.contact_phone || "",
+    primaryContactName: row.primary_contact_name || "",
+    description: row.description || "",
+    ownerName: `${owner.first_name || ""} ${owner.last_name || ""}`.trim()
+  };
+}
+
 app.get("/api/admin/cabinets", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
@@ -260,11 +282,32 @@ app.get("/api/admin/cabinets", async (req, res) => {
       "SELECT id, first_name, last_name, email, created_at FROM users WHERE role_type = 'recruiter_firm' ORDER BY created_at DESC"
     );
     const { rows: profileRows } = cabinetRows.length
-      ? await db.query("SELECT user_id, organization_name FROM user_recruiter_profiles WHERE user_id = ANY($1)", [
+      ? await db.query("SELECT * FROM user_recruiter_profiles WHERE user_id = ANY($1)", [
           cabinetRows.map((row) => row.id)
         ])
       : { rows: [] };
     const orgNameByUser = Object.fromEntries(profileRows.map((row) => [row.user_id, row.organization_name]));
+    const orgProfileByUser = Object.fromEntries(profileRows.map((row) => [row.user_id, row]));
+    // Candidats du vivier de chaque cabinet (profils importés/saisis par ses recruteurs).
+    const { rows: poolRows } = cabinetRows.length
+      ? await db.query(
+          `SELECT id, cabinet_user_id, first_name, last_name, email, headline, status, created_at
+           FROM cabinet_candidates WHERE cabinet_user_id = ANY($1) ORDER BY created_at DESC`,
+          [cabinetRows.map((row) => row.id)]
+        )
+      : { rows: [] };
+    const poolByCabinet = {};
+    for (const row of poolRows) {
+      (poolByCabinet[row.cabinet_user_id] = poolByCabinet[row.cabinet_user_id] || []).push({
+        id: row.id,
+        firstName: row.first_name || "",
+        lastName: row.last_name || "",
+        email: row.email || "",
+        headline: row.headline || "",
+        status: row.status || "sourced",
+        createdAt: row.created_at
+      });
+    }
 
     const items = [];
     let totalSeats = 0;
@@ -290,7 +333,16 @@ app.get("/api/admin/cabinets", async (req, res) => {
         candidateCount: metrics.candidateCount,
         missionCount: metrics.missionCount,
         openMissionCount: metrics.openMissionCount,
-        alertCount: alerts.length
+        alertCount: alerts.length,
+        alerts: alerts.map((alert) => ({ type: alert.type, title: alert.title, body: alert.body })),
+        recruiters: (metrics.recruiters || []).map((recruiter) => ({
+          id: recruiter.id,
+          name: `${recruiter.first_name || recruiter.firstName || ""} ${recruiter.last_name || recruiter.lastName || ""}`.trim(),
+          email: recruiter.email || "",
+          avatarDataUrl: recruiter.avatar_data_url || recruiter.avatarDataUrl || ""
+        })),
+        candidates: poolByCabinet[cabinet.id] || [],
+        ...organizationProfileFields(orgProfileByUser[cabinet.id], cabinet)
       });
     }
 

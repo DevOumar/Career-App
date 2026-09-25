@@ -12,7 +12,7 @@ export default function CabinetInvitationsPage({ user, language }) {
     language === "en"
       ? {
           title: "Invitations",
-          subtitle: "Invite a recruiter by email — a license seat is reserved automatically.",
+          subtitle: "Invite a recruiter by email, a license seat is reserved automatically.",
           emailLabel: "Recruiter email",
           send: "Send invitation",
           sending: "Sending…",
@@ -32,7 +32,7 @@ export default function CabinetInvitationsPage({ user, language }) {
         }
       : {
           title: "Invitations",
-          subtitle: "Invitez un recruteur par email — un siège de licence est réservé automatiquement.",
+          subtitle: "Invitez un recruteur par email, un siège de licence est réservé automatiquement.",
           emailLabel: "Email du recruteur",
           send: "Envoyer l'invitation",
           sending: "Envoi…",

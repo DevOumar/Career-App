@@ -26,7 +26,7 @@ import AccountDrawer from "../../account/AccountDrawer.jsx";
 import { ConnectedFooter, ADMIN_ACCOUNT_TYPES } from "../../../App.jsx";
 import { PLANS, PLAN_SEGMENTS, getPlanById } from "../../../data/plans.js";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
-import { formatDate, formatShortDate, formatAmountInCurrency, formatPlanPrice } from "../../../lib/format.js";
+import { formatDate, formatDateTime, formatShortDate, formatAmountInCurrency, formatPlanPrice } from "../../../lib/format.js";
 import { fileToBase64 } from "../../../lib/cvService.js";
 import { getAccountLabel } from "../../../lib/accounts.js";
 import { satisfactionTierFor } from "../../satisfaction/SatisfactionSurveyModal.jsx";
@@ -55,6 +55,7 @@ import {
   getAdminAnnouncementAudienceCount,
   getAdminAnnouncements,
   sendAdminAnnouncement,
+  deleteAdminAnnouncement,
   deleteAdminCv,
   reanalyzeAdminCv,
   updateAdminSetting,
@@ -80,135 +81,190 @@ import {
   markSchoolNotificationsRead,
   generateSchoolReport
 } from "../../../lib/inMemoryDb.js";
-import { AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
+import { AdminLineIcon, AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
+
+// Icône associée à chaque public (avatar de la "conversation").
+const AUDIENCE_ICONS = { "": "accounts", all: "accounts", student: "profile", school: "schools", recruiter_firm: "cabinets" };
+const DRAFT_STORAGE_KEY = "career_app_admin_announcement_draft";
+
+// Rendu léger du Markdown saisi dans l'éditeur (paragraphes, listes,
+// citations, **gras**, _italique_, liens) — en éléments React, sans HTML brut.
+function renderInline(text, keyPrefix) {
+  const parts = [];
+  const pattern = /(\*\*[^*]+\*\*|_[^_]+_|https?:\/\/[^\s)]+)/g;
+  let last = 0;
+  let match;
+  let index = 0;
+  while ((match = pattern.exec(text))) {
+    if (match.index > last) parts.push(text.slice(last, match.index));
+    const token = match[0];
+    const key = `${keyPrefix}-${index++}`;
+    if (token.startsWith("**")) parts.push(<strong key={key}>{token.slice(2, -2)}</strong>);
+    else if (token.startsWith("_")) parts.push(<em key={key}>{token.slice(1, -1)}</em>);
+    else
+      parts.push(
+        <a key={key} href={token} target="_blank" rel="noreferrer">
+          {token}
+        </a>
+      );
+    last = match.index + token.length;
+  }
+  if (last < text.length) parts.push(text.slice(last));
+  return parts;
+}
+
+function AnnouncementBody({ text }) {
+  const blocks = String(text || "")
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+  return blocks.map((block, blockIndex) => {
+    const lines = block.split("\n");
+    if (lines.every((line) => /^[-*] /.test(line))) {
+      return (
+        <ul key={blockIndex}>
+          {lines.map((line, i) => (
+            <li key={i}>{renderInline(line.slice(2), `${blockIndex}-${i}`)}</li>
+          ))}
+        </ul>
+      );
+    }
+    if (lines.every((line) => /^\d+\. /.test(line))) {
+      return (
+        <ol key={blockIndex}>
+          {lines.map((line, i) => (
+            <li key={i}>{renderInline(line.replace(/^\d+\. /, ""), `${blockIndex}-${i}`)}</li>
+          ))}
+        </ol>
+      );
+    }
+    if (lines.every((line) => line.startsWith(">"))) {
+      return <blockquote key={blockIndex}>{renderInline(lines.map((line) => line.replace(/^>\s?/, "")).join(" "), `${blockIndex}`)}</blockquote>;
+    }
+    return (
+      <p key={blockIndex}>
+        {lines.map((line, i) => (
+          <React.Fragment key={i}>
+            {i ? <br /> : null}
+            {renderInline(line, `${blockIndex}-${i}`)}
+          </React.Fragment>
+        ))}
+      </p>
+    );
+  });
+}
 
 export default function AdminAnnouncementsPage({ user, language }) {
-  const copy =
-    language === "en"
-      ? {
-          title: "Announcement emails",
-          subtitle: "Send a real email to a segment of users via the configured SMTP server.",
-          audience: "Audience",
-          subject: "Subject",
-          message: "Message",
-          messagePlaceholder: "Write your announcement… (use a blank line to start a new paragraph)",
-          recipients: "recipient(s)",
-          send: "Send announcement",
-          sending: "Sending…",
-          confirmTitle: "Send this announcement?",
-          confirmText: (count) => `This will email ${count} recipient(s) right now. This cannot be undone.`,
-          confirmBtn: "Send",
-          cancel: "Cancel",
-          history: "Sent history",
-          noHistory: "No announcement sent yet.",
-          colDate: "Date",
-          colSubject: "Subject",
-          colAudience: "Audience",
-          colRecipients: "Recipients",
-          colFailed: "Failed",
-          compose: "Compose",
-          composeTitle: "Compose new message",
-          folders: "Folders",
-          inbox: "Audience",
-          sent: "Sent",
-          drafts: "Draft",
-          failed: "Failed",
-          labels: "Labels",
-          important: "Important",
-          platform: "Platform",
-          schools: "Schools",
-          to: "To:",
-          subjectLine: "Subject:",
-          normalText: "Normal text",
-          attachment: "Attachment",
-          attachmentHint: "Add a PDF, image or office document to this campaign.",
-          attachFile: "Attach file",
-          removeFile: "Remove file",
-          draftSaved: "Draft saved.",
-          linkPrompt: "Paste the link to insert",
-          importantPrefix: "[Important]",
-          platformPrefix: "[Platform]",
-          schoolPrefix: "[Schools]"
-        }
-      : {
-          title: "Emails d'annonce",
-          subtitle: "Envoyez un vrai email à un segment d'utilisateurs via le serveur SMTP configuré.",
-          audience: "Audience",
-          subject: "Objet",
-          message: "Message",
-          messagePlaceholder: "Rédigez votre annonce… (laissez une ligne vide pour un nouveau paragraphe)",
-          recipients: "destinataire(s)",
-          send: "Envoyer l'annonce",
-          sending: "Envoi en cours…",
-          confirmTitle: "Envoyer cette annonce ?",
-          confirmText: (count) => `Cela enverra un email à ${count} destinataire(s) immédiatement. Action irréversible.`,
-          confirmBtn: "Envoyer",
-          cancel: "Annuler",
-          history: "Historique des envois",
-          noHistory: "Aucune annonce envoyée pour l'instant.",
-          colDate: "Date",
-          colSubject: "Objet",
-          colAudience: "Audience",
-          colRecipients: "Destinataires",
-          colFailed: "Échecs",
-          compose: "Composer",
-          composeTitle: "Nouveau message",
-          folders: "Dossiers",
-          inbox: "Audience",
-          sent: "Envoyés",
-          drafts: "Brouillon",
-          failed: "Échecs",
-          labels: "Labels",
-          important: "Important",
-          platform: "Plateforme",
-          schools: "Écoles",
-          to: "À :",
-          subjectLine: "Objet :",
-          normalText: "Texte normal",
-          attachment: "Pièce jointe",
-          attachmentHint: "Ajoutez un PDF, une image ou un document bureautique à cette campagne.",
-          attachFile: "Joindre un fichier",
-          removeFile: "Retirer le fichier",
-          draftSaved: "Brouillon enregistré.",
-          linkPrompt: "Collez le lien à insérer",
-          importantPrefix: "[Important]",
-          platformPrefix: "[Plateforme]",
-          schoolPrefix: "[Écoles]"
-        };
+  const t = (fr, en) => (language === "en" ? en : fr);
+  const copy = {
+    title: t("Messagerie", "Messaging"),
+    subtitle: t(
+      "Annonces envoyées par e-mail aux utilisateurs de la plateforme via le serveur SMTP configuré.",
+      "Announcements emailed to platform users via the configured SMTP server."
+    ),
+    newAnnouncement: t("Nouvelle annonce", "New announcement"),
+    searchList: t("Rechercher une annonce…", "Search an announcement…"),
+    all: t("Toutes", "All"),
+    failed: t("Échecs", "Failed"),
+    draft: t("Brouillon", "Draft"),
+    noSubject: t("Sans objet", "No subject"),
+    empty: t("Aucune annonce envoyée", "No announcement sent yet"),
+    emptyHint: t(
+      "Rédigez votre première annonce : elle partira par e-mail au public choisi.",
+      "Write your first announcement: it will be emailed to the chosen audience."
+    ),
+    noMatch: t("Aucune annonce ne correspond.", "No announcement matches."),
+    selectOne: t("Sélectionnez une annonce pour l'afficher.", "Select an announcement to display it."),
+    me: t("Moi", "Me"),
+    sentBadge: t("Envoyée", "Sent"),
+    replyPlaceholder: (audienceLabel) => t(`Écrire une relance à « ${audienceLabel} »…`, `Write a follow-up to "${audienceLabel}"…`),
+    replyHint: t("Entrée pour envoyer · Maj+Entrée pour un saut de ligne", "Enter to send · Shift+Enter for a new line"),
+    details: t("Détails", "Details"),
+    audienceSection: t("Public", "Audience"),
+    delivery: t("Distribution", "Delivery"),
+    recipientsLabel: t("Destinataires", "Recipients"),
+    delivered: t("Délivrés", "Delivered"),
+    sentOn: t("Envoyée le", "Sent on"),
+    recipients: t("destinataire(s)", "recipient(s)"),
+    to: t("Destinataires", "Recipients"),
+    label: t("Étiquette", "Label"),
+    subject: t("Objet", "Subject"),
+    subjectPlaceholder: t("Objet de l'annonce", "Announcement subject"),
+    message: t("Message", "Message"),
+    messagePlaceholder: t(
+      "Rédigez votre annonce… (laissez une ligne vide pour un nouveau paragraphe)",
+      "Write your announcement… (use a blank line to start a new paragraph)"
+    ),
+    normalText: t("Texte normal", "Normal text"),
+    attachment: t("Pièce jointe", "Attachment"),
+    attachmentHint: t("PDF, image ou document bureautique (facultatif)", "PDF, image or office document (optional)"),
+    attachFile: t("Joindre un fichier", "Attach file"),
+    removeFile: t("Retirer", "Remove"),
+    cancel: t("Annuler", "Cancel"),
+    saveDraft: t("Enregistrer le brouillon", "Save draft"),
+    draftSaved: t("Brouillon enregistré.", "Draft saved."),
+    send: t("Envoyer", "Send"),
+    sending: t("Envoi…", "Sending…"),
+    confirmTitle: t("Envoyer cette annonce ?", "Send this announcement?"),
+    confirmText: (count) =>
+      t(
+        `Cela enverra un e-mail à ${count} destinataire(s) immédiatement. Action irréversible.`,
+        `This will email ${count} recipient(s) right now. This cannot be undone.`
+      ),
+    linkPrompt: t("Collez le lien à insérer", "Paste the link to insert"),
+    important: t("Important", "Important"),
+    platform: t("Plateforme", "Platform"),
+    schools: t("Écoles", "Schools"),
+    importantPrefix: t("[Important]", "[Important]"),
+    platformPrefix: t("[Plateforme]", "[Platform]"),
+    schoolPrefix: t("[Écoles]", "[Schools]"),
+    followUpPrefix: t("Relance :", "Follow-up:")
+  };
 
+  const [history, setHistory] = useState(null);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [filter, setFilter] = useState("all");
+  const [activeId, setActiveId] = useState(null);
+  const [composeOpen, setComposeOpen] = useState(false);
   const [audience, setAudience] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
-  const [audienceCount, setAudienceCount] = useState(null);
-  const [sending, setSending] = useState(false);
-  const [error, setError] = useState("");
-  const [history, setHistory] = useState([]);
-  const [activeFolder, setActiveFolder] = useState("compose");
   const [activeLabel, setActiveLabel] = useState("");
-  const [mailSearch, setMailSearch] = useState("");
   const [attachment, setAttachment] = useState(null);
+  const [audienceCount, setAudienceCount] = useState(null);
+  const [hasDraft, setHasDraft] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [reply, setReply] = useState("");
   const messageRef = useRef(null);
   const attachmentInputRef = useRef(null);
-  const failedTotal = history.reduce((total, item) => total + Number(item.failedCount || 0), 0);
-  const folderHistory = activeFolder === "failed" ? history.filter((item) => Number(item.failedCount || 0) > 0) : history;
-  const visibleHistory = folderHistory.filter((item) => {
-    const term = mailSearch.trim().toLowerCase();
-    if (!term) return true;
-    const audienceLabel =
-      ADMIN_ANNOUNCEMENT_AUDIENCES.find((a) => a.id === item.audience || (a.id === "" && item.audience === "all"))
-        ?.label[language] || item.audience;
-    return `${item.subject} ${audienceLabel}`.toLowerCase().includes(term);
-  });
-  const showMailbox = activeFolder === "sent" || activeFolder === "failed";
 
-  function loadHistory() {
+  function loadHistory(selectFirst = false) {
     getAdminAnnouncements(user.id)
-      .then(setHistory)
-      .catch((err) => setError(getFriendlyErrorMessage(err, language)));
+      .then((items) => {
+        setHistory(items || []);
+        if (selectFirst && items?.length) setActiveId(items[0].id);
+      })
+      .catch((err) => {
+        setHistory([]);
+        setError(getFriendlyErrorMessage(err, language));
+      });
   }
 
   useEffect(() => {
-    loadHistory();
+    loadHistory(true);
+    try {
+      const draft = JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) || "null");
+      if (draft?.subject || draft?.message) {
+        setSubject(draft.subject || "");
+        setMessage(draft.message || "");
+        setAudience(draft.audience || "");
+        setAttachment(draft.attachmentMeta || null);
+        setHasDraft(true);
+      }
+    } catch (_error) {
+      // brouillon illisible : ignoré
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -218,37 +274,49 @@ export default function AdminAnnouncementsPage({ user, language }) {
       .catch(() => setAudienceCount(null));
   }, [user.id, audience]);
 
+  // Échap ferme la fenêtre de rédaction.
   useEffect(() => {
-    try {
-      const draft = JSON.parse(localStorage.getItem("career_app_admin_announcement_draft") || "null");
-      if (draft?.subject || draft?.message) {
-        setSubject(draft.subject || "");
-        setMessage(draft.message || "");
-        setAudience(draft.audience || "");
-        setAttachment(draft.attachmentMeta || null);
-      }
-    } catch (_error) {
-      // ignore malformed draft
+    if (!composeOpen) return undefined;
+    function onKey(event) {
+      if (event.key === "Escape") setComposeOpen(false);
     }
-  }, []);
-
-  function focusMessage() {
-    setTimeout(() => messageRef.current?.focus(), 0);
-  }
-
-  function handleFolderClick(folder) {
-    setActiveFolder(folder);
-    if (folder === "compose" || folder === "audience" || folder === "draft") {
-      focusMessage();
-    }
-  }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [composeOpen]);
 
   function getAudienceLabel(value) {
     return (
-      ADMIN_ANNOUNCEMENT_AUDIENCES.find((a) => a.id === value || (a.id === "" && value === "all"))?.label[language] ||
+      ADMIN_ANNOUNCEMENT_AUDIENCES.find((a) => a.id === value || (a.id === "" && (value === "all" || !value)))?.label[language] ||
       value ||
       ADMIN_ANNOUNCEMENT_AUDIENCES[0].label[language]
     );
+  }
+
+  const formatDateTime = (value) =>
+    new Intl.DateTimeFormat(language === "en" ? "en-GB" : "fr-FR", {
+      day: "2-digit",
+      month: "short",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(new Date(value));
+
+  const items = history || [];
+  const failedCount = items.filter((item) => Number(item.failedCount || 0) > 0).length;
+  const term = search.trim().toLowerCase();
+  const visible = items
+    .filter((item) => filter !== "failed" || Number(item.failedCount || 0) > 0)
+    .filter((item) => !term || `${item.subject} ${getAudienceLabel(item.audience)} ${item.message || ""}`.toLowerCase().includes(term));
+  const active = items.find((item) => item.id === activeId) || null;
+
+  function openCompose(prefill) {
+    if (prefill) {
+      setAudience(prefill.audience === "all" ? "" : prefill.audience || "");
+      setSubject(prefill.subject || "");
+      setMessage(prefill.message || "");
+    }
+    setError("");
+    setComposeOpen(true);
+    setTimeout(() => messageRef.current?.focus(), 50);
   }
 
   function insertInMessage(before, after = "", fallback = "") {
@@ -256,25 +324,12 @@ export default function AdminAnnouncementsPage({ user, language }) {
     const start = textarea?.selectionStart ?? message.length;
     const end = textarea?.selectionEnd ?? message.length;
     const selected = message.slice(start, end) || fallback;
-    const next = `${message.slice(0, start)}${before}${selected}${after}${message.slice(end)}`;
-    setMessage(next);
+    setMessage(`${message.slice(0, start)}${before}${selected}${after}${message.slice(end)}`);
     requestAnimationFrame(() => {
       messageRef.current?.focus();
       const cursorStart = start + before.length;
-      const cursorEnd = cursorStart + selected.length;
-      messageRef.current?.setSelectionRange(cursorStart, cursorEnd);
+      messageRef.current?.setSelectionRange(cursorStart, cursorStart + selected.length);
     });
-  }
-
-  function applyLabel(label) {
-    setActiveLabel(label);
-    const prefix = label === "important" ? copy.importantPrefix : label === "schools" ? copy.schoolPrefix : copy.platformPrefix;
-    if (!subject.startsWith(prefix)) {
-      setSubject((prev) => `${prefix} ${prev}`.trim());
-    }
-    if (label === "schools") setAudience("school");
-    if (label === "platform") setAudience("");
-    focusMessage();
   }
 
   async function insertLink() {
@@ -285,16 +340,35 @@ export default function AdminAnnouncementsPage({ user, language }) {
       showCancelButton: true,
       confirmButtonText: "OK",
       cancelButtonText: copy.cancel,
-      confirmButtonColor: "#1a0dab"
+      confirmButtonColor: "#b83309"
     });
-    if (result.isConfirmed && result.value) {
-      insertInMessage("", "", result.value);
-    }
+    if (result.isConfirmed && result.value) insertInMessage("", "", result.value);
+  }
+
+  function applyLabel(label) {
+    setActiveLabel(label);
+    const prefix = label === "important" ? copy.importantPrefix : label === "schools" ? copy.schoolPrefix : copy.platformPrefix;
+    if (!subject.startsWith(prefix)) setSubject((prev) => `${prefix} ${prev}`.trim());
+    if (label === "schools") setAudience("school");
+    if (label === "platform") setAudience("");
+  }
+
+  function toast(title, icon = "success") {
+    Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon,
+      title,
+      showConfirmButton: false,
+      timer: 3200,
+      timerProgressBar: true,
+      customClass: { popup: "career-toast", title: "career-toast-title" }
+    });
   }
 
   function saveDraft() {
     localStorage.setItem(
-      "career_app_admin_announcement_draft",
+      DRAFT_STORAGE_KEY,
       JSON.stringify({
         subject,
         message,
@@ -303,17 +377,9 @@ export default function AdminAnnouncementsPage({ user, language }) {
         savedAt: new Date().toISOString()
       })
     );
-    setActiveFolder("draft");
-    Swal.fire({
-      toast: true,
-      position: "top-end",
-      icon: "success",
-      title: copy.draftSaved,
-      showConfirmButton: false,
-      timer: 2200,
-      timerProgressBar: true,
-      customClass: { popup: "career-toast", title: "career-toast-title" }
-    });
+    setHasDraft(true);
+    setComposeOpen(false);
+    toast(copy.draftSaved);
   }
 
   async function handleAttachmentChange(event) {
@@ -323,223 +389,122 @@ export default function AdminAnnouncementsPage({ user, language }) {
       const content = await fileToBase64(file);
       setAttachment({ name: file.name, size: file.size, type: file.type || "application/octet-stream", content });
     } catch (_error) {
-      setError(
-        language === "en"
-          ? "Unable to read this attachment. Try another file."
-          : "Impossible de lire cette pièce jointe. Essaie un autre fichier."
-      );
+      setError(t("Impossible de lire cette pièce jointe. Essaie un autre fichier.", "Unable to read this attachment. Try another file."));
     } finally {
       event.target.value = "";
     }
   }
 
-  async function handleSend(event) {
-    event.preventDefault();
-    setError("");
-
+  // Envoi réel (utilisé par la fenêtre de rédaction et par la relance rapide).
+  async function sendAnnouncement(payload, count) {
     const result = await Swal.fire({
       icon: "warning",
       title: copy.confirmTitle,
-      text: copy.confirmText(audienceCount ?? "?"),
+      text: copy.confirmText(count ?? "?"),
       showCancelButton: true,
-      confirmButtonText: copy.confirmBtn,
+      confirmButtonText: copy.send,
       cancelButtonText: copy.cancel,
-      confirmButtonColor: "#1a0dab"
+      confirmButtonColor: "#b83309"
     });
-    if (!result.isConfirmed) return;
-
+    if (!result.isConfirmed) return false;
     setSending(true);
+    setError("");
     try {
-      const response = await sendAdminAnnouncement({ adminUserId: user.id, subject, message, audience, attachment });
-      setSubject("");
-      setMessage("");
-      setAttachment(null);
-      localStorage.removeItem("career_app_admin_announcement_draft");
-      setActiveFolder("sent");
-      loadHistory();
-      Swal.fire({
-        toast: true,
-        position: "top-end",
-        icon: "success",
-        title:
-          language === "en"
-            ? `Sent to ${response.recipientCount} recipient(s)${response.failedCount ? `, ${response.failedCount} failed` : ""}.`
-            : `Envoyé à ${response.recipientCount} destinataire(s)${response.failedCount ? `, ${response.failedCount} échec(s)` : ""}.`,
-        showConfirmButton: false,
-        timer: 3500,
-        timerProgressBar: true,
-        customClass: { popup: "career-toast", title: "career-toast-title" }
-      });
+      const response = await sendAdminAnnouncement({ adminUserId: user.id, ...payload });
+      loadHistory(true);
+      toast(
+        t(
+          `Envoyé à ${response.recipientCount} destinataire(s)${response.failedCount ? `, ${response.failedCount} échec(s)` : ""}.`,
+          `Sent to ${response.recipientCount} recipient(s)${response.failedCount ? `, ${response.failedCount} failed` : ""}.`
+        )
+      );
+      return true;
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));
+      return false;
     } finally {
       setSending(false);
     }
   }
 
-  return (
-    <section className="admin-announcements">
-      <header className="module-header">
+  async function handleComposeSubmit(event) {
+    event.preventDefault();
+    const ok = await sendAnnouncement({ subject, message, audience, attachment }, audienceCount);
+    if (ok) {
+      setSubject("");
+      setMessage("");
+      setAttachment(null);
+      setActiveLabel("");
+      localStorage.removeItem(DRAFT_STORAGE_KEY);
+      setHasDraft(false);
+      setComposeOpen(false);
+    }
+  }
+
+  async function sendFollowUp() {
+    if (!active || !reply.trim() || sending) return;
+    const followAudience = active.audience === "all" ? "" : active.audience || "";
+    const baseSubject = String(active.subject || copy.noSubject).replace(new RegExp(`^${copy.followUpPrefix}\\s*`), "");
+    const count = await getAdminAnnouncementAudienceCount(user.id, followAudience).catch(() => null);
+    const ok = await sendAnnouncement({ subject: `${copy.followUpPrefix} ${baseSubject}`, message: reply.trim(), audience: followAudience }, count);
+    if (ok) setReply("");
+  }
+
+  async function handleDelete(item) {
+    const result = await Swal.fire({
+      icon: "warning",
+      title: t("Supprimer cette annonce ?", "Delete this announcement?"),
+      text: t(
+        "Elle sera retirée de l'historique. Les e-mails déjà envoyés ne sont pas rappelés.",
+        "It will be removed from the history. Emails already sent are not recalled."
+      ),
+      showCancelButton: true,
+      confirmButtonText: t("Supprimer", "Delete"),
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#b3261e"
+    });
+    if (!result.isConfirmed) return;
+    try {
+      await deleteAdminAnnouncement({ adminUserId: user.id, announcementId: item.id });
+      const remaining = (history || []).filter((entry) => entry.id !== item.id);
+      setHistory(remaining);
+      setActiveId(remaining[0]?.id || null);
+      toast(t("Annonce supprimée.", "Announcement deleted."));
+    } catch (err) {
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+    }
+  }
+
+  if (!history) return <AdminPageLoader language={language} />;
+
+  const header = (
+    <header className="module-header">
+      <div>
         <h2>{copy.title}</h2>
         <p>{copy.subtitle}</p>
-      </header>
+      </div>
+      <div className="admin-header-actions">
+        <button type="button" className="btn-main ready" onClick={() => openCompose()}>
+          <AdminLineIcon name="plus" /> {copy.newAnnouncement}
+        </button>
+      </div>
+    </header>
+  );
 
-      <div className="admin-mail-layout">
-        <aside className="admin-mail-sidebar">
-          <button type="button" className="admin-mail-compose-btn" onClick={() => handleFolderClick("compose")}>
-            <UiIcon name="mail" /> {copy.compose}
+  const composeDialog = composeOpen ? (
+    <div className="jy-modal-backdrop" onMouseDown={(event) => event.target === event.currentTarget && setComposeOpen(false)}>
+      <form className="jy-modal" role="dialog" aria-modal="true" aria-labelledby="jy-compose-title" onSubmit={handleComposeSubmit}>
+        <div className="jy-modal-head">
+          <h3 id="jy-compose-title">{copy.newAnnouncement}</h3>
+          <button type="button" className="jy-icon-btn" aria-label={copy.cancel} onClick={() => setComposeOpen(false)}>
+            <AdminLineIcon name="close" />
           </button>
+        </div>
 
-          <div className="admin-mail-card">
-            <div className="admin-mail-card-title">
-              <span>{copy.folders}</span>
-              <strong>-</strong>
-            </div>
-            <button
-              type="button"
-              className={`admin-mail-folder ${activeFolder === "audience" || activeFolder === "compose" ? "active" : ""}`}
-              onClick={() => handleFolderClick("audience")}
-            >
-              <UiIcon name="profile" />
-              <span>{copy.inbox}</span>
-              <strong>{audienceCount ?? "…"}</strong>
-            </button>
-            <button
-              type="button"
-              className={`admin-mail-folder ${activeFolder === "sent" ? "active" : ""}`}
-              onClick={() => handleFolderClick("sent")}
-            >
-              <UiIcon name="mail" />
-              <span>{copy.sent}</span>
-              <strong>{history.length}</strong>
-            </button>
-            <button
-              type="button"
-              className={`admin-mail-folder ${activeFolder === "draft" ? "active" : ""}`}
-              onClick={() => handleFolderClick("draft")}
-            >
-              <UiIcon name="docModern" />
-              <span>{copy.drafts}</span>
-              <strong>{subject || message ? 1 : 0}</strong>
-            </button>
-            <button
-              type="button"
-              className={`admin-mail-folder ${activeFolder === "failed" ? "active" : ""}`}
-              onClick={() => handleFolderClick("failed")}
-            >
-              <UiIcon name="alert" />
-              <span>{copy.failed}</span>
-              <strong>{failedTotal}</strong>
-            </button>
-          </div>
-
-          <div className="admin-mail-card">
-            <div className="admin-mail-card-title">
-              <span>{copy.labels}</span>
-              <strong>-</strong>
-            </div>
-            <button
-              type="button"
-              className={`admin-mail-label important ${activeLabel === "important" ? "active" : ""}`}
-              onClick={() => applyLabel("important")}
-            >
-              {copy.important}
-            </button>
-            <button
-              type="button"
-              className={`admin-mail-label platform ${activeLabel === "platform" ? "active" : ""}`}
-              onClick={() => applyLabel("platform")}
-            >
-              {copy.platform}
-            </button>
-            <button
-              type="button"
-              className={`admin-mail-label schools ${activeLabel === "schools" ? "active" : ""}`}
-              onClick={() => applyLabel("schools")}
-            >
-              {copy.schools}
-            </button>
-          </div>
-        </aside>
-
-        <div className="admin-mail-main">
-          {showMailbox ? (
-            <div className="admin-mail-inbox">
-              <div className="admin-mail-inbox-toolbar">
-                <div className="admin-mail-inbox-actions">
-                  <button type="button" title={language === "en" ? "Select" : "Sélectionner"}>
-                    ?
-                  </button>
-                  <button type="button" title={language === "en" ? "Refresh" : "Actualiser"} onClick={loadHistory}>
-                    <UiIcon name="history" />
-                  </button>
-                  <button type="button" title={language === "en" ? "More" : "Plus"}>
-                    ?
-                  </button>
-                </div>
-                <input
-                  value={mailSearch}
-                  onChange={(event) => setMailSearch(event.target.value)}
-                  placeholder={language === "en" ? "Search sent announcements" : "Rechercher dans les annonces envoyées"}
-                />
-                <span className="admin-mail-range">
-                  {visibleHistory.length ? `1-${visibleHistory.length}` : "0"} / {folderHistory.length}
-                </span>
-              </div>
-
-              <div className="admin-mail-tabs">
-                <button type="button" className="active">
-                  <UiIcon name="mail" />
-                  {language === "en" ? "Primary" : "Principal"}
-                </button>
-                <button type="button">
-                  <UiIcon name="pricetag" />
-                  {copy.platform}
-                </button>
-                <button type="button">
-                  <UiIcon name="profile" />
-                  {copy.schools}
-                </button>
-              </div>
-
-              <div className="admin-mail-list">
-                {visibleHistory.length ? (
-                  visibleHistory.map((item) => (
-                    <button type="button" key={item.id} className="admin-mail-row">
-                      <span className="admin-mail-check">?</span>
-                      <span className="admin-mail-star">?</span>
-                      <strong>{getAudienceLabel(item.audience)}</strong>
-                      <span className="admin-mail-row-subject">{item.subject}</span>
-                      <span className={item.failedCount ? "admin-mail-row-failed" : "admin-mail-row-count"}>
-                        {item.failedCount ? `${item.failedCount} ${copy.failed}` : `${item.recipientCount} ${copy.recipients}`}
-                      </span>
-                      <time>{formatDate(item.createdAt)}</time>
-                    </button>
-                  ))
-                ) : (
-                  <div className="admin-mail-empty">
-                    {activeFolder === "failed"
-                      ? language === "en"
-                        ? "No failed send."
-                        : "Aucun échec d'envoi."
-                      : copy.noHistory}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            <form className="admin-create-form admin-announcement-form admin-mail-compose" onSubmit={handleSend}>
-            <div className="admin-mail-compose-head">
-              <h3>{copy.composeTitle}</h3>
-              {audienceCount !== null ? (
-                <span className="admin-mail-recipient-badge">
-                  {audienceCount} {copy.recipients}
-                </span>
-              ) : null}
-            </div>
-
-            <label className="admin-mail-line">
-              <span>{copy.to}</span>
+        <div className="jy-modal-body">
+          <label className="jy-field">
+            <span>{copy.to}</span>
+            <div className="jy-field-row">
               <select value={audience} onChange={(event) => setAudience(event.target.value)}>
                 {ADMIN_ANNOUNCEMENT_AUDIENCES.map((item) => (
                   <option key={item.id || "all"} value={item.id}>
@@ -547,90 +512,317 @@ export default function AdminAnnouncementsPage({ user, language }) {
                   </option>
                 ))}
               </select>
-            </label>
-
-            <label className="admin-mail-line">
-              <span>{copy.subjectLine}</span>
-              <input value={subject} onChange={(event) => setSubject(event.target.value)} required />
-            </label>
-
-            <div className="admin-mail-editor-toolbar" aria-label={language === "en" ? "Formatting toolbar" : "Barre de mise en forme"}>
-              <button type="button" className="admin-mail-format-select" onClick={() => insertInMessage("\n\n", "", language === "en" ? "New paragraph" : "Nouveau paragraphe")}>
-                A {copy.normalText} ?
-              </button>
-              <button type="button" onClick={() => insertInMessage("**", "**", language === "en" ? "bold text" : "texte en gras")}>
-                <strong>B</strong>
-              </button>
-              <button type="button" onClick={() => insertInMessage("_", "_", language === "en" ? "italic text" : "texte italique")}>
-                <em>I</em>
-              </button>
-              <button type="button" onClick={() => insertInMessage("\n\n> ", "", language === "en" ? "Quote" : "Citation")}>
-                “
-              </button>
-              <button type="button" onClick={() => insertInMessage("\n- ", "", language === "en" ? "List item" : "Élément de liste")}>
-                ?
-              </button>
-              <button type="button" onClick={() => insertInMessage("\n1. ", "", language === "en" ? "First item" : "Premier élément")}>
-                =
-              </button>
-              <button type="button" onClick={insertLink}>
-                ?
-              </button>
+              <span className="tag tag-success">
+                {audienceCount ?? "…"} {copy.recipients}
+              </span>
             </div>
+          </label>
 
-            <textarea
-              ref={messageRef}
-              className="admin-mail-message"
-              value={message}
-              onChange={(event) => setMessage(event.target.value)}
-              placeholder={copy.messagePlaceholder}
-              rows={12}
-              required
+          <div className="jy-field">
+            <span>{copy.label}</span>
+            <div className="jy-label-chips">
+              {[
+                { id: "important", text: copy.important },
+                { id: "platform", text: copy.platform },
+                { id: "schools", text: copy.schools }
+              ].map((label) => (
+                <button
+                  key={label.id}
+                  type="button"
+                  className={`jy-label-chip ${label.id} ${activeLabel === label.id ? "active" : ""}`}
+                  onClick={() => applyLabel(label.id)}
+                >
+                  <i aria-hidden="true" />
+                  {label.text}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <label className="jy-field">
+            <span>{copy.subject}</span>
+            <input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder={copy.subjectPlaceholder} required />
+          </label>
+
+          <div className="jy-field">
+            <span>{copy.message}</span>
+            <div className="jy-editor">
+              <div className="admin-mail-editor-toolbar" aria-label={t("Barre de mise en forme", "Formatting toolbar")}>
+                {[
+                  { icon: "paragraph", label: t("Nouveau paragraphe", "New paragraph"), run: () => insertInMessage("\n\n", "", t("Nouveau paragraphe", "New paragraph")), text: copy.normalText },
+                  { icon: "bold", label: t("Gras", "Bold"), run: () => insertInMessage("**", "**", t("texte en gras", "bold text")) },
+                  { icon: "italic", label: t("Italique", "Italic"), run: () => insertInMessage("_", "_", t("texte italique", "italic text")) },
+                  { icon: "quote", label: t("Citation", "Quote"), run: () => insertInMessage("\n\n> ", "", t("Citation", "Quote")) },
+                  { icon: "list", label: t("Liste à puces", "Bulleted list"), run: () => insertInMessage("\n- ", "", t("Élément de liste", "List item")) },
+                  { icon: "numbered", label: t("Liste numérotée", "Numbered list"), run: () => insertInMessage("\n1. ", "", t("Premier élément", "First item")) },
+                  { icon: "link", label: t("Lien", "Link"), run: insertLink }
+                ].map((tool) => (
+                  <button
+                    key={tool.icon}
+                    type="button"
+                    className={tool.text ? "admin-mail-format-select" : ""}
+                    title={tool.label}
+                    aria-label={tool.label}
+                    onClick={tool.run}
+                  >
+                    <AdminLineIcon name={tool.icon} />
+                    {tool.text ? <span>{tool.text}</span> : null}
+                  </button>
+                ))}
+              </div>
+              <textarea
+                ref={messageRef}
+                value={message}
+                onChange={(event) => setMessage(event.target.value)}
+                placeholder={copy.messagePlaceholder}
+                rows={9}
+                required
+              />
+            </div>
+          </div>
+
+          <div className="jy-attachment">
+            <AdminLineIcon name="upload" />
+            <div>
+              <strong>{copy.attachment}</strong>
+              <span>
+                {attachment?.name
+                  ? `${attachment.name} · ${Math.max(1, Math.round((attachment.size || 0) / 1024))} Ko`
+                  : copy.attachmentHint}
+              </span>
+            </div>
+            <input
+              ref={attachmentInputRef}
+              type="file"
+              hidden
+              accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.png,.jpg,.jpeg,.webp"
+              onChange={handleAttachmentChange}
             />
+            {attachment ? (
+              <button type="button" className="admin-row-action danger" onClick={() => setAttachment(null)} disabled={sending}>
+                {copy.removeFile}
+              </button>
+            ) : (
+              <button type="button" className="admin-row-action" onClick={() => attachmentInputRef.current?.click()} disabled={sending}>
+                {copy.attachFile}
+              </button>
+            )}
+          </div>
 
-            <div className="admin-mail-attachment">
-              <UiIcon name="upload" />
-              <div>
-                <strong>{copy.attachment}</strong>
-                <span>
-                  {attachment?.name
-                    ? `${attachment.name} · ${Math.max(1, Math.round((attachment.size || 0) / 1024))} Ko`
-                    : copy.attachmentHint}
+          {error ? <p className="field-error">{error}</p> : null}
+        </div>
+
+        <div className="jy-modal-foot">
+          <button type="button" className="btn-ghost" onClick={() => setComposeOpen(false)}>
+            {copy.cancel}
+          </button>
+          <button type="button" className="btn-ghost" onClick={saveDraft} disabled={(!message && !subject) || sending}>
+            {copy.saveDraft}
+          </button>
+          <button type="submit" className="btn-main ready" disabled={sending || !audienceCount}>
+            {sending ? <span className="btn-spinner" /> : <AdminLineIcon name="send" />} {sending ? copy.sending : copy.send}
+          </button>
+        </div>
+      </form>
+    </div>
+  ) : null;
+
+  if (!items.length && !hasDraft) {
+    return (
+      <section className="admin-announcements">
+        {header}
+        <div className="jy-empty-card">
+          <span className="jy-stat-icon green">
+            <AdminLineIcon name="announcements" />
+          </span>
+          <h3>{copy.empty}</h3>
+          <p>{copy.emptyHint}</p>
+          <button type="button" className="btn-main ready" onClick={() => openCompose()}>
+            <AdminLineIcon name="plus" /> {copy.newAnnouncement}
+          </button>
+          {error ? <p className="field-error">{error}</p> : null}
+        </div>
+        {composeDialog}
+      </section>
+    );
+  }
+
+  const activeAudienceLabel = active ? getAudienceLabel(active.audience) : "";
+  const activeFailed = Number(active?.failedCount || 0);
+  const activeRecipients = Number(active?.recipientCount || 0);
+
+  return (
+    <section className="admin-announcements">
+      {header}
+
+      <div className="jy-inbox">
+        {/* Colonne 1 : liste des annonces */}
+        <div className="jy-inbox-list">
+          <div className="jy-inbox-search">
+            <AdminLineIcon name="search" />
+            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.searchList} />
+          </div>
+          <div className="jy-inbox-filters">
+            <button type="button" className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}>
+              {copy.all} <strong>{items.length}</strong>
+            </button>
+            <button type="button" className={filter === "failed" ? "active" : ""} onClick={() => setFilter("failed")}>
+              {copy.failed} <strong>{failedCount}</strong>
+            </button>
+          </div>
+          <div className="jy-inbox-items">
+            {hasDraft ? (
+              <button type="button" className="jy-inbox-item is-draft" onClick={() => openCompose()}>
+                <span className="jy-inbox-avatar">
+                  <AdminLineIcon name="edit" />
+                </span>
+                <span className="jy-inbox-meta">
+                  <span className="jy-inbox-top">
+                    <strong>{copy.draft}</strong>
+                  </span>
+                  <span className="jy-inbox-subject">{subject || message || copy.noSubject}</span>
+                  <small>{getAudienceLabel(audience)}</small>
+                </span>
+              </button>
+            ) : null}
+            {visible.map((item) => (
+              <button
+                type="button"
+                key={item.id}
+                className={`jy-inbox-item ${item.id === activeId ? "active" : ""}`}
+                onClick={() => setActiveId(item.id)}
+              >
+                <span className="jy-inbox-avatar">
+                  <AdminLineIcon name={AUDIENCE_ICONS[item.audience] || "accounts"} />
+                </span>
+                <span className="jy-inbox-meta">
+                  <span className="jy-inbox-top">
+                    <strong>{getAudienceLabel(item.audience)}</strong>
+                    <time>{formatDateTime(item.createdAt, language)}</time>
+                  </span>
+                  <span className="jy-inbox-subject">{item.subject || copy.noSubject}</span>
+                  <small>
+                    {item.recipientCount} {copy.recipients}
+                    {Number(item.failedCount || 0) ? <em> · {item.failedCount} {copy.failed.toLowerCase()}</em> : null}
+                  </small>
+                </span>
+              </button>
+            ))}
+            {!visible.length ? <p className="jy-inbox-empty">{copy.noMatch}</p> : null}
+          </div>
+        </div>
+
+        {/* Colonne 2 : fil de l'annonce sélectionnée */}
+        <div className="jy-thread">
+          {active ? (
+            <>
+              <div className="jy-thread-head">
+                <div>
+                  <strong>{active.subject || copy.noSubject}</strong>
+                  <small>
+                    {copy.audienceSection} : {activeAudienceLabel}
+                  </small>
+                </div>
+                <span className={`tag ${activeFailed ? "tag-danger" : "tag-success"}`}>
+                  {activeFailed ? `${activeFailed} ${copy.failed.toLowerCase()}` : copy.sentBadge}
                 </span>
               </div>
-              <input
-                ref={attachmentInputRef}
-                type="file"
-                accept=".pdf,.doc,.docx,.txt,.csv,.xlsx,.png,.jpg,.jpeg,.webp"
-                onChange={handleAttachmentChange}
-              />
-              <div className="admin-mail-attachment-actions">
-                <button type="button" className="btn-ghost" onClick={() => attachmentInputRef.current?.click()} disabled={sending}>
-                  <UiIcon name="upload" /> {copy.attachFile}
-                </button>
-                {attachment ? (
-                  <button type="button" className="btn-ghost danger" onClick={() => setAttachment(null)} disabled={sending}>
-                    {copy.removeFile}
-                  </button>
-                ) : null}
+
+              <div className="jy-thread-body">
+                <div className="jy-bubble-row is-me">
+                  <AvatarCircle user={user} />
+                  <div className="jy-bubble">
+                    <div className="jy-bubble-text">
+                      <AnnouncementBody text={active.message} />
+                    </div>
+                    <time>
+                      {copy.me} · {formatDateTime(active.createdAt)}
+                    </time>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            {error ? <p className="field-error">{error}</p> : null}
-
-            <div className="admin-mail-actions">
-              <button type="button" className="btn-ghost" onClick={saveDraft} disabled={(!message && !subject) || sending}>
-                <UiIcon name="docModern" /> {copy.drafts}
-              </button>
-              <button type="submit" className="btn-main ready" disabled={sending || !audienceCount}>
-                {sending ? <span className="btn-spinner" /> : <UiIcon name="mail" />} {sending ? copy.sending : copy.send}
-              </button>
-            </div>
-            </form>
+              <div className="jy-thread-reply">
+                <textarea
+                  value={reply}
+                  onChange={(event) => setReply(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && !event.shiftKey) {
+                      event.preventDefault();
+                      sendFollowUp();
+                    }
+                  }}
+                  placeholder={copy.replyPlaceholder(activeAudienceLabel)}
+                  title={copy.replyHint}
+                  rows={1}
+                />
+                <button
+                  type="button"
+                  className="jy-send-btn"
+                  aria-label={copy.send}
+                  disabled={!reply.trim() || sending}
+                  onClick={sendFollowUp}
+                >
+                  {sending ? <span className="btn-spinner" /> : <AdminLineIcon name="send" />}
+                </button>
+              </div>
+              {error && !composeOpen ? <p className="field-error jy-thread-error">{error}</p> : null}
+            </>
+          ) : (
+            <div className="jy-thread-placeholder">{copy.selectOne}</div>
           )}
-
         </div>
+
+        {/* Colonne 3 : détails */}
+        <aside className="jy-thread-details">
+          {active ? (
+            <>
+              <section>
+                <h4>{copy.details}</h4>
+                <strong>{active.subject || copy.noSubject}</strong>
+                <small>
+                  {copy.sentOn} {formatDateTime(active.createdAt)}
+                </small>
+              </section>
+              <section>
+                <h4>{copy.audienceSection}</h4>
+                <div className="jy-detail-line">
+                  <span className="jy-inbox-avatar">
+                    <AdminLineIcon name={AUDIENCE_ICONS[active.audience] || "accounts"} />
+                  </span>
+                  <strong>{activeAudienceLabel}</strong>
+                </div>
+              </section>
+              <section>
+                <h4>{copy.delivery}</h4>
+                <ul className="admin-stat-list">
+                  <li>
+                    <span>{copy.recipientsLabel}</span>
+                    <strong>{activeRecipients}</strong>
+                  </li>
+                  <li>
+                    <span>{copy.delivered}</span>
+                    <strong>{Math.max(0, activeRecipients - activeFailed)}</strong>
+                  </li>
+                  <li>
+                    <span>{copy.failed}</span>
+                    <strong className={activeFailed ? "is-danger" : ""}>{activeFailed}</strong>
+                  </li>
+                </ul>
+              </section>
+              <section>
+                <button type="button" className="admin-row-action danger jy-details-delete" onClick={() => handleDelete(active)}>
+                  <AdminLineIcon name="trash" /> {t("Supprimer de l'historique", "Delete from history")}
+                </button>
+              </section>
+            </>
+          ) : (
+            <p className="jy-inbox-empty">{copy.selectOne}</p>
+          )}
+        </aside>
       </div>
+
+      {composeDialog}
     </section>
   );
 }

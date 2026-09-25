@@ -280,6 +280,58 @@ app.get("/api/admin/users", async (req, res) => {
     const matchCountByUser = Object.fromEntries(matchRows.map((row) => [row.user_id, row.count]));
     const lastLoginByUser = Object.fromEntries(loginRows.map((row) => [row.user_id, row.last_login]));
 
+    // Organisation (écoles / cabinets), école déclarée (candidats) et
+    // rattachement via code de licence (candidat lié à une école ou un cabinet).
+    const licenseCodeByUser = Object.fromEntries(
+      rows
+        .map((row) => [row.id, parseJsonField(row.subscription_json, {})?.licenseCode])
+        .filter(([, code]) => Boolean(code))
+    );
+    const usedCodes = [...new Set(Object.values(licenseCodeByUser))];
+    const [{ rows: schoolProfileRows }, { rows: agencyProfileRows }, { rows: candidateProfileRows }, { rows: codeRows }] =
+      await Promise.all([
+        userIds.length
+          ? db.query("SELECT user_id, organization_name, website FROM user_org_profiles WHERE user_id = ANY($1)", [userIds])
+          : { rows: [] },
+        userIds.length
+          ? db.query("SELECT user_id, organization_name, website FROM user_recruiter_profiles WHERE user_id = ANY($1)", [userIds])
+          : { rows: [] },
+        userIds.length
+          ? db.query("SELECT user_id, school_name FROM user_candidate_profiles WHERE user_id = ANY($1)", [userIds])
+          : { rows: [] },
+        usedCodes.length
+          ? db.query(
+              `SELECT lc.code, lc.owner_user_id, u.role_type, u.first_name, u.last_name, u.email,
+                      COALESCE(op.organization_name, rp.organization_name, '') AS organization_name
+               FROM license_codes lc
+               JOIN users u ON u.id = lc.owner_user_id
+               LEFT JOIN user_org_profiles op ON op.user_id = lc.owner_user_id
+               LEFT JOIN user_recruiter_profiles rp ON rp.user_id = lc.owner_user_id
+               WHERE lc.code = ANY($1)`,
+              [usedCodes]
+            )
+          : { rows: [] }
+      ]);
+    const orgProfileByUser = Object.fromEntries(
+      [...schoolProfileRows, ...agencyProfileRows].map((row) => [row.user_id, row])
+    );
+    const declaredSchoolByUser = Object.fromEntries(candidateProfileRows.map((row) => [row.user_id, row.school_name || ""]));
+    const codeOwnerByCode = Object.fromEntries(codeRows.map((row) => [row.code, row]));
+
+    function affiliationFor(row) {
+      const code = licenseCodeByUser[row.id];
+      const owner = code ? codeOwnerByCode[code] : null;
+      if (!owner || owner.owner_user_id === row.id) return null;
+      return {
+        type: owner.role_type === "school" ? "school" : "agency",
+        organizationName: owner.organization_name || `${owner.first_name || ""} ${owner.last_name || ""}`.trim(),
+        contactName: `${owner.first_name || ""} ${owner.last_name || ""}`.trim(),
+        contactEmail: owner.email || "",
+        licenseCode: code,
+        since: parseJsonField(row.subscription_json, {})?.startedAt || null
+      };
+    }
+
     const filtered = rows.filter((row) => {
       if (roleType && row.role_type !== roleType) return false;
       if (!search) return true;
@@ -304,6 +356,10 @@ app.get("/api/admin/users", async (req, res) => {
           matchCount: matchCountByUser[row.id] || 0,
           lastLoginAt: lastLoginByUser[row.id] || "",
           createdAt: row.created_at,
+          organizationName: orgProfileByUser[row.id]?.organization_name || "",
+          website: orgProfileByUser[row.id]?.website || "",
+          declaredSchool: declaredSchoolByUser[row.id] || "",
+          affiliation: affiliationFor(row),
           adminModules: row.role_type === "admin" ? sanitizeAdminModules(parseJsonField(row.admin_modules_json, [])) : undefined
         };
       })
@@ -388,6 +444,57 @@ app.get("/api/admin/org-accounts", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Validation des formulaires admin de création / modification de compte.
+// Mêmes règles que le frontend (AdminAccountFormModal.jsx). En cas d'erreur,
+// on renvoie `code: "field:<nom>"` pour que l'interface place le message sous
+// le bon champ.
+// ---------------------------------------------------------------------------
+const ACCOUNT_NAME_RE = /^[\p{L}][\p{L}\p{M}' .-]*$/u;
+const ACCOUNT_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const ACCOUNT_WEBSITE_RE = /^(https?:\/\/)?([\p{L}\d-]+\.)+[\p{L}]{2,}(\/\S*)?$/iu;
+const PLAN_SEGMENT_BY_ACCOUNT_TYPE = { student: "candidate", candidate: "candidate", school: "school", recruiter_firm: "agency" };
+
+function fieldError(res, field, message) {
+  return res.status(400).json({ error: message, code: `field:${field}` });
+}
+
+function validatePersonName(value, field, label) {
+  if (!value) return { field, message: `${label} est requis.` };
+  if (value.length > 60 || !ACCOUNT_NAME_RE.test(value)) {
+    return { field, message: `${label} est invalide (lettres, espaces, apostrophes et tirets uniquement).` };
+  }
+  return null;
+}
+
+function validateOrganizationFields(accountType, organizationName, website) {
+  if (accountType !== "school" && accountType !== "recruiter_firm") return null;
+  if (!organizationName) {
+    return { field: "organizationName", message: accountType === "school" ? "Le nom de l'école est requis." : "Le nom du cabinet est requis." };
+  }
+  if (organizationName.length > 120) return { field: "organizationName", message: "Le nom ne doit pas dépasser 120 caractères." };
+  if (website && (website.length > 200 || !ACCOUNT_WEBSITE_RE.test(website))) {
+    return { field: "website", message: "Adresse de site web invalide (ex. www.exemple.com)." };
+  }
+  return null;
+}
+
+async function resolvePlanForAccount(planId, accountType, getEffectivePlanById) {
+  if (!planId) return { plan: null };
+  const plan = await getEffectivePlanById(planId);
+  if (!plan) return { error: { field: "planId", message: "Plan inconnu." } };
+  const expectedSegment = PLAN_SEGMENT_BY_ACCOUNT_TYPE[accountType];
+  if (plan.segment && expectedSegment && plan.segment !== expectedSegment) {
+    return { error: { field: "planId", message: "Ce plan ne correspond pas à ce type de compte." } };
+  }
+  return { plan };
+}
+
+function normalizeWebsite(website) {
+  if (!website) return "";
+  return /^https?:\/\//i.test(website) ? website : `https://${website}`;
+}
+
 app.post("/api/admin/users", async (req, res) => {
   try {
     const adminUserId = coerceString(req.body?.adminUserId);
@@ -408,23 +515,39 @@ app.post("/api/admin/users", async (req, res) => {
     const adminModules = sanitizeAdminModules(req.body.adminModules);
 
     if (accountType === "other") {
-      return res.status(400).json({ error: "Type de compte invalide pour une création par l'admin." });
+      return fieldError(res, "accountType", "Type de compte invalide pour une création par l'admin.");
     }
-    if (!email.includes("@")) {
-      return res.status(400).json({ error: "Email invalide." });
+    const nameIssue =
+      validatePersonName(firstName, "firstName", "Le prénom") || validatePersonName(lastName, "lastName", "Le nom");
+    if (nameIssue) return fieldError(res, nameIssue.field, nameIssue.message);
+    if (email.length > 254 || !ACCOUNT_EMAIL_RE.test(email)) {
+      return fieldError(res, "email", "Adresse e-mail invalide.");
     }
     if (password.length < 8) {
-      return res.status(400).json({ error: "Le mot de passe doit contenir au moins 8 caractères." });
+      return fieldError(res, "password", "Le mot de passe doit contenir au moins 8 caractères.");
     }
-    if ((accountType === "school" || accountType === "recruiter_firm") && !organizationName) {
-      return res.status(400).json({
-        error: accountType === "school" ? "Le nom de l'école est requis." : "Le nom du cabinet est requis."
-      });
+    if (password.length > 128) {
+      return fieldError(res, "password", "Le mot de passe ne doit pas dépasser 128 caractères.");
     }
+    if (!/[a-zA-Z]/.test(password) || !/\d/.test(password)) {
+      return fieldError(res, "password", "Le mot de passe doit contenir au moins une lettre et un chiffre.");
+    }
+    const orgIssue = validateOrganizationFields(accountType, organizationName, website);
+    if (orgIssue) return fieldError(res, orgIssue.field, orgIssue.message);
+    if (schoolName.length > 120) {
+      return fieldError(res, "schoolName", "Le nom de l'établissement ne doit pas dépasser 120 caractères.");
+    }
+    if (billingCycle && !["monthly", "annual"].includes(billingCycle)) {
+      return fieldError(res, "billingCycle", "Périodicité de facturation invalide.");
+    }
+    // Le plan est vérifié AVANT toute écriture : un plan invalide ne doit
+    // jamais laisser un compte à moitié créé.
+    const planCheck = accountType === "admin" ? { plan: null } : await resolvePlanForAccount(planId, accountType, getEffectivePlanById);
+    if (planCheck.error) return fieldError(res, planCheck.error.field, planCheck.error.message);
 
     const existingUser = await getUserRowByAnyEmail(email);
     if (existingUser) {
-      return res.status(409).json({ error: "Un compte existe déjà avec cet email." });
+      return res.status(409).json({ error: "Un compte existe déjà avec cette adresse e-mail.", code: "field:email" });
     }
 
     const id = `usr-${crypto.randomUUID()}`;
@@ -432,8 +555,8 @@ app.post("/api/admin/users", async (req, res) => {
     const passwordRecord = createPasswordRecord(password);
     const username = await buildUniqueUsername(firstName, lastName, email);
     const detailsByType = {
-      school: { organizationName, website },
-      recruiter_firm: { organizationName, website },
+      school: { organizationName, website: normalizeWebsite(website) },
+      recruiter_firm: { organizationName, website: normalizeWebsite(website) },
       student: { schoolName },
       candidate: { schoolName }
     };
@@ -447,8 +570,8 @@ app.post("/api/admin/users", async (req, res) => {
     await db.query(
       `INSERT INTO users (
         id, first_name, last_name, email, username, password_hash, password_salt, created_at,
-        updated_at, role_type, avatar_data_url, profile_json, subscription_json, admin_modules_json
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        updated_at, role_type, avatar_data_url, profile_json, subscription_json, admin_modules_json, email_verified_at
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
       [
         id,
         firstName,
@@ -463,7 +586,10 @@ app.post("/api/admin/users", async (req, res) => {
         "",
         JSON.stringify(seededProfile),
         JSON.stringify({ plan: "free", status: "active", startedAt: createdAt, renewalAt: null }),
-        JSON.stringify(adminModules)
+        JSON.stringify(adminModules),
+        // Compte créé par un administrateur : l'adresse est considérée comme
+        // vérifiée (l'admin l'a saisie et remet les accès à la personne).
+        createdAt
       ]
     );
 
@@ -478,12 +604,9 @@ app.post("/api/admin/users", async (req, res) => {
     );
 
     let licenseCode = null;
-    if (planId) {
-      const plan = await getEffectivePlanById(planId);
-      if (!plan) {
-        return res.status(400).json({ error: "Plan inconnu." });
-      }
-      await applyPlanToUser(id, plan, billingCycle, null, null, "admin_created");
+    if (planCheck.plan) {
+      const plan = planCheck.plan;
+      await applyPlanToUser(id, plan, billingCycle || "monthly", null, null, "admin_created");
       if (plan.seats) {
         licenseCode = await generateLicenseCodeForPlan(id, plan);
       }
@@ -508,6 +631,9 @@ app.post("/api/admin/users/update", async (req, res) => {
     }
     const firstName = coerceString(req.body?.firstName) || target.first_name;
     const lastName = coerceString(req.body?.lastName) || target.last_name;
+    const updateNameIssue =
+      validatePersonName(firstName, "firstName", "Le prénom") || validatePersonName(lastName, "lastName", "Le nom");
+    if (updateNameIssue) return fieldError(res, updateNameIssue.field, updateNameIssue.message);
 
     if (target.role_type === "admin") {
       const adminModules = sanitizeAdminModules(req.body?.adminModules);
@@ -524,6 +650,16 @@ app.post("/api/admin/users/update", async (req, res) => {
     const planId = coerceString(req.body?.planId);
     const billingCycle = coerceString(req.body?.billingCycle);
 
+    if (target.role_type === "school" || target.role_type === "recruiter_firm") {
+      const updateOrgIssue = validateOrganizationFields(target.role_type, organizationName, website);
+      if (updateOrgIssue) return fieldError(res, updateOrgIssue.field, updateOrgIssue.message);
+    }
+    if (billingCycle && !["monthly", "annual"].includes(billingCycle)) {
+      return fieldError(res, "billingCycle", "Périodicité de facturation invalide.");
+    }
+    const updatePlanCheck = await resolvePlanForAccount(planId, target.role_type, getEffectivePlanById);
+    if (updatePlanCheck.error) return fieldError(res, updatePlanCheck.error.field, updatePlanCheck.error.message);
+
     await db.query("UPDATE users SET first_name = $1, last_name = $2, updated_at = $3 WHERE id = $4", [
       firstName,
       lastName,
@@ -535,18 +671,14 @@ app.post("/api/admin/users/update", async (req, res) => {
       const table = target.role_type === "school" ? "user_org_profiles" : "user_recruiter_profiles";
       await db.query(`UPDATE ${table} SET organization_name = $1, website = $2, updated_at = $3 WHERE user_id = $4`, [
         organizationName,
-        website,
+        normalizeWebsite(website),
         nowIso(),
         targetUserId
       ]);
     }
 
-    if (planId) {
-      const plan = await getEffectivePlanById(planId);
-      if (!plan) {
-        return res.status(400).json({ error: "Plan inconnu." });
-      }
-      await applyPlanToUser(targetUserId, plan, billingCycle, null, null, "admin_created");
+    if (updatePlanCheck.plan) {
+      await applyPlanToUser(targetUserId, updatePlanCheck.plan, billingCycle || "monthly", null, null, "admin_created");
     }
 
     await logSecurityEvent(req, adminUserId, "admin_user_updated", { targetUserId });

@@ -36,7 +36,7 @@ export const HOME_COPY = {
     titleA: "Land the role that fits you,",
     titleB: "with a path",
     titleAccent: "guided by data",
-    intro: "Import your CV, paste a job post, and let the AI score your match, surface missing keywords and cultural fit — then train for the interview.",
+    intro: "Import your CV, paste a job post, and let the AI score your match, surface missing keywords and cultural fit, then train for the interview.",
     start: "Get started",
     tickerLabel: "Personalized information",
     welcome: "Welcome",

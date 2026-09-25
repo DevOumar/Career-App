@@ -768,7 +768,7 @@ function MatchResultsStep({
       onGoToTarifs();
       return;
     }
-    const summary = `${title}${company ? ` · ${company}` : ""} — ${copy.matchScoreLabel}: ${matchInsights.score}/100 (${verdictLabel})`;
+    const summary = `${title}${company ? ` · ${company}` : ""} · ${copy.matchScoreLabel}: ${matchInsights.score}/100 (${verdictLabel})`;
     try {
       if (navigator.share) {
         await navigator.share({ title: copy.matchResultsTitle, text: summary });

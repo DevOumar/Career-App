@@ -322,7 +322,7 @@ app.post("/api/cabinet/reports/generate", async (req, res) => {
     };
 
     const id = `crep-${crypto.randomUUID()}`;
-    const title = `Rapport de mission — ${mission.title}`;
+    const title = `Rapport de mission · ${mission.title}`;
     await db.query(
       "INSERT INTO cabinet_reports (id, cabinet_user_id, title, mission_id, payload_json, created_at) VALUES ($1,$2,$3,$4,$5,$6)",
       [id, cabinet.cabinetRootId, title, missionId, JSON.stringify(payload), nowIso()]

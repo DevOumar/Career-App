@@ -1,0 +1,795 @@
+/* =====================================================================
+   Double authentification — cartes et fenêtres (modèle Jurysia).
+   Jetons génériques de l'app (--surface, --line, --text, --primary…) :
+   ils sont remappés sur la charte dans l'espace admin, et gèrent le thème
+   sombre partout.
+   ===================================================================== */
+
+.mfa-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ------------------------------------------------------------ cartes */
+.mfa-section {
+  display: grid;
+  gap: 1.1rem;
+  margin-top: 1rem;
+}
+.mfa-card {
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
+}
+.mfa-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.8rem;
+  padding: 1.1rem 1.25rem;
+}
+.mfa-card-title {
+  flex: 1;
+  min-width: 0;
+}
+.mfa-card-title h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+.mfa-card-title h4.with-icon {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.mfa-card-title h4.with-icon .mfa-icon {
+  color: var(--text-3);
+}
+.mfa-card-title p {
+  margin: 0.25rem 0 0;
+  color: var(--text-3);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.mfa-card-split {
+  border-top: 1px solid var(--line);
+}
+.mfa-card-actions,
+.mfa-card-body {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0 1.25rem 1.15rem;
+}
+.mfa-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.mfa-round,
+.mfa-square {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--surface-3);
+  color: var(--text-3);
+}
+.mfa-round.brand {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+.mfa-square {
+  border-radius: 10px;
+}
+.mfa-badge {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.mfa-badge.on {
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+.mfa-badge .mfa-icon {
+  width: 14px;
+  height: 14px;
+}
+.mfa-muted {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.86rem;
+}
+.mfa-muted.small {
+  font-size: 0.8rem;
+}
+.mfa-key-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.7rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.mfa-key-row > div {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 0.15rem;
+}
+.mfa-key-row strong {
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.mfa-key-row small {
+  color: var(--text-3);
+  font-size: 0.76rem;
+}
+.mfa-count {
+  display: grid;
+  flex-shrink: 0;
+  justify-items: end;
+  gap: 0.15rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+.mfa-count strong {
+  color: var(--text);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+.mfa-count small {
+  color: var(--text-3);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+.mfa-count.low {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+}
+.mfa-count.low strong,
+.mfa-count.low small {
+  color: var(--danger);
+}
+.mfa-inline-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-3);
+}
+.mfa-inline-note p {
+  flex: 1 1 240px;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.mfa-loading {
+  display: grid;
+  place-items: center;
+  padding: 2rem 0;
+}
+
+/* ------------------------------------------------------------ boutons */
+.mfa-btn {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  min-height: 36px;
+  padding: 0 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+.mfa-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.mfa-btn.primary {
+  background: var(--primary);
+  color: #fff;
+}
+.mfa-btn.primary:not(:disabled):hover {
+  filter: brightness(0.93);
+}
+.mfa-btn.secondary {
+  border-color: var(--line);
+  background: var(--surface);
+}
+.mfa-btn.secondary:not(:disabled):hover,
+.mfa-btn.ghost:not(:disabled):hover {
+  background: var(--surface-3);
+}
+.mfa-btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+.mfa-btn.grow {
+  flex: 1;
+}
+.mfa-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: mfa-spin 0.7s linear infinite;
+}
+.mfa-spinner.dark {
+  width: 22px;
+  height: 22px;
+  border-color: var(--line);
+  border-top-color: var(--primary);
+}
+@keyframes mfa-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ------------------------------------------------------------ fenêtre */
+.mfa-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(12, 12, 16, 0.42);
+  animation: mfa-fade 0.15s ease;
+}
+.mfa-dialog {
+  position: relative;
+  width: 100%;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(12, 12, 16, 0.22);
+  color: var(--text);
+  animation: mfa-pop 0.18s ease;
+}
+@keyframes mfa-fade {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes mfa-pop {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+.mfa-dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.mfa-dialog-close:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.mfa-dialog-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1.5rem 3.2rem 0 1.5rem;
+}
+.mfa-dialog-head h3 {
+  margin: 0.15rem 0 0;
+  color: var(--text);
+  font-size: 1.15rem;
+  font-weight: 600;
+}
+.mfa-dialog-head p {
+  margin: 0.3rem 0 0;
+  color: var(--text-3);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.mfa-dialog-icon {
+  display: grid;
+  flex-shrink: 0;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+.mfa-dialog-icon .mfa-icon {
+  width: 20px;
+  height: 20px;
+}
+.mfa-dialog-icon.danger {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+}
+.mfa-dialog-body {
+  display: grid;
+  gap: 1rem;
+  padding: 1.25rem 1.5rem 1.4rem;
+}
+.mfa-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 0.9rem 1.5rem;
+  border-top: 1px solid var(--line);
+}
+.mfa-dialog-head + .mfa-dialog-foot {
+  margin-top: 1.25rem;
+}
+.mfa-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.65rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--danger) 8%, transparent);
+  color: var(--danger);
+  font-size: 0.85rem;
+}
+.mfa-error .mfa-icon {
+  margin-top: 1px;
+}
+.mfa-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface-3);
+  color: var(--text-3);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+.mfa-note .mfa-icon {
+  margin-top: 2px;
+}
+.mfa-row {
+  display: flex;
+  gap: 0.6rem;
+}
+
+/* ------------------------------------------------------------ enrôlement TOTP */
+.mfa-step {
+  display: grid;
+  gap: 0.65rem;
+}
+.mfa-step-title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.mfa-step-title span {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-size: 0.66rem;
+}
+.mfa-qr {
+  justify-self: center;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+}
+.mfa-qr img {
+  display: block;
+}
+.mfa-secret {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  width: 100%;
+  padding: 0.55rem 0.8rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface-3);
+  color: var(--text-3);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.mfa-secret:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.mfa-secret span {
+  display: grid;
+  min-width: 0;
+}
+.mfa-secret small {
+  font-size: 0.72rem;
+}
+.mfa-secret code {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.84rem;
+  letter-spacing: 0.06em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mfa-sep {
+  height: 1px;
+  background: var(--line);
+}
+.mfa-otp {
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+}
+.mfa-otp input {
+  width: 44px;
+  height: 48px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 1.2rem;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mfa-otp input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.mfa-otp input:disabled {
+  opacity: 0.5;
+}
+
+/* ------------------------------------------------------------ clé de sécurité */
+.mfa-key-zone {
+  display: grid;
+  justify-items: center;
+  gap: 0.8rem;
+  padding: 1.6rem 1.2rem;
+  border: 1px dashed var(--line-strong);
+  border-radius: 14px;
+  background: var(--surface-3);
+  text-align: center;
+}
+.mfa-key-zone.compact {
+  padding: 1.1rem 1rem;
+}
+.mfa-key-zone p {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.86rem;
+}
+.mfa-key-pulse {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 12%, transparent);
+  color: var(--primary);
+}
+.mfa-key-pulse::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--primary) 22%, transparent);
+  animation: mfa-ping 1.6s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+.mfa-key-pulse .mfa-icon {
+  position: relative;
+  width: 24px;
+  height: 24px;
+}
+@keyframes mfa-ping {
+  75%,
+  100% {
+    opacity: 0;
+    transform: scale(1.7);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mfa-key-pulse::before {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------ champs */
+.mfa-field {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0;
+  font-weight: 400;
+}
+.mfa-field > span {
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+.mfa-field input:not(.mfa-otp input) {
+  width: 100%;
+  min-height: 42px;
+  margin: 0;
+  padding: 0 0.85rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.92rem;
+}
+.mfa-field input:focus {
+  border-color: var(--primary);
+  outline: 0;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
+}
+.mfa-field small {
+  color: var(--text-3);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.mfa-codes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  list-style: none;
+}
+.mfa-codes li {
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92rem;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+.mfa-seg {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 10px;
+  background: var(--surface-3);
+}
+.mfa-seg button {
+  flex: 1;
+  padding: 0.45rem 0.6rem;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mfa-seg button.active {
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(12, 12, 16, 0.08);
+  color: var(--text);
+}
+
+@media (max-width: 520px) {
+  .mfa-card-head {
+    flex-wrap: wrap;
+  }
+  .mfa-otp input {
+    width: 40px;
+    height: 44px;
+  }
+  .mfa-codes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------------------ connexion : second facteur */
+.mfa-login {
+  display: grid;
+  gap: 1rem;
+  padding: 0 0 0.25rem;
+}
+.mfa-login .mfa-field {
+  gap: 0.75rem;
+}
+.mfa-login .mfa-field > span {
+  text-align: center;
+}
+.mfa-login-submit {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+.mfa-login-alt {
+  display: grid;
+  gap: 0.35rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--line);
+}
+.mfa-login-alt button,
+.mfa-login-back {
+  padding: 0.35rem;
+  border: 0;
+  background: none;
+  color: var(--primary);
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.mfa-login-alt button:hover,
+.mfa-login-back:hover {
+  text-decoration: underline;
+}
+.mfa-login-help {
+  margin: 0;
+  color: var(--text-3);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  text-align: center;
+}
+.mfa-login-back {
+  justify-self: center;
+  color: var(--text-3);
+}
+
+/* Icônes dans les pastilles : centrées et à la bonne taille, quelles que
+   soient les règles générales du panneau (marges sur les svg…). */
+.mfa-round .mfa-icon,
+.mfa-square .mfa-icon,
+.mfa-dialog-icon .mfa-icon,
+.mfa-key-pulse .mfa-icon {
+  display: block;
+  margin: 0;
+}
+.mfa-round .mfa-icon,
+.mfa-square .mfa-icon {
+  width: 19px;
+  height: 19px;
+}
+.mfa-round,
+.mfa-square {
+  width: 40px;
+  height: 40px;
+}
+.mfa-dialog-icon .mfa-icon {
+  width: 22px;
+  height: 22px;
+}
+.mfa-badge .mfa-icon,
+.mfa-btn .mfa-icon,
+.mfa-card-title h4 .mfa-icon {
+  display: block;
+  margin: 0;
+}
+/* Centrage explicite (une règle générale impose display:flex à ces pastilles,
+   ce qui neutralisait place-items : l'icône partait à gauche). */
+.mfa-round,
+.mfa-square,
+.mfa-dialog-icon,
+.mfa-key-pulse,
+.mfa-step-title span {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Œil afficher / masquer (styles .password-field / .password-toggle de la page de connexion). */
+.mfa-field .password-field input {
+  padding-right: 2.6rem;
+}
+.mfa-field .password-toggle .mfa-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+/* Confirmation d'identité avec Google */
+.mfa-google {
+  justify-items: center;
+  text-align: center;
+}
+.mfa-google > span {
+  font-weight: 400;
+  color: var(--text-3);
+}
+.mfa-google-btn {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+}
+
+/* Fenêtre de déconnexion : carte de l'utilisateur */
+.logout-user-card {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-3);
+}
+.logout-user-card > div {
+  display: grid;
+  min-width: 0;
+}
+.logout-user-card strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.95rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.logout-user-card small {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 0.84rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.logout-user-card .avatar {
+  width: 42px;
+  height: 42px;
+  min-width: 42px;
+  flex: 0 0 42px;
+}

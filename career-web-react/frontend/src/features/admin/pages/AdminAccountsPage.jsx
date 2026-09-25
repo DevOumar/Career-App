@@ -15,7 +15,7 @@ import Swal from "sweetalert2";
 import { UiIcon } from "../../../components/UiIcon.jsx";
 import { AdminPageLoader } from "../../../components/AdminPageLoader.jsx";
 import { AdminKpiCard } from "../../../components/AdminKpiCard.jsx";
-import { AdminExportCsvButton } from "../../../components/AdminExportCsvButton.jsx";
+import { AdminAdvancedFilters, AdminColumnSelector, AdminExportMenu, useAdminColumns, inAdminDateRange } from "../AdminListTools.jsx";
 import { AvatarCircle } from "../../../components/AvatarCircle.jsx";
 import { LanguageSwitch } from "../../../components/LanguageSwitch.jsx";
 // AccountDrawer/ConnectedFooter restent définis dans App.jsx (composants
@@ -26,7 +26,7 @@ import AccountDrawer from "../../account/AccountDrawer.jsx";
 import { ConnectedFooter, ADMIN_ACCOUNT_TYPES } from "../../../App.jsx";
 import { PLANS, PLAN_SEGMENTS, getPlanById } from "../../../data/plans.js";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
-import { formatDate, formatShortDate, formatAmountInCurrency, formatPlanPrice } from "../../../lib/format.js";
+import { formatDate, formatDateTime, formatShortDate, formatAmountInCurrency, formatPlanPrice } from "../../../lib/format.js";
 import { fileToBase64 } from "../../../lib/cvService.js";
 import { getAccountLabel } from "../../../lib/accounts.js";
 import { satisfactionTierFor } from "../../satisfaction/SatisfactionSurveyModal.jsx";
@@ -80,9 +80,24 @@ import {
   markSchoolNotificationsRead,
   generateSchoolReport
 } from "../../../lib/inMemoryDb.js";
-import { AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
+import AdminAccountFormModal, { announceAccountResult, affiliationLabel } from "./AdminAccountFormModal.jsx";
+import { AdminLineIcon, JyDrawer, AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
+
+// Colonnes proposées par « Colonnes » (clés stables : la préférence est
+// mémorisée par liste). « Plan » et « Permissions » dépendent de l'onglet.
+const ACCOUNT_COLUMN_KEYS = [
+  { key: "name", required: true },
+  { key: "role" },
+  { key: "plan" },
+  { key: "permissions" },
+  { key: "organization", defaultHidden: true },
+  { key: "created", defaultHidden: true },
+  { key: "lastLogin" },
+  { key: "status" }
+];
 
 export default function AdminAccountsPage({ user, language, currency = "EUR", initialSearch }) {
+  const [selectedUser, setSelectedUser] = useState(null);
   const copy =
     language === "en"
       ? {
@@ -189,42 +204,25 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
 
   const [subTab, setSubTab] = useState("all");
   const [createOpen, setCreateOpen] = useState(false);
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-    accountType: "student",
-    planId: "",
-    billingCycle: "monthly",
-    organizationName: "",
-    schoolName: "",
-    website: "",
-    adminModules: []
-  });
-  const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
   const [users, setUsers] = useState([]);
   const [orgAccounts, setOrgAccounts] = useState([]);
   const [search, setSearch] = useState(initialSearch || "");
   const [page, setPage] = useState(1);
+  const [filters, setFilters] = useState(() => ({ status: "", plan: "", lastLogin: "", createdFrom: "", createdTo: "" }));
+  const cols = useAdminColumns("career_app_admin_cols_accounts", ACCOUNT_COLUMN_KEYS);
+
+  useEffect(() => {
+    setPage(1);
+  }, [filters]);
 
   useEffect(() => {
     if (initialSearch) setSearch(initialSearch);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialSearch]);
   const [editTarget, setEditTarget] = useState(null);
-  const [editForm, setEditForm] = useState(null);
-  const [editSaving, setEditSaving] = useState(false);
-  const [editError, setEditError] = useState("");
 
   const isOrgTab = subTab === "school" || subTab === "recruiter_firm";
-  const selectedSegment = ADMIN_ACCOUNT_TYPES.find((item) => item.id === form.accountType)?.segment;
-  const availablePlans = PLANS.filter((plan) => plan.segment === selectedSegment);
-  const editSegment = editForm ? ADMIN_ACCOUNT_TYPES.find((item) => item.id === editForm.accountType)?.segment : null;
-  const editAvailablePlans = PLANS.filter((plan) => plan.segment === editSegment);
-
   function reload() {
     if (isOrgTab) loadOrgAccounts();
     else loadUsers();
@@ -232,51 +230,6 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
 
   function openEdit(item) {
     setEditTarget(item);
-    setEditError("");
-    setEditForm({
-      firstName: item.firstName,
-      lastName: item.lastName,
-      accountType: item.roleType,
-      planId: item.planId || "",
-      billingCycle: item.billingCycle || "monthly",
-      organizationName: item.organizationName || "",
-      website: item.website || "",
-      adminModules: item.adminModules || []
-    });
-  }
-
-  function toggleAdminModule(setter, moduleId) {
-    setter((prev) => {
-      const allIds = ADMIN_MODULE_DEFS.map((item) => item.id);
-      const current = Array.isArray(prev.adminModules) && prev.adminModules.length ? prev.adminModules : allIds;
-      const next = current.includes(moduleId) ? current.filter((id) => id !== moduleId) : [...current, moduleId];
-      return { ...prev, adminModules: next.length === allIds.length ? [] : next };
-    });
-  }
-
-  async function submitEdit(event) {
-    event.preventDefault();
-    setEditError("");
-    setEditSaving(true);
-    try {
-      await updateAdminUser({
-        adminUserId: user.id,
-        userId: editTarget.id,
-        firstName: editForm.firstName,
-        lastName: editForm.lastName,
-        organizationName: editForm.organizationName,
-        website: editForm.website,
-        planId: editForm.planId || null,
-        billingCycle: editForm.billingCycle,
-        adminModules: editForm.adminModules || []
-      });
-      setEditTarget(null);
-      reload();
-    } catch (err) {
-      setEditError(getFriendlyErrorMessage(err, language));
-    } finally {
-      setEditSaving(false);
-    }
   }
 
   async function openDelete(item) {
@@ -395,63 +348,96 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [subTab, search]);
 
-  const totalPages = Math.max(1, Math.ceil(users.length / ADMIN_PAGE_SIZE));
-  const pagedUsers = users.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
+  const t = (fr, en) => (language === "en" ? en : fr);
+  const planName = (planId) => (planId ? getPlanById(planId)?.name?.[language] || getPlanById(planId)?.name?.fr || planId : copy.noPlan);
+  const lastLoginText = (item) => (item.lastLoginAt ? formatDateTime(item.lastLoginAt, language) : t("Jamais", "Never"));
+  const statusText = (item) => (item.status === "suspended" ? copy.suspended : copy.active);
+  const permissionsText = (item) =>
+    item.adminModules?.length
+      ? item.adminModules.map((moduleId) => ADMIN_MODULE_LABELS[moduleId]?.[language] || ADMIN_MODULE_LABELS[moduleId]?.fr || moduleId).join(", ")
+      : copy.fullAccess;
+  const organizationText = (item) => item.organizationName || (item.affiliation ? affiliationLabel(item.affiliation, language) : "") || item.declaredSchool || "";
 
-  function updateField(key, value) {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  }
+  const columnDefs = [
+    {
+      key: "name",
+      label: copy.colName,
+      required: true,
+      exportColumns: [
+        { label: copy.colName, value: (item) => `${item.firstName || ""} ${item.lastName || ""}`.trim() },
+        { label: copy.email, value: (item) => item.email }
+      ]
+    },
+    { key: "role", label: copy.colRole, exportValue: (item) => getAccountLabel(item.roleType, language) },
+    subTab !== "admin" ? { key: "plan", label: copy.colPlan, exportValue: (item) => planName(item.planId) } : null,
+    subTab === "admin" ? { key: "permissions", label: copy.colPermissions, exportValue: permissionsText } : null,
+    { key: "organization", label: t("Organisation / rattachement", "Organization / affiliation"), defaultHidden: true, exportValue: organizationText },
+    { key: "created", label: copy.colCreated, defaultHidden: true, exportValue: (item) => formatDateTime(item.createdAt, language) },
+    { key: "lastLogin", label: copy.colLastLogin, exportValue: lastLoginText },
+    { key: "status", label: copy.colStatus, exportValue: statusText }
+  ].filter(Boolean);
+  const visibleColumnDefs = columnDefs.filter((column) => cols.isVisible(column.key));
 
-  async function submit(event) {
-    event.preventDefault();
-    setError("");
-    setMessage("");
-    setCreating(true);
-    try {
-      const result = await createAdminUser({
-        adminUserId: user.id,
-        firstName: form.firstName,
-        lastName: form.lastName,
-        email: form.email,
-        password: form.password,
-        accountType: form.accountType,
-        planId: form.planId || null,
-        billingCycle: form.billingCycle,
-        organizationName: form.organizationName,
-        schoolName: form.schoolName,
-        website: form.website,
-        adminModules: form.accountType === "admin" ? form.adminModules : undefined
-      });
-      setMessage(
-        result.licenseCode
-          ? language === "en"
-            ? `Account created. License code: ${result.licenseCode}`
-            : `Compte créé. Code de licence : ${result.licenseCode}`
-          : language === "en"
-          ? "Account created."
-          : "Compte créé."
-      );
-      setForm({
-        firstName: "",
-        lastName: "",
-        email: "",
-        password: "",
-        accountType: "student",
-        planId: "",
-        billingCycle: "monthly",
-        organizationName: "",
-        schoolName: "",
-        website: "",
-        adminModules: []
-      });
-      if (isOrgTab) loadOrgAccounts();
-      else loadUsers();
-    } catch (err) {
-      setError(getFriendlyErrorMessage(err, language));
-    } finally {
-      setCreating(false);
+  const filterFields = [
+    {
+      key: "status",
+      label: copy.colStatus,
+      allLabel: t("Tous les statuts", "All statuses"),
+      options: [
+        { value: "active", label: copy.active },
+        { value: "suspended", label: copy.suspended }
+      ]
+    },
+    subTab !== "admin"
+      ? {
+          key: "plan",
+          label: copy.colPlan,
+          allLabel: t("Tous les plans", "All plans"),
+          options: [{ value: "__none", label: copy.noPlan }, ...PLANS.map((plan) => ({ value: plan.id, label: plan.name?.[language] || plan.name?.fr || plan.id }))]
+        }
+      : null,
+    {
+      key: "lastLogin",
+      label: copy.colLastLogin,
+      allLabel: t("Toutes", "All"),
+      options: [
+        { value: "recent", label: t("Ces 30 derniers jours", "Last 30 days") },
+        { value: "inactive", label: t("Inactif depuis plus de 30 jours", "Inactive for 30+ days") },
+        { value: "never", label: t("Jamais connecté", "Never signed in") }
+      ]
+    },
+    { key: "created", label: t("Créé entre le", "Created between"), type: "dateRange" }
+  ].filter(Boolean);
+
+  const monthAgo = Date.now() - 30 * 864e5;
+  const filteredUsers = users.filter((item) => {
+    if (filters.status && (item.status === "suspended" ? "suspended" : "active") !== filters.status) return false;
+    if (subTab !== "admin" && filters.plan && (filters.plan === "__none" ? Boolean(item.planId) : item.planId !== filters.plan)) return false;
+    if (filters.lastLogin) {
+      const last = item.lastLoginAt ? new Date(item.lastLoginAt).getTime() : 0;
+      if (filters.lastLogin === "never" && last) return false;
+      if (filters.lastLogin === "recent" && !(last && last >= monthAgo)) return false;
+      if (filters.lastLogin === "inactive" && !(last && last < monthAgo)) return false;
     }
-  }
+    return inAdminDateRange(item.createdAt, filters.createdFrom, filters.createdTo);
+  });
+
+  const filterSummary = [
+    search ? `${t("Recherche", "Search")} : ${search}` : "",
+    subTab !== "all" ? `${t("Onglet", "Tab")} : ${ADMIN_ACCOUNT_SUBTABS.find((item) => item.id === subTab)?.label?.[language] || subTab}` : "",
+    ...filterFields.flatMap((field) => {
+      if (field.type === "dateRange") {
+        const from = filters[`${field.key}From`];
+        const to = filters[`${field.key}To`];
+        return from || to ? [`${field.label} ${from || "…"} / ${to || "…"}`] : [];
+      }
+      const option = field.options.find((item) => item.value === filters[field.key]);
+      return option ? [`${field.label} : ${option.label}`] : [];
+    })
+  ].filter(Boolean);
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / ADMIN_PAGE_SIZE));
+  const pagedUsers = filteredUsers.slice((page - 1) * ADMIN_PAGE_SIZE, page * ADMIN_PAGE_SIZE);
 
   return (
     <section className="admin-accounts">
@@ -461,7 +447,6 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
           <p>{copy.subtitle}</p>
         </div>
         <div className="admin-header-actions">
-          <AdminExportCsvButton adminUserId={user.id} path="/admin/export/accounts" language={language} />
           <button type="button" className="btn-main ready" onClick={() => setCreateOpen(true)}>
             <UiIcon name="profile" /> {copy.addAccount}
           </button>
@@ -485,6 +470,18 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
         <>
           <div className="admin-table-toolbar">
             <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder={copy.search} />
+            <div className="jy-list-tools">
+              <AdminAdvancedFilters fields={filterFields} value={filters} onChange={setFilters} language={language} />
+              <AdminColumnSelector columns={columnDefs} visible={cols.visible} onToggle={cols.toggle} onReset={cols.reset} language={language} />
+              <AdminExportMenu
+                language={language}
+                title={t("Comptes", "Accounts")}
+                fileBase="comptes"
+                columns={visibleColumnDefs}
+                rows={filteredUsers}
+                filters={filterSummary}
+              />
+            </div>
           </div>
 
           {error ? <p className="field-error">{error}</p> : null}
@@ -493,22 +490,20 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>{copy.colName}</th>
-                  <th>{copy.colRole}</th>
-                  {subTab !== "admin" ? <th>{copy.colPlan}</th> : null}
-                  {subTab !== "admin" ? <th>{copy.colPrice}</th> : null}
-                  {subTab === "admin" ? <th>{copy.colPermissions}</th> : null}
-                  {subTab !== "admin" ? <th>{copy.colUsage}</th> : null}
-                  <th>{copy.colLastLogin}</th>
-                  <th>{copy.colStatus}</th>
-                  <th>{copy.colCreated}</th>
-                  <th>{copy.colActions}</th>
+                  {visibleColumnDefs.map((column) => (
+                    <th key={column.key}>{column.label}</th>
+                  ))}
+                  <th />
                 </tr>
               </thead>
               <tbody>
                 {pagedUsers.length ? (
                   pagedUsers.map((item) => (
-                    <tr key={item.id}>
+                    <tr
+                      key={item.id}
+                      className={`jy-row-click ${selectedUser?.id === item.id ? "is-selected" : ""}`}
+                      onClick={() => setSelectedUser(item)}
+                    >
                       <td>
                         <div className="admin-table-name">
                           <AvatarCircle user={item} />
@@ -520,10 +515,12 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
                           </div>
                         </div>
                       </td>
-                      <td>
-                        <span className="tag">{getAccountLabel(item.roleType, language)}</span>
-                      </td>
-                      {subTab !== "admin" ? (
+                      {cols.isVisible("role") ? (
+                        <td>
+                          <span className="tag">{getAccountLabel(item.roleType, language)}</span>
+                        </td>
+                      ) : null}
+                      {subTab !== "admin" && cols.isVisible("plan") ? (
                         <td>
                           {item.planId ? (
                             <span className="tag">{getPlanById(item.planId)?.name?.[language] || item.planId}</span>
@@ -532,51 +529,49 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
                           )}
                         </td>
                       ) : null}
-                      {subTab !== "admin" ? (
-                        <td className="muted">{planPriceLabel(item.planId, item.billingCycle, copy.free, currency)}</td>
-                      ) : null}
-                      {subTab === "admin" ? (
+                      {subTab === "admin" && cols.isVisible("permissions") ? (
                         <td>
                           {item.adminModules?.length ? (
-                            <div className="admin-permission-tags">
-                              {item.adminModules.map((moduleId) => (
-                                <span key={moduleId} className="tag">
-                                  {ADMIN_MODULE_LABELS[moduleId]?.[language] || ADMIN_MODULE_LABELS[moduleId]?.fr || moduleId}
-                                </span>
-                              ))}
-                            </div>
+                            <span className="tag">
+                              {item.adminModules.length} {language === "en" ? "module(s)" : "module(s)"}
+                            </span>
                           ) : (
                             <span className="tag tag-success">{copy.fullAccess}</span>
                           )}
                         </td>
                       ) : null}
-                      {subTab !== "admin" ? (
+                      {cols.isVisible("organization") ? <td>{organizationText(item) || <span className="muted">{t("Aucun", "None")}</span>}</td> : null}
+                      {cols.isVisible("created") ? <td className="muted jy-nowrap">{formatDateTime(item.createdAt, language)}</td> : null}
+                      {cols.isVisible("lastLogin") ? <td className="muted jy-nowrap">{lastLoginText(item)}</td> : null}
+                      {cols.isVisible("status") ? (
                         <td>
-                          <div className="admin-usage-stack">
-                            <span>{item.cvCount || 0} CV</span>
-                            <span>{item.matchCount || 0} analyses</span>
-                          </div>
+                          <span className={`tag ${item.status === "suspended" ? "tag-danger" : "tag-success"}`}>{statusText(item)}</span>
                         </td>
                       ) : null}
-                      <td className="muted">{item.lastLoginAt ? formatDate(item.lastLoginAt) : "—"}</td>
-                      <td>
-                        <span className={`tag ${item.status === "suspended" ? "tag-danger" : "tag-success"}`}>
-                          {item.status === "suspended" ? copy.suspended : copy.active}
-                        </span>
-                      </td>
-                      <td className="muted">{formatDate(item.createdAt)}</td>
-                      <td>
-                        <div className="admin-row-actions">
-                          <button type="button" className="admin-row-action" onClick={() => openEdit(item)}>
-                            <UiIcon name="edit" /> {copy.edit}
+                      <td className="jy-actions-cell" onClick={(event) => event.stopPropagation()}>
+                        <div className="admin-row-actions" style={{ justifyContent: "flex-end" }}>
+                          <button type="button" className="admin-row-action icon-only" title={copy.edit} aria-label={copy.edit} onClick={() => openEdit(item)}>
+                            <AdminLineIcon name="edit" />
                           </button>
                           {item.roleType !== "admin" ? (
                             <>
-                              <button type="button" className="admin-row-action" onClick={() => toggleUserStatus(item)}>
-                                <UiIcon name="shield" /> {item.status === "suspended" ? copy.reactivate : copy.suspend}
+                              <button
+                                type="button"
+                                className="admin-row-action icon-only"
+                                title={item.status === "suspended" ? copy.reactivate : copy.suspend}
+                                aria-label={item.status === "suspended" ? copy.reactivate : copy.suspend}
+                                onClick={() => toggleUserStatus(item)}
+                              >
+                                <AdminLineIcon name="quality" />
                               </button>
-                              <button type="button" className="admin-row-action danger" onClick={() => openDelete(item)}>
-                                <UiIcon name="alert" /> {copy.delete}
+                              <button
+                                type="button"
+                                className="admin-row-action danger icon-only"
+                                title={copy.delete}
+                                aria-label={copy.delete}
+                                onClick={() => openDelete(item)}
+                              >
+                                <AdminLineIcon name="trash" />
                               </button>
                             </>
                           ) : null}
@@ -586,7 +581,7 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={subTab === "admin" ? 7 : 9} className="admin-table-empty muted">
+                    <td colSpan={visibleColumnDefs.length + 1} className="admin-table-empty muted">
                       {copy.empty}
                     </td>
                   </tr>
@@ -595,7 +590,127 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
             </table>
           </div>
 
-          <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={users.length} />
+          <JyDrawer
+            open={Boolean(selectedUser)}
+            onClose={() => setSelectedUser(null)}
+            language={language}
+            avatar={selectedUser ? <AvatarCircle user={selectedUser} /> : null}
+            title={selectedUser ? `${selectedUser.firstName || ""} ${selectedUser.lastName || ""}`.trim() : ""}
+            subtitle={selectedUser?.email}
+            badges={
+              selectedUser ? (
+                <>
+                  <span className="tag">{getAccountLabel(selectedUser.roleType, language)}</span>
+                  <span className={`tag ${selectedUser.status === "suspended" ? "tag-danger" : "tag-success"}`}>
+                    {selectedUser.status === "suspended" ? copy.suspended : copy.active}
+                  </span>
+                </>
+              ) : null
+            }
+            sections={
+              selectedUser
+                ? [
+                    {
+                      title: language === "en" ? "Account" : "Compte",
+                      rows: [
+                        [language === "en" ? "Organization" : "Organisation", selectedUser.organizationName],
+                        [language === "en" ? "Website" : "Site web", selectedUser.website],
+                        [copy.colCreated, formatDateTime(selectedUser.createdAt, language)],
+                        [copy.colLastLogin, selectedUser.lastLoginAt ? formatDateTime(selectedUser.lastLoginAt, language) : language === "en" ? "Never" : "Jamais"]
+                      ]
+                    },
+                    selectedUser.roleType === "student" || selectedUser.roleType === "candidate"
+                      ? {
+                          title: language === "en" ? "Affiliation" : "Rattachement",
+                          rows: [
+                            [language === "en" ? "Linked to" : "Rattaché à", affiliationLabel(selectedUser.affiliation, language)],
+                            [language === "en" ? "Contact email" : "E-mail du contact", selectedUser.affiliation?.contactEmail],
+                            [language === "en" ? "License code" : "Code de licence", selectedUser.affiliation?.licenseCode],
+                            [language === "en" ? "Linked since" : "Rattaché depuis", selectedUser.affiliation?.since ? formatDateTime(selectedUser.affiliation.since, language) : ""],
+                            [language === "en" ? "Declared school" : "École déclarée", selectedUser.declaredSchool]
+                          ]
+                        }
+                      : null,
+                    selectedUser.roleType !== "admin"
+                      ? {
+                          title: language === "en" ? "Subscription" : "Abonnement",
+                          rows: [
+                            [copy.colPlan, selectedUser.planId ? getPlanById(selectedUser.planId)?.name?.[language] || selectedUser.planId : copy.noPlan],
+                            [copy.colPrice, planPriceLabel(selectedUser.planId, selectedUser.billingCycle, copy.free, currency)]
+                          ]
+                        }
+                      : null,
+                    selectedUser.roleType !== "admin"
+                      ? {
+                          title: language === "en" ? "Usage" : "Utilisation",
+                          rows: [
+                            [language === "en" ? "Imported CVs" : "CV importés", String(selectedUser.cvCount || 0)],
+                            [language === "en" ? "Analyses run" : "Analyses réalisées", String(selectedUser.matchCount || 0)]
+                          ]
+                        }
+                      : {
+                          title: copy.colPermissions,
+                          content: selectedUser.adminModules?.length ? (
+                            <div className="admin-permission-tags">
+                              {selectedUser.adminModules.map((moduleId) => (
+                                <span key={moduleId} className="tag">
+                                  {ADMIN_MODULE_LABELS[moduleId]?.[language] || ADMIN_MODULE_LABELS[moduleId]?.fr || moduleId}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="tag tag-success">{copy.fullAccess}</span>
+                          )
+                        }
+                  ]
+                : []
+            }
+            footer={
+              selectedUser ? (
+                <>
+                  <button
+                    type="button"
+                    className="admin-row-action"
+                    onClick={() => {
+                      const target = selectedUser;
+                      setSelectedUser(null);
+                      openEdit(target);
+                    }}
+                  >
+                    <AdminLineIcon name="edit" /> {copy.edit}
+                  </button>
+                  {selectedUser.roleType !== "admin" ? (
+                    <>
+                      <button
+                        type="button"
+                        className="admin-row-action"
+                        onClick={() => {
+                          const target = selectedUser;
+                          setSelectedUser(null);
+                          toggleUserStatus(target);
+                        }}
+                      >
+                        <AdminLineIcon name="quality" /> {selectedUser.status === "suspended" ? copy.reactivate : copy.suspend}
+                      </button>
+                      <button
+                        type="button"
+                        className="admin-row-action danger"
+                        onClick={() => {
+                          const target = selectedUser;
+                          setSelectedUser(null);
+                          openDelete(target);
+                        }}
+                      >
+                        <AdminLineIcon name="trash" /> {copy.delete}
+                      </button>
+                    </>
+                  ) : null}
+                </>
+              ) : null
+            }
+          />
+
+          <AdminPagination page={page} totalPages={totalPages} onChange={setPage} language={language} totalItems={filteredUsers.length} />
         </>
       ) : (
         <div className="admin-org-list">
@@ -609,225 +724,30 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
       )}
 
       {createOpen ? (
-        <div className="modal-overlay" onMouseDown={() => setCreateOpen(false)}>
-          <div className="admin-create-modal" onMouseDown={(event) => event.stopPropagation()}>
-            <button type="button" className="modal-close" onClick={() => setCreateOpen(false)} aria-label="Fermer">
-              ×
-            </button>
-            <h3>{copy.addAccount}</h3>
-            <form onSubmit={submit}>
-              <div className="admin-form-grid">
-                <label>
-                  {copy.firstName}
-                  <input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} required />
-                </label>
-                <label>
-                  {copy.lastName}
-                  <input value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} required />
-                </label>
-                <label>
-                  {copy.email}
-                  <input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} required />
-                </label>
-                <label>
-                  {copy.password}
-                  <input
-                    type="password"
-                    minLength={8}
-                    value={form.password}
-                    onChange={(event) => updateField("password", event.target.value)}
-                    required
-                  />
-                </label>
-                <label>
-                  {copy.accountType}
-                  <select value={form.accountType} onChange={(event) => updateField("accountType", event.target.value)}>
-                    {ADMIN_ACCOUNT_TYPES.map((item) => (
-                      <option key={item.id} value={item.id}>
-                        {item.label[language] || item.label.fr}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {form.accountType !== "admin" ? (
-                  <label>
-                    {copy.plan}
-                    <select value={form.planId} onChange={(event) => updateField("planId", event.target.value)}>
-                      <option value="">{copy.noPlan}</option>
-                      {availablePlans.map((plan) => (
-                        <option key={plan.id} value={plan.id}>
-                          {plan.name[language] || plan.name.fr}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-
-                {form.accountType === "school" ? (
-                  <>
-                    <label>
-                      {copy.schoolOrgName}
-                      <input
-                        value={form.organizationName}
-                        onChange={(event) => updateField("organizationName", event.target.value)}
-                        required
-                      />
-                    </label>
-                    <label>
-                      {copy.website}
-                      <input value={form.website} onChange={(event) => updateField("website", event.target.value)} />
-                    </label>
-                  </>
-                ) : null}
-
-                {form.accountType === "recruiter_firm" ? (
-                  <>
-                    <label>
-                      {copy.agencyOrgName}
-                      <input
-                        value={form.organizationName}
-                        onChange={(event) => updateField("organizationName", event.target.value)}
-                        required
-                      />
-                    </label>
-                    <label>
-                      {copy.website}
-                      <input value={form.website} onChange={(event) => updateField("website", event.target.value)} />
-                    </label>
-                  </>
-                ) : null}
-
-                {form.accountType === "student" ? (
-                  <label>
-                    {copy.studentSchool}
-                    <input value={form.schoolName} onChange={(event) => updateField("schoolName", event.target.value)} />
-                  </label>
-                ) : null}
-              </div>
-
-              {form.accountType === "admin" ? (
-                <div className="admin-permissions-block">
-                  <strong>{copy.adminModulesLabel}</strong>
-                  <p className="muted">{copy.adminModulesHint}</p>
-                  <div className="admin-permissions-grid">
-                    {ADMIN_MODULE_DEFS.map((moduleDef) => (
-                      <label key={moduleDef.id} className="admin-permission-check">
-                        <input
-                          type="checkbox"
-                          checked={!form.adminModules.length || form.adminModules.includes(moduleDef.id)}
-                          onChange={() => toggleAdminModule(setForm, moduleDef.id)}
-                        />
-                        {ADMIN_MODULE_LABELS[moduleDef.id][language] || ADMIN_MODULE_LABELS[moduleDef.id].fr}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {error ? <p className="field-error">{error}</p> : null}
-              {message ? <p className="field-hint success">{message}</p> : null}
-
-              <button type="submit" className="btn-main ready" disabled={creating}>
-                {creating ? <span className="btn-spinner" /> : null} {creating ? copy.creating : copy.create}
-              </button>
-            </form>
-          </div>
-        </div>
+        <AdminAccountFormModal
+          mode="create"
+          user={user}
+          language={language}
+          onClose={() => setCreateOpen(false)}
+          onDone={(result) => {
+            announceAccountResult(result, language);
+            reload();
+          }}
+        />
       ) : null}
 
       {editTarget ? (
-        <div className="modal-overlay" onMouseDown={() => setEditTarget(null)}>
-          <div className="admin-create-modal" onMouseDown={(event) => event.stopPropagation()}>
-            <button type="button" className="modal-close" onClick={() => setEditTarget(null)} aria-label="Fermer">
-              ×
-            </button>
-            <h3>{copy.editTitle}</h3>
-            <form onSubmit={submitEdit}>
-              <div className="admin-form-grid">
-                <label>
-                  {copy.firstName}
-                  <input
-                    value={editForm.firstName}
-                    onChange={(event) => setEditForm((prev) => ({ ...prev, firstName: event.target.value }))}
-                    required
-                  />
-                </label>
-                <label>
-                  {copy.lastName}
-                  <input
-                    value={editForm.lastName}
-                    onChange={(event) => setEditForm((prev) => ({ ...prev, lastName: event.target.value }))}
-                    required
-                  />
-                </label>
-                {editForm.accountType !== "admin" ? (
-                  <label>
-                    {copy.plan}
-                    <select
-                      value={editForm.planId}
-                      onChange={(event) => setEditForm((prev) => ({ ...prev, planId: event.target.value }))}
-                    >
-                      <option value="">{copy.noPlan}</option>
-                      {editAvailablePlans.map((plan) => (
-                        <option key={plan.id} value={plan.id}>
-                          {plan.name[language] || plan.name.fr}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : null}
-                {(editForm.accountType === "school" || editForm.accountType === "recruiter_firm") ? (
-                  <>
-                    <label>
-                      {editForm.accountType === "school" ? copy.schoolOrgName : copy.agencyOrgName}
-                      <input
-                        value={editForm.organizationName}
-                        onChange={(event) => setEditForm((prev) => ({ ...prev, organizationName: event.target.value }))}
-                      />
-                    </label>
-                    <label>
-                      {copy.website}
-                      <input
-                        value={editForm.website}
-                        onChange={(event) => setEditForm((prev) => ({ ...prev, website: event.target.value }))}
-                      />
-                    </label>
-                  </>
-                ) : null}
-              </div>
-
-              {editForm.accountType === "admin" ? (
-                <div className="admin-permissions-block">
-                  <strong>{copy.adminModulesLabel}</strong>
-                  <p className="muted">{copy.adminModulesHint}</p>
-                  <div className="admin-permissions-grid">
-                    {ADMIN_MODULE_DEFS.map((moduleDef) => (
-                      <label key={moduleDef.id} className="admin-permission-check">
-                        <input
-                          type="checkbox"
-                          checked={!editForm.adminModules?.length || editForm.adminModules.includes(moduleDef.id)}
-                          onChange={() => toggleAdminModule(setEditForm, moduleDef.id)}
-                        />
-                        {ADMIN_MODULE_LABELS[moduleDef.id][language] || ADMIN_MODULE_LABELS[moduleDef.id].fr}
-                      </label>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {editError ? <p className="field-error">{editError}</p> : null}
-
-              <div className="admin-modal-actions">
-                <button type="button" className="btn-ghost" onClick={() => setEditTarget(null)}>
-                  {copy.cancel}
-                </button>
-                <button type="submit" className="btn-main ready" disabled={editSaving}>
-                  {editSaving ? <span className="btn-spinner" /> : null} {editSaving ? copy.saving : copy.save}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+        <AdminAccountFormModal
+          mode="edit"
+          target={editTarget}
+          user={user}
+          language={language}
+          onClose={() => setEditTarget(null)}
+          onDone={(result) => {
+            announceAccountResult(result, language);
+            reload();
+          }}
+        />
       ) : null}
 
     </section>

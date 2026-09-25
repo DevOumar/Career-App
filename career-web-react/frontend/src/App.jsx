@@ -4,6 +4,8 @@ import "sweetalert2/dist/sweetalert2.min.css";
 import { UiIcon } from "./components/UiIcon.jsx";
 import { AvatarCircle, getAvatarSource } from "./components/AvatarCircle.jsx";
 import { LanguageSwitch } from "./components/LanguageSwitch.jsx";
+import MfaLoginStep from "./features/account/mfa/MfaLoginStep.jsx";
+import { askLogoutConfirmation } from "./features/account/LogoutConfirmHost.jsx";
 import InterviewPage from "./features/interviews/InterviewPage.jsx";
 import SalaryNegotiationPage from "./features/negotiation/SalaryNegotiationPage.jsx";
 import ApplicationsPage from "./features/applications/ApplicationsPage.jsx";
@@ -46,6 +48,7 @@ import {
   resetPassword,
   getNotifications,
   revokeSession,
+  revokeOtherSessions,
   exportAccountData,
   deleteUserAccount,
   extractCvFile,
@@ -142,6 +145,7 @@ import {
   updateUserAvatar,
   updateUserProfile,
   verifyLoginCode,
+  verifyMfaLogin,
   verifySecondaryEmail
 } from "./lib/inMemoryDb";
 import { createCvRecord, fileToBase64, parseCvText, readFileAsText } from "./lib/cvService";
@@ -400,7 +404,7 @@ const LANDING_COPY = {
       },
       {
         q: "Comment fonctionne le score de compatibilité avec une offre ?",
-        a: "On compare vos compétences, votre expérience et votre formation avec les exigences réelles extraites de l'offre que vous collez, puis on calcule un score et la liste des compétences manquantes — jamais un chiffre générique."
+        a: "On compare vos compétences, votre expérience et votre formation avec les exigences réelles extraites de l'offre que vous collez, puis on calcule un score et la liste des compétences manquantes, jamais un chiffre générique."
       },
       {
         q: "Dans quels formats puis-je exporter mon CV ?",
@@ -513,7 +517,7 @@ const LANDING_COPY = {
     faq: [
       {
         q: "Will my CV be ATS-compatible?",
-        a: "The Classic template uses a single column and standard section headers, designed to be read well by most ATS. The Sidebar template (photo, column layout) is more visual but some strict ATS parse it less reliably — we recommend the Classic template if you're applying through an ATS. The AI optimization module also flags job keywords still missing from your CV."
+        a: "The Classic template uses a single column and standard section headers, designed to be read well by most ATS. The Sidebar template (photo, column layout) is more visual but some strict ATS parse it less reliably, we recommend the Classic template if you're applying through an ATS. The AI optimization module also flags job keywords still missing from your CV."
       },
       {
         q: "Can I import an existing CV?",
@@ -525,7 +529,7 @@ const LANDING_COPY = {
       },
       {
         q: "How does the job match score work?",
-        a: "We compare your skills, experience, and education against the actual requirements extracted from the job posting you paste, then compute a score and the list of missing skills — never a generic number."
+        a: "We compare your skills, experience, and education against the actual requirements extracted from the job posting you paste, then compute a score and the list of missing skills, never a generic number."
       },
       {
         q: "What formats can I export my CV in?",
@@ -1248,17 +1252,29 @@ export default function App() {
     setProcessingError("");
   }
 
+  // Session obtenue (directement, ou après la double authentification).
+  async function openSession(result, method) {
+    setToken(result.token);
+    setSessionLoading(true);
+    await syncSession(result.token);
+    setActivePage("home");
+    rememberLastAuthMethod(method);
+  }
+
+  // Connexion par identifiant + mot de passe. Renvoie { mfaRequired, … }
+  // quand un second facteur est exigé (AuthScreen affiche alors l'étape de
+  // vérification) ; relance l'erreur pour que l'écran puisse réagir à son
+  // code (EMAIL_NOT_VERIFIED, PASSWORD_NOT_SET).
   async function handleLogin(credentials) {
     try {
       clearMessages();
-      const result = credentials.code ? await verifyLoginCode(credentials) : await loginUser(credentials);
-      setToken(result.token);
-      setSessionLoading(true);
-      await syncSession(result.token);
-      setActivePage("home");
-      rememberLastAuthMethod("password");
+      const result = await loginUser(credentials);
+      if (result.mfaRequired) return result;
+      await openSession(result, "password");
+      return result;
     } catch (error) {
       setAuthError(getFriendlyErrorMessage(error, language));
+      throw error;
     }
   }
 
@@ -1266,15 +1282,20 @@ export default function App() {
     try {
       clearMessages();
       const result = await loginWithGoogle(credential, intent);
-      setToken(result.token);
-      setSessionLoading(true);
-      await syncSession(result.token);
-      setActivePage("home");
-      rememberLastAuthMethod("google");
+      if (result.mfaRequired) return result;
+      await openSession(result, "google");
+      return result;
     } catch (error) {
       setAuthError(getFriendlyErrorMessage(error, language));
       throw error;
     }
+  }
+
+  // Second facteur validé : le serveur échange le ticket contre la session.
+  async function handleVerifyMfa(payload) {
+    clearMessages();
+    const result = await verifyMfaLogin(payload);
+    await openSession(result, result.firstFactor === "google" ? "google" : "password");
   }
 
   async function handleForgotPassword({ identifier }) {
@@ -1291,11 +1312,10 @@ export default function App() {
     try {
       clearMessages();
       const result = await resetPassword({ identifier, code, newPassword });
-      setToken(result.token);
-      setSessionLoading(true);
-      await syncSession(result.token);
-      setActivePage("home");
-      rememberLastAuthMethod("password");
+      // Mot de passe changé, mais la double authentification reste exigée.
+      if (result.mfaRequired) return result;
+      await openSession(result, "password");
+      return result;
     } catch (error) {
       setAuthError(getFriendlyErrorMessage(error, language));
       throw error;
@@ -1376,6 +1396,12 @@ export default function App() {
     }
   }
 
+  // Déconnexion demandée depuis n'importe quel espace : confirmation d'abord
+  // (fenêtre « Se déconnecter de Career CV ? », modèle Jurysia).
+  async function requestLogout() {
+    if (await askLogoutConfirmation({ user, language })) await handleLogout();
+  }
+
   async function handleLogout() {
     if (token) {
       try {
@@ -1383,6 +1409,13 @@ export default function App() {
       } catch (_error) {
         // Ignore transport errors and clear local session anyway.
       }
+    }
+    try {
+      // L'espace admin repart sur l'Accueil à la prochaine connexion.
+      sessionStorage.removeItem("career_app_admin_tab");
+      sessionStorage.removeItem("career_app_school_tab");
+    } catch (_error) {
+      // stockage indisponible
     }
     setToken("");
     setSession(null);
@@ -1966,7 +1999,7 @@ export default function App() {
   <div class="row"><span>Email</span><strong>${esc(d.profile.email)}</strong></div>
   <div class="row"><span>${isEn ? "Username" : "Nom d'utilisateur"}</span><strong>${esc(d.profile.username)}</strong></div>
   <div class="row"><span>${isEn ? "Account created" : "Compte créé le"}</span><strong>${esc(formatDateTime(d.profile.created_at))}</strong></div>
-  <div class="row"><span>${isEn ? "Plan" : "Plan"}</span><strong>${esc(planName || "—")}</strong></div>
+  <div class="row"><span>${isEn ? "Plan" : "Plan"}</span><strong>${esc(planName || "-")}</strong></div>
 
   <h2>${isEn ? "Payment history" : "Historique de paiement"}</h2>
   ${
@@ -2016,6 +2049,23 @@ export default function App() {
       const updated = await getUserFromSession(token);
       if (updated) setSession(updated);
       setPageMessage(language === "en" ? "Device disconnected." : "Appareil déconnecté.");
+    } catch (error) {
+      setProcessingError(getFriendlyErrorMessage(error, language));
+    }
+  }
+
+  async function handleRevokeOtherSessions() {
+    if (!user) return;
+    try {
+      clearMessages();
+      const result = await revokeOtherSessions(user.id);
+      const updated = await getUserFromSession(token);
+      if (updated) setSession(updated);
+      setPageMessage(
+        language === "en"
+          ? `${result.revoked || 0} device(s) disconnected.`
+          : `${result.revoked || 0} appareil(s) déconnecté(s).`
+      );
     } catch (error) {
       setProcessingError(getFriendlyErrorMessage(error, language));
     }
@@ -2082,6 +2132,7 @@ export default function App() {
     return (
       <AuthScreen
         onLogin={handleLogin}
+        onVerifyMfa={handleVerifyMfa}
         onRequestLoginCode={handleRequestLoginCode}
         onSignup={handleSignup}
         onVerifySignupCode={handleVerifySignupCode}
@@ -2136,7 +2187,7 @@ export default function App() {
         setMode={setMode}
         density={density}
         setDensity={setDensity}
-        onLogout={handleLogout}
+        onLogout={requestLogout}
         landingCopy={landingCopy}
         onSaveAccount={handleAccountSave}
         onAvatarUpload={handleAvatarUpload}
@@ -2152,6 +2203,7 @@ export default function App() {
         securitySaving={securitySaving}
         onSubmitPassword={submitPasswordChange}
         onRevokeSession={handleRevokeSession}
+        onRevokeOtherSessions={handleRevokeOtherSessions}
         currentSessionId={session?.currentSessionId}
         onExportData={handleExportAccountData}
         onExportSummary={handleExportSummary}
@@ -2175,7 +2227,7 @@ export default function App() {
         setMode={setMode}
         density={density}
         setDensity={setDensity}
-        onLogout={handleLogout}
+        onLogout={requestLogout}
         landingCopy={landingCopy}
         onSaveAccount={handleAccountSave}
         onAvatarUpload={handleAvatarUpload}
@@ -2191,6 +2243,7 @@ export default function App() {
         securitySaving={securitySaving}
         onSubmitPassword={submitPasswordChange}
         onRevokeSession={handleRevokeSession}
+        onRevokeOtherSessions={handleRevokeOtherSessions}
         currentSessionId={session?.currentSessionId}
         onExportData={handleExportAccountData}
         onExportSummary={handleExportSummary}
@@ -2214,7 +2267,7 @@ export default function App() {
         setMode={setMode}
         density={density}
         setDensity={setDensity}
-        onLogout={handleLogout}
+        onLogout={requestLogout}
         landingCopy={landingCopy}
         onSaveAccount={handleAccountSave}
         onAvatarUpload={handleAvatarUpload}
@@ -2230,6 +2283,7 @@ export default function App() {
         securitySaving={securitySaving}
         onSubmitPassword={submitPasswordChange}
         onRevokeSession={handleRevokeSession}
+        onRevokeOtherSessions={handleRevokeOtherSessions}
         currentSessionId={session?.currentSessionId}
         onExportData={handleExportAccountData}
         onExportSummary={handleExportSummary}
@@ -2372,7 +2426,7 @@ export default function App() {
                 </span>
                 {language === "en" ? "Manage account" : "Gérer son compte"}
               </button>
-              <button onClick={handleLogout}>
+              <button onClick={requestLogout}>
                 <span className="dropdown-icon danger">
                   <UiIcon name="logout" />
                 </span>
@@ -2586,6 +2640,7 @@ export default function App() {
           securitySaving={securitySaving}
           onSubmitPassword={submitPasswordChange}
           onRevokeSession={handleRevokeSession}
+        onRevokeOtherSessions={handleRevokeOtherSessions}
           currentSessionId={session?.currentSessionId}
           onExportData={handleExportAccountData}
         onExportSummary={handleExportSummary}
@@ -2931,6 +2986,7 @@ export function GoogleSignInButton({ language, onCredential, showLastUsed = fals
 
 function AuthScreen({
   onLogin,
+  onVerifyMfa,
   onRequestLoginCode,
   onSignup,
   onVerifySignupCode,
@@ -2952,7 +3008,12 @@ function AuthScreen({
   const [lastAuthMethod] = useState(getLastAuthMethod);
 
   const [mode, setMode] = useState("login");
-  const [loginStep, setLoginStep] = useState("identifier");
+  // Connexion : "credentials" (identifiant + mot de passe sur le même écran),
+  // "verify" (adresse jamais vérifiée : code reçu par e-mail) ou "mfa"
+  // (double authentification). Plus de connexion par code e-mail.
+  const [loginStep, setLoginStep] = useState("credentials");
+  const [mfaChallenge, setMfaChallenge] = useState(null);
+  const [passwordNotSet, setPasswordNotSet] = useState(false);
   const [signupPhase, setSignupPhase] = useState("form");
   const [loginCode, setLoginCode] = useState(["", "", "", "", "", ""]);
   const [verificationEmail, setVerificationEmail] = useState("");
@@ -2981,6 +3042,7 @@ function AuthScreen({
 
   function startForgotPassword() {
     onClearError();
+    setPasswordNotSet(false);
     setForgotIdentifier(loginForm.identifier || "");
     setForgotStep("identifier");
     setForgotCode(["", "", "", "", "", ""]);
@@ -3020,8 +3082,17 @@ function AuthScreen({
     password: ""
   });
   const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [googleProcessing, setGoogleProcessing] = useState(false);
+
+  // Le premier facteur a réussi mais le compte exige un second facteur.
+  function startMfaStep(result) {
+    onClearError();
+    setMfaChallenge({ ticket: result.mfaTicket, methods: result.methods || [] });
+    setMode("login");
+    setLoginStep("mfa");
+  }
 
   async function handleGoogleCredential(credential) {
     setGoogleProcessing(true);
@@ -3030,7 +3101,8 @@ function AuthScreen({
       // silencieusement : intent "login" fait échouer proprement si aucun
       // compte Google n'existe (voir onGoogleLogin / NO_ACCOUNT_GOOGLE),
       // plutôt que d'inscrire l'utilisateur sans qu'il l'ait demandé.
-      await onGoogleLogin(credential, mode === "signup" ? "signup" : "login");
+      const result = await onGoogleLogin(credential, mode === "signup" ? "signup" : "login");
+      if (result?.mfaRequired) startMfaStep(result);
     } catch (error) {
       if (error.code === "NO_ACCOUNT_GOOGLE") {
         // L'erreur générique est déjà affichée par onGoogleLogin ; on
@@ -3047,6 +3119,7 @@ function AuthScreen({
 
   function updateLoginField(key, value) {
     onClearError();
+    setPasswordNotSet(false);
     setLoginForm((prev) => ({ ...prev, [key]: value }));
   }
 
@@ -3057,7 +3130,9 @@ function AuthScreen({
 
   function switchMode(nextMode) {
     setMode(nextMode);
-    setLoginStep("identifier");
+    setLoginStep("credentials");
+    setMfaChallenge(null);
+    setPasswordNotSet(false);
     setSignupPhase("form");
     setLoginCode(["", "", "", "", "", ""]);
     setVerificationEmail("");
@@ -3140,7 +3215,8 @@ function AuthScreen({
       }
       setIsSubmitting(true);
       try {
-        await onResetPassword({ identifier: forgotIdentifier, code, newPassword });
+        const result = await onResetPassword({ identifier: forgotIdentifier, code, newPassword });
+        if (result?.mfaRequired) startMfaStep(result);
       } catch (_error) {
         // Error already surfaced via the inline auth error state.
       } finally {
@@ -3150,21 +3226,13 @@ function AuthScreen({
     }
 
     if (mode === "login") {
-      if (loginStep === "identifier") {
-        if (!loginForm.identifier.trim()) return;
-        // Bascule temporaire démo/soutenance (authSkipOtp) : on va direct au
-        // mot de passe au lieu de demander un code par email par défaut.
-        if (authSkipOtp) {
-          setLoginStep("password");
-          return;
-        }
+      // Adresse jamais vérifiée : on valide le code reçu, puis connexion.
+      if (loginStep === "verify") {
+        const code = loginCode.join("");
+        if (code.length !== 6) return;
         setIsSubmitting(true);
         try {
-          const result = await onRequestLoginCode({ identifier: loginForm.identifier });
-          setVerificationEmail(result.email || loginForm.identifier);
-          setResendSeconds(result.resendAfterSeconds || 30);
-          setLoginCode(["", "", "", "", "", ""]);
-          setLoginStep("code");
+          await onVerifySignupCode({ identifier: verificationEmail, code });
         } catch (_error) {
           // Error already surfaced via the inline auth error state.
         } finally {
@@ -3172,20 +3240,21 @@ function AuthScreen({
         }
         return;
       }
-      if (loginStep === "code") {
-        const code = loginCode.join("");
-        if (code.length !== 6) return;
-        setIsSubmitting(true);
-        try {
-          await onLogin({ identifier: loginForm.identifier, code });
-        } finally {
-          setIsSubmitting(false);
-        }
-        return;
-      }
+      if (!loginForm.identifier.trim() || !loginForm.password) return;
       setIsSubmitting(true);
       try {
-        await onLogin(loginForm);
+        const result = await onLogin({ identifier: loginForm.identifier.trim(), password: loginForm.password });
+        if (result?.mfaRequired) startMfaStep(result);
+      } catch (error) {
+        if (error.code === "EMAIL_NOT_VERIFIED") {
+          onClearError();
+          setVerificationEmail(error.verification?.email || loginForm.identifier);
+          setResendSeconds(error.verification?.resendAfterSeconds || 30);
+          setLoginCode(["", "", "", "", "", ""]);
+          setLoginStep("verify");
+        } else if (error.code === "PASSWORD_NOT_SET") {
+          setPasswordNotSet(true);
+        }
       } finally {
         setIsSubmitting(false);
       }
@@ -3232,21 +3301,13 @@ function AuthScreen({
 
   async function resendCode() {
     if (resendSeconds > 0) return;
-    if (mode === "signup") {
-      try {
-        const result = await onResendSignupCode(signupForm.email);
-        setVerificationEmail(result.email || signupForm.email);
-        setResendSeconds(result.resendAfterSeconds || 30);
-        setLoginCode(["", "", "", "", "", ""]);
-      } catch (_error) {
-        // Error already surfaced via the inline auth error state.
-      }
-      return;
-    }
-    if (!loginForm.identifier.trim()) return;
+    // Seul usage restant du code par e-mail : vérifier une adresse (inscription,
+    // ou connexion d'un compte dont l'adresse n'a jamais été vérifiée).
+    const email = mode === "signup" ? signupForm.email : verificationEmail;
+    if (!email) return;
     try {
-      const result = await onRequestLoginCode({ identifier: loginForm.identifier });
-      setVerificationEmail(result.email || loginForm.identifier);
+      const result = await onResendSignupCode(email);
+      setVerificationEmail(result.email || email);
       setResendSeconds(result.resendAfterSeconds || 30);
       setLoginCode(["", "", "", "", "", ""]);
     } catch (_error) {
@@ -3349,8 +3410,8 @@ function AuthScreen({
                 {mode === "forgot"
                   ? forgotStep === "identifier"
                     ? language === "en"
-                      ? "Reset your password"
-                      : "Réinitialiser le mot de passe"
+                      ? "Reset or create your password"
+                      : "Réinitialiser ou créer un mot de passe"
                     : forgotStep === "code"
                       ? language === "en"
                         ? "Check your inbox"
@@ -3364,15 +3425,17 @@ function AuthScreen({
                       ? "Check your inbox"
                       : "Vérifiez votre messagerie"
                     : copy.createAccount
-                  : loginStep === "identifier"
+                  : loginStep === "mfa"
                     ? language === "en"
-                      ? "Identify yourself"
-                      : "S'identifier"
-                    : loginStep === "code"
+                      ? "Two-step verification"
+                      : "Vérification en deux étapes"
+                    : loginStep === "verify"
                       ? language === "en"
-                        ? "Check your inbox"
-                        : "Vérifiez votre messagerie"
-                      : copy.password}
+                        ? "Verify your email"
+                        : "Vérifiez votre adresse e-mail"
+                      : language === "en"
+                        ? "Identify yourself"
+                        : "S'identifier"}
               </h2>
               <p>
                 {mode === "forgot"
@@ -3391,6 +3454,14 @@ function AuthScreen({
                   ? language === "en"
                     ? "Welcome to Career CV"
                     : "Bienvenue sur Career CV"
+                  : mode === "login" && loginStep === "mfa"
+                  ? language === "en"
+                    ? "Confirm your identity to finish signing in."
+                    : "Confirmez votre identité pour terminer la connexion."
+                  : mode === "login" && loginStep === "verify"
+                  ? language === "en"
+                    ? "Enter the 6-digit code we just sent to confirm your address"
+                    : "Saisissez le code à 6 chiffres envoyé pour confirmer votre adresse"
                   : language === "en"
                     ? "to continue to Career CV"
                     : "pour continuer vers Career CV"}
@@ -3402,12 +3473,12 @@ function AuthScreen({
                       {language === "en" ? "Change" : "Modifier"}
                     </button>
                   </>
-                ) : (loginStep === "code" && mode === "login") || (signupPhase === "code" && mode === "signup") ? (
+                ) : (loginStep === "verify" && mode === "login") || (signupPhase === "code" && mode === "signup") ? (
                   <>
                     <br />
                     <strong>{verificationEmail}</strong>
                     {mode === "login" ? (
-                      <button type="button" onClick={() => setLoginStep("identifier")} aria-label="Modifier l'adresse">
+                      <button type="button" onClick={() => setLoginStep("credentials")} aria-label="Modifier l'adresse">
                         {language === "en" ? "Change" : "Modifier"}
                       </button>
                     ) : null}
@@ -3416,6 +3487,22 @@ function AuthScreen({
               </p>
             </div>
 
+      {mode === "login" && loginStep === "mfa" && mfaChallenge ? (
+        <div className="auth-card auth-card-modal">
+          <MfaLoginStep
+            ticket={mfaChallenge.ticket}
+            methods={mfaChallenge.methods}
+            language={language}
+            onVerify={onVerifyMfa}
+            onRestart={(message) => {
+              setMfaChallenge(null);
+              setLoginStep("credentials");
+              setLoginForm((prev) => ({ ...prev, password: "" }));
+              if (message) alert(message);
+            }}
+          />
+        </div>
+      ) : (
       <form className="auth-card auth-card-modal" onSubmit={submit}>
         {mode === "forgot" ? (
           <>
@@ -3511,7 +3598,40 @@ function AuthScreen({
           </>
         ) : mode === "login" ? (
           <>
-            {loginStep === "identifier" ? (
+            {loginStep === "verify" ? (
+              <div className="code-verification-block">
+                <div className="code-input-row" aria-label="Code de vérification">
+                  {loginCode.map((digit, index) => (
+                    <input
+                      key={index}
+                      data-code-index={index}
+                      value={digit}
+                      onChange={(event) => {
+                        onClearError();
+                        updateCodeDigit(index, event.target.value);
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Backspace" && !loginCode[index] && index > 0) {
+                          document.querySelector(`[data-code-index="${index - 1}"]`)?.focus();
+                        }
+                      }}
+                      inputMode="numeric"
+                      maxLength={1}
+                      autoFocus={index === 0}
+                    />
+                  ))}
+                </div>
+                <button className="resend-code-btn" type="button" onClick={resendCode} disabled={resendSeconds > 0}>
+                  {resendSeconds > 0
+                    ? language === "en"
+                      ? `Resend code (${resendSeconds})`
+                      : `Renvoyer le code (${resendSeconds})`
+                    : language === "en"
+                      ? "Resend code"
+                      : "Renvoyer le code"}
+                </button>
+              </div>
+            ) : (
               <>
                 <div className="google-btn-wrap-relative">
                   <GoogleSignInButton
@@ -3536,71 +3656,44 @@ function AuthScreen({
                     value={loginForm.identifier}
                     onChange={(event) => updateLoginField("identifier", event.target.value)}
                     placeholder={language === "en" ? "Username or email address" : "Nom d'utilisateur ou adresse e-mail"}
+                    autoComplete="username"
                     autoFocus
                     required
                   />
                 </label>
-              </>
-            ) : (
-              <>
-                {loginStep === "code" ? (
-                  <div className="code-verification-block">
-                    <div className="code-input-row" aria-label="Code de vérification">
-                      {loginCode.map((digit, index) => (
-                        <input
-                          key={index}
-                          data-code-index={index}
-                          value={digit}
-                          onChange={(event) => {
-                            onClearError();
-                            updateCodeDigit(index, event.target.value);
-                          }}
-                          onKeyDown={(event) => {
-                            if (event.key === "Backspace" && !loginCode[index] && index > 0) {
-                              document.querySelector(`[data-code-index="${index - 1}"]`)?.focus();
-                            }
-                          }}
-                          inputMode="numeric"
-                          maxLength={1}
-                          autoFocus={index === 0}
-                        />
-                      ))}
-                    </div>
-                    <button className="resend-code-btn" type="button" onClick={resendCode} disabled={resendSeconds > 0}>
-                      {resendSeconds > 0
-                        ? language === "en"
-                          ? `Resend code (${resendSeconds})`
-                          : `Renvoyer le code (${resendSeconds})`
-                        : language === "en"
-                          ? "Resend code"
-                          : "Renvoyer le code"}
-                    </button>
-                    <button className="other-method-btn" type="button" onClick={() => setLoginStep("password")}>
-                      {language === "en" ? "Use password instead" : "Utiliser une autre méthode"}
+                <label>
+                  {copy.password}
+                  <div className="password-field">
+                    <input
+                      type={showLoginPassword ? "text" : "password"}
+                      value={loginForm.password}
+                      onChange={(event) => updateLoginField("password", event.target.value)}
+                      placeholder={language === "en" ? "Your password" : "Votre mot de passe"}
+                      autoComplete="current-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="password-toggle"
+                      onClick={() => setShowLoginPassword((value) => !value)}
+                      aria-label={showLoginPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                    >
+                      <UiIcon name="eye" />
                     </button>
                   </div>
-                ) : (
-                  <>
-                    <div className="auth-identity-chip">
-                      <span>{language === "en" ? "Signing in as" : "Connexion avec"}</span>
-                      <strong>{loginForm.identifier}</strong>
-                      <button type="button" onClick={() => setLoginStep("identifier")}>
-                        {language === "en" ? "Change" : "Modifier"}
-                      </button>
-                    </div>
-                    <label>
-                      {copy.password}
-                      <input
-                        type="password"
-                        value={loginForm.password}
-                        onChange={(event) => updateLoginField("password", event.target.value)}
-                        minLength={8}
-                        autoFocus
-                        required
-                      />
-                    </label>
-                  </>
-                )}
+                </label>
+                {passwordNotSet ? (
+                  <div className="auth-google-hint">
+                    <p>
+                      {language === "en"
+                        ? "You signed up with Google: continue with Google above, or create a password to also sign in with your email."
+                        : "Vous vous êtes inscrit avec Google : continuez avec Google ci-dessus, ou créez un mot de passe pour vous connecter aussi par e-mail."}
+                    </p>
+                    <button type="button" onClick={startForgotPassword}>
+                      {language === "en" ? "Create a password" : "Créer un mot de passe"}
+                    </button>
+                  </div>
+                ) : null}
               </>
             )}
           </>
@@ -3768,8 +3861,10 @@ function AuthScreen({
                     ? "Reset password"
                     : "Réinitialiser le mot de passe"
               : mode === "login"
-              ? loginStep === "identifier" || loginStep === "code"
-                ? copy.continue
+              ? loginStep === "verify"
+                ? language === "en"
+                  ? "Verify"
+                  : "Vérifier"
                 : copy.connect
               : signupPhase === "code"
                 ? language === "en"
@@ -3779,6 +3874,7 @@ function AuthScreen({
           </button>
         </div>
       </form>
+      )}
             <div className="login-modal-footer">
               <p>
                 {mode === "forgot" ? (

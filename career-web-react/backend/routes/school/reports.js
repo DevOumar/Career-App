@@ -322,7 +322,7 @@ app.post("/api/school/reports/generate", async (req, res) => {
     };
     const id = `report-${crypto.randomUUID()}`;
     const baseTitle = period === "weekly" ? "Rapport hebdomadaire employabilité" : "Rapport mensuel employabilité";
-    const title = promotionName ? `${baseTitle} — ${promotionName}` : baseTitle;
+    const title = promotionName ? `${baseTitle} · ${promotionName}` : baseTitle;
     await db.query(
       "INSERT INTO school_reports (id, school_user_id, title, period, payload_json, created_at) VALUES ($1,$2,$3,$4,$5,$6)",
       [id, userId, title, period, JSON.stringify(payload), nowIso()]

@@ -364,7 +364,7 @@ app.post("/api/cabinet/announcements/send", async (req, res) => {
 
     const recruiters = await getCabinetRecruiterRows(cabinet.cabinetRootId);
     if (!recruiters.length) {
-      return res.status(400).json({ error: "Aucun destinataire — aucun recruteur rattaché pour l'instant." });
+      return res.status(400).json({ error: "Aucun destinataire : aucun recruteur rattaché pour l'instant." });
     }
 
     let failedCount = 0;

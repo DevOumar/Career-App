@@ -250,6 +250,62 @@ export function registerAdminSchoolsRoutes(app) {
 // pouvait piloter les écoles qu'une par une via Comptes/Licences. Agrège les
 // mêmes calculs que buildSchoolMetrics (déjà utilisés côté École pour son
 // propre dashboard), une fois par établissement.
+// Étudiants rattachés à une école (via ses codes de licence), avec leur
+// activité : nombre de CV, d'analyses, dernier score et statut d'alerte.
+function buildStudentList(metrics) {
+  const cvCount = {};
+  for (const row of metrics.cvRows || []) cvCount[row.user_id] = (cvCount[row.user_id] || 0) + 1;
+  const matchCount = {};
+  const latestScore = {};
+  const latestAt = {};
+  for (const row of metrics.matchRows || []) {
+    matchCount[row.user_id] = (matchCount[row.user_id] || 0) + 1;
+    const score = parseJsonField(row.payload_json, {})?.matchInsights?.score;
+    if (typeof score === "number" && (!latestAt[row.user_id] || row.created_at > latestAt[row.user_id])) {
+      latestAt[row.user_id] = row.created_at;
+      latestScore[row.user_id] = score;
+    }
+  }
+  const inactiveIds = new Set((metrics.inactiveStudents || []).map((row) => row.id));
+  return (metrics.students || []).map((student) => {
+    const subscription = parseJsonField(student.subscription_json, {});
+    return {
+      id: student.id,
+      firstName: student.first_name || "",
+      lastName: student.last_name || "",
+      email: student.email || "",
+      avatarDataUrl: student.avatar_data_url || "",
+      joinedAt: subscription.startedAt || student.created_at,
+      cvCount: cvCount[student.id] || 0,
+      matchCount: matchCount[student.id] || 0,
+      latestScore: typeof latestScore[student.id] === "number" ? latestScore[student.id] : null,
+      inactive: inactiveIds.has(student.id)
+    };
+  });
+}
+
+// Fiche publique d'une organisation (logo, sigle, coordonnées…) pour la vue
+// admin. Les colonnes ajoutées par migration peuvent manquer sur une vieille
+// base : chaque champ retombe sur une chaîne vide.
+function organizationProfileFields(row = {}, owner = {}) {
+  return {
+    logoDataUrl: row.logo_data_url || "",
+    acronym: row.acronym || "",
+    organizationType: row.organization_type || "",
+    industry: row.industry || "",
+    website: row.website || "",
+    address: row.address || "",
+    city: row.city || "",
+    country: row.country || "",
+    emailDomain: row.email_domain || "",
+    contactEmail: row.contact_email || "",
+    contactPhone: row.contact_phone || "",
+    primaryContactName: row.primary_contact_name || "",
+    description: row.description || "",
+    ownerName: `${owner.first_name || ""} ${owner.last_name || ""}`.trim()
+  };
+}
+
 app.get("/api/admin/schools", async (req, res) => {
   try {
     const adminUserId = coerceString(req.query?.adminUserId);
@@ -260,11 +316,12 @@ app.get("/api/admin/schools", async (req, res) => {
       "SELECT id, first_name, last_name, email, created_at FROM users WHERE role_type = 'school' ORDER BY created_at DESC"
     );
     const { rows: orgProfileRows } = schoolRows.length
-      ? await db.query("SELECT user_id, organization_name FROM user_org_profiles WHERE user_id = ANY($1)", [
+      ? await db.query("SELECT * FROM user_org_profiles WHERE user_id = ANY($1)", [
           schoolRows.map((row) => row.id)
         ])
       : { rows: [] };
     const orgNameByUser = Object.fromEntries(orgProfileRows.map((row) => [row.user_id, row.organization_name]));
+    const orgProfileByUser = Object.fromEntries(orgProfileRows.map((row) => [row.user_id, row]));
 
     const items = [];
     let totalSeats = 0;
@@ -287,7 +344,10 @@ app.get("/api/admin/schools", async (req, res) => {
         studentCount: metrics.students.length,
         activationRate: metrics.activationRate,
         avgScore: metrics.avgScore,
-        alertCount: alerts.length
+        alertCount: alerts.length,
+        alerts: alerts.map((alert) => ({ type: alert.type, title: alert.title, body: alert.body })),
+        students: buildStudentList(metrics),
+        ...organizationProfileFields(orgProfileByUser[school.id], school)
       });
     }
 
