@@ -10,12 +10,31 @@ export function registerCodingRoutes(app) {
     crypto,
     nowIso,
     coerceString,
-    parseJsonField
+    parseJsonField,
+    getUserRowById,
+    getEffectivePlanById
   } = app.locals.ctx;
 
   // Limites des champs envoyés à l'IA (coût et injection de consignes).
   const clip = (value, max) => String(value ?? "").slice(0, max);
   const CODE_MAX_CHARS = 20000;
+
+  // Même droit d'accès que le simulateur d'entretiens (plan qui débloque
+  // les entretiens) : le test technique fait partie de la page Entretiens.
+  async function requireInterviewAccess(req, res, userId) {
+    if (!requireMatchingSession(req, res, userId)) return false;
+    const user = await getUserRowById(userId);
+    if (!user) {
+      res.status(404).json({ error: "Utilisateur introuvable." });
+      return false;
+    }
+    const plan = await getEffectivePlanById(parseJsonField(user.subscription_json, {}).planId);
+    if (!plan?.unlocksInterviews) {
+      res.status(403).json({ error: "Le test technique n'est pas inclus dans le plan gratuit. Inclus dans les plans Élan et Trajectoire Pro, ainsi que dans les licences école et cabinet.", code: "PLAN_REQUIRED" });
+      return false;
+    }
+    return true;
+  }
 
   async function callLlm(systemPrompt, userPrompt, jsonMode = true) {
     const apiKey = GROQ_API_KEY || OPENAI_API_KEY || XAI_API_KEY;
@@ -252,7 +271,7 @@ print(two_sum([3, 2, 4], 6))       # [1, 2]
   app.post("/api/coding/generate", aiActionRateLimiter, async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
-      if (!requireMatchingSession(req, res, userId)) return;
+      if (!(await requireInterviewAccess(req, res, userId))) return;
       const language = clip(req.body?.language || "Python", 40);
       const level = clip(req.body?.level || "intermediate", 20);
       const topic = clip(req.body?.topic || "algorithms", 80);
@@ -335,7 +354,7 @@ Règles impératives :
   app.post("/api/coding/review", aiActionRateLimiter, async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
-      if (!requireMatchingSession(req, res, userId)) return;
+      if (!(await requireInterviewAccess(req, res, userId))) return;
       const language = clip(req.body?.language || "Python", 40);
       const uiLanguage = clip(req.body?.uiLanguage || "fr", 8).toLowerCase();
       const answerLanguage = uiLanguage === "en" ? "English" : "francais";

@@ -3,7 +3,8 @@ import React, { useEffect, useState } from "react";
 //  - Entretien : simulation RH / technique / direction, en chat ou en vocal ;
 //  - Test technique : exercice de code généré puis corrigé par l'IA.
 import { UiIcon } from "../../components/UiIcon.jsx";
-import { ModuleHero, InterviewHeroArt } from "../../components/ModuleWorkspace.jsx";
+import { ModuleHero, InterviewHeroArt, CodeEditorArt } from "../../components/ModuleWorkspace.jsx";
+import { getPlanById } from "../../data/plans.js";
 import InterviewPage from "./InterviewPage.jsx";
 import { CodingPage } from "../coding/CodingPage.jsx";
 
@@ -25,6 +26,8 @@ const TABS = [
 export default function InterviewHub({ language = "fr", initialTab = "interview", user, subscription, onGoToTarifs, userId, avatarDataUrl, analyzedOffer }) {
   const [tab, setTab] = useState(initialTab);
   const en = language === "en";
+  // Même droit d'accès pour toute la page : le plan doit débloquer les entretiens.
+  const isFreePlan = !getPlanById(subscription?.planId)?.unlocksInterviews;
 
   useEffect(() => {
     setTab(initialTab);
@@ -69,7 +72,23 @@ export default function InterviewHub({ language = "fr", initialTab = "interview"
         ))}
       </div>
 
-      {tab === "technical" ? (
+      {tab === "technical" && isFreePlan ? (
+        <section className="mw-locked">
+          <div className="mw-locked-art">
+            <CodeEditorArt />
+          </div>
+          <span className="mw-eyebrow">{en ? "Élan / Trajectoire Pro" : "Élan / Trajectoire Pro"}</span>
+          <h2>{en ? "Practise your technical tests with AI" : "Entraînez-vous aux tests techniques avec l'IA"}</h2>
+          <p>
+            {en
+              ? "AI-generated coding exercises matched to your level, then a detailed review: score, bugs and reference solution. Included in the Élan and Trajectoire Pro plans."
+              : "Des exercices de code générés par l'IA selon votre niveau, puis une correction détaillée : note, bugs et solution de référence. Inclus dans les plans Élan et Trajectoire Pro."}
+          </p>
+          <button type="button" className="btn-main ready" onClick={onGoToTarifs}>
+            {en ? "Unlock Pro access" : "Débloquer l'accès Pro"} <UiIcon name="chevron" />
+          </button>
+        </section>
+      ) : tab === "technical" ? (
         <CodingPage language={language} user={user} embedded />
       ) : (
         <InterviewPage
