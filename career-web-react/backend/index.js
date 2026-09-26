@@ -3178,7 +3178,18 @@ function cleanExperienceDate(value) {
   // complets ("janvier", "fevrier"...) en plus des abréviations.
   const looseMonth = "(?:janv(?:ier)?\\.?|fevr(?:ier)?\\.?|f.vr(?:ier)?\\.?|mars|avr(?:il)?\\.?|mai|juin|juil(?:let)?\\.?|aout|ao.t|sept(?:embre)?\\.?|oct(?:obre)?\\.?|nov(?:embre)?\\.?|dec(?:embre)?\\.?|d.c(?:embre)?\\.?)";
   const loose = normalized.match(new RegExp(`(?:de\\s+)?(${looseMonth}\\s*\\d{4})\\s*(?:-|\\u2013|\\u2014|a|au|to|\\?)\\s*(${looseMonth}\\s*\\d{4}|aujourd'hui|present|pr.sent)`, "i"));
-  if (!loose) return "";
+  if (!loose) {
+    // Formats sans nom de mois, très fréquents : « 2023 - 2025 »,
+    // « 01/2023 - 03/2025 », « depuis 2023 ».
+    const numericPart = "((?:0?[1-9]|1[0-2])[/.-](?:19|20)\\d{2}|(?:19|20)\\d{2})";
+    const numeric = text.match(
+      new RegExp(`${numericPart}\\s*(?:-|\\u2013|\\u2014|à|a|au|to)\\s*(${numericPart.slice(1, -1)}|aujourd'hui|present|présent|actuel|now)`, "i")
+    );
+    if (numeric) return `${numeric[1]} - ${numeric[2]}`;
+    const since = normalized.match(/\b(?:depuis|since)\s+((?:19|20)\d{2})\b/i);
+    if (since) return `${since[1]} - aujourd'hui`;
+    return "";
+  }
   const cleanPart = (part) =>
     coerceString(part)
       .replace(/^janv(?:ier)?\.?/i, "jan.")
@@ -3431,6 +3442,17 @@ function textLeaksSummary(text, summary) {
   return probe.length >= 40 && a.includes(probe);
 }
 
+// Ajoute « Anglais » / « Français » repérés dans le texte seulement s'ils ne
+// figurent pas déjà (y compris avec un niveau : « Français (natif) »).
+function mergeDetectedLanguages(languages, sourceText) {
+  const list = uniqueByNormalized(languages);
+  const text = normalizeText(sourceText);
+  const has = (...keys) => list.some((item) => keys.some((key) => normalizeText(item).includes(key)));
+  if (text.includes("anglais") && !has("anglais", "english")) list.push("Anglais");
+  if ((text.includes("francais") || text.includes("français")) && !has("francais", "français", "french")) list.push("Français");
+  return list;
+}
+
 function postProcessCvExtraction(sourceText, parsed) {
   const base = parsed || parseCvLocally(sourceText);
   const detectedSkills = detectSkillsFromText(sourceText);
@@ -3446,7 +3468,7 @@ function postProcessCvExtraction(sourceText, parsed) {
     headline: extractHeadline(sourceText, base.headline),
     summary,
     skills: uniqueByNormalized([...detectedSkills, ...(base.skills || [])]),
-    languages: uniqueByNormalized([...(base.languages || []), ...(normalizeText(sourceText).includes("anglais") ? ["Anglais"] : []), ...(normalizeText(sourceText).includes("francais") || normalizeText(sourceText).includes("français") ? ["Français"] : [])]),
+    languages: mergeDetectedLanguages(base.languages || [], sourceText),
     experiences: mergeExperiencesForReview(sourceText, detectedExperiences, base.experiences || []),
     educationItems: mergeEducationForReview(detectedEducation, base.educationItems || []),
     certifications: mergeCertificationsForReview(detectedCertifications, base.certifications || [])

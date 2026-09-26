@@ -250,6 +250,9 @@ export function registerMatchingRoutes(app) {
 
 app.post("/api/match/analyze", aiActionRateLimiter, async (req, res) => {
   try {
+    if (!req.sessionUserId) {
+      return res.status(401).json({ error: "Authentification requise." });
+    }
     const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
     const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
 
