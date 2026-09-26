@@ -1,8 +1,9 @@
 import React from "react";
-import { useState } from "react";
+import Swal from "sweetalert2";
+import { useState, useEffect } from "react";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
-import { generateSkillsTest, gradeSkillsTest } from "../../lib/inMemoryDb.js";
+import { generateSkillsTest, gradeSkillsTest, listSkillsTests, deleteSkillsTest } from "../../lib/inMemoryDb.js";
 import { SKILLS_TEST_COPY } from "./skillsTestCopy.js";
 
 function scoreClass(score, maxScore) {
@@ -25,10 +26,24 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGrading, setIsGrading] = useState(false);
   const [error, setError] = useState("");
+  const [tests, setTests] = useState([]);
 
   const hasContext = Boolean(candidate && offer && (offer.title || offer.skills?.length));
   const hasUnlimitedTokens = tokensBalance >= 999;
   const outOfTokens = !hasUnlimitedTokens && tokensBalance <= 0;
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!userId) return undefined;
+    listSkillsTests(userId)
+      .then((items) => {
+        if (!cancelled) setTests(items || []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
 
   async function handleGenerate() {
     if (!hasContext || isGenerating) return;
@@ -48,6 +63,11 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
       // ici, jamais lors de handleFinish.
       await onConsumeToken();
       setStage("in-progress");
+      // /generate a déjà persisté le test côté serveur (statut "pending") :
+      // on recharge la liste plutôt que de deviner le titre côté client.
+      listSkillsTests(userId)
+        .then((items) => setTests(items || []))
+        .catch(() => {});
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));
     } finally {
@@ -83,6 +103,11 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
       setResults(result.results);
       setFinalScore(result.finalScore);
       setStage("result");
+      // idem : /grade a mis à jour le statut ("graded") et la note côté
+      // serveur, on recharge la liste pour refléter le badge à jour.
+      listSkillsTests(userId)
+        .then((items) => setTests(items || []))
+        .catch(() => {});
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));
     } finally {
@@ -101,6 +126,27 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
     setError("");
   }
 
+  async function handleDeleteTest(event, test) {
+    event.stopPropagation();
+    if (!userId) return;
+    const result = await Swal.fire({
+      icon: "warning",
+      title: copy.deleteConfirm,
+      text: test.title || copy.untitled,
+      showCancelButton: true,
+      confirmButtonText: copy.deleteTest,
+      cancelButtonText: copy.cancel,
+      confirmButtonColor: "#f5222d"
+    });
+    if (!result.isConfirmed) return;
+    try {
+      await deleteSkillsTest({ userId, testId: test.id });
+      setTests((prev) => prev.filter((item) => item.id !== test.id));
+    } catch (_err) {
+      // Non bloquant.
+    }
+  }
+
   if (!hasContext) {
     return (
       <section className="module-locked">
@@ -116,8 +162,45 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const progressPercent = questions.length ? Math.round(((currentQuestionIndex + (stage === "result" ? 1 : 0)) / questions.length) * 100) : 0;
 
+  const historySidebar = (
+    <aside className="negotiation-history">
+      <button type="button" className="negotiation-new-btn" onClick={handleRetake}>
+        <UiIcon name="plus" /> {copy.newTest}
+      </button>
+      <span className="negotiation-history-label">{copy.history}</span>
+      {tests.length ? (
+        <ul className="negotiation-history-list">
+          {tests.map((test) => (
+            <li key={test.id} className="negotiation-history-item">
+              <span className="negotiation-history-main">
+                <span className="negotiation-history-title">{test.title || copy.untitled}</span>
+                <span className="negotiation-history-badges">
+                  <span className="history-badge">
+                    {test.status === "graded" ? `${test.finalScore}/100` : copy.statusPending}
+                  </span>
+                </span>
+              </span>
+              <button
+                type="button"
+                className="negotiation-history-delete"
+                onClick={(event) => handleDeleteTest(event, test)}
+                aria-label={copy.deleteTest}
+              >
+                <UiIcon name="trash" />
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="negotiation-history-empty">{copy.noHistory}</p>
+      )}
+    </aside>
+  );
+
   return (
-    <section className="skills-test-page">
+    <div className="negotiation-layout skills-test-layout">
+      {historySidebar}
+      <section className="skills-test-page">
       <header className="module-header feature-page-header">
         <span className="feature-page-header-icon">
           <UiIcon name="check" />
@@ -244,7 +327,8 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
           ) : null}
         </div>
       ) : null}
-    </section>
+      </section>
+    </div>
   );
 }
 

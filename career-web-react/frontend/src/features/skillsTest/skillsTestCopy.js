@@ -23,7 +23,15 @@ export const SKILLS_TEST_COPY = {
     retakeTestUnlimited: "Refaire un test",
     yourAnswer: "Votre réponse :",
     qcmType: "QCM",
-    openType: "Question ouverte"
+    openType: "Question ouverte",
+    newTest: "Nouveau test",
+    history: "Tests",
+    noHistory: "Aucun test pour l'instant.",
+    deleteTest: "Supprimer",
+    deleteConfirm: "Supprimer ce test ?",
+    cancel: "Annuler",
+    untitled: "Test sans titre",
+    statusPending: "En attente"
   },
   en: {
     title: "Skills test",
@@ -49,6 +57,14 @@ export const SKILLS_TEST_COPY = {
     retakeTestUnlimited: "Retake a test",
     yourAnswer: "Your answer:",
     qcmType: "Multiple choice",
-    openType: "Open question"
+    openType: "Open question",
+    newTest: "New test",
+    history: "Tests",
+    noHistory: "No test yet.",
+    deleteTest: "Delete",
+    deleteConfirm: "Delete this test?",
+    cancel: "Cancel",
+    untitled: "Untitled test",
+    statusPending: "Pending"
   }
 };

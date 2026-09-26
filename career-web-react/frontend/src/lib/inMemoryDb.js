@@ -512,6 +512,18 @@ export async function gradeSkillsTest({ userId, id, answers }) {
   });
 }
 
+export async function listSkillsTests(userId) {
+  if (!userId) return [];
+  const data = await request(`/skills-test/tests?userId=${encodeURIComponent(userId)}`);
+  return data.items;
+}
+
+export async function deleteSkillsTest({ userId, testId }) {
+  return request(`/skills-test/tests/${encodeURIComponent(testId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
+}
+
 export async function negotiationReply({ candidate, offer, history, targetSalary, finish, currencyLabel, salaryReference }) {
   return request("/negotiation/reply", {
     method: "POST",

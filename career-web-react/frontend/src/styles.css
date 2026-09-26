@@ -9730,6 +9730,13 @@ input[aria-invalid="true"] {
 
 /* Skills test */
 
+/* Override ponctuel de .negotiation-layout (styles.css:~9962, partagee avec
+   Négociation et Lettre & Email IA) : 260px de sidebar + 780px de contenu
+   depassent legerement le max-width 1040px par defaut. */
+.negotiation-layout.skills-test-layout {
+  max-width: 1080px;
+}
+
 .skills-test-page {
   max-width: 780px;
   margin: 0 auto;
