@@ -97,7 +97,7 @@ export function registerInterviewRoutes(app) {
     const subscription = parseJsonField(user.subscription_json, {});
     const plan = await getEffectivePlanById(subscription.planId);
     if (!plan?.unlocksInterviews) {
-      res.status(403).json({ error: "Le simulateur d'entretiens est réservé au plan Trajectoire Pro." });
+      res.status(403).json({ error: "Le simulateur d'entretiens n'est pas inclus dans le plan gratuit. Inclus dans les plans Élan et Trajectoire Pro, ainsi que dans les licences école et cabinet.", code: "PLAN_REQUIRED" });
       return false;
     }
     return true;

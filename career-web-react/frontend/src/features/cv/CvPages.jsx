@@ -129,7 +129,7 @@ function ImportPage({
 
   function handlePickedFile(file) {
     if (!file) return;
-    if (!/\.(pdf|docx?|txt|md)$/i.test(file.name || "")) {
+    if (!/\.(pdf|docx|txt|md)$/i.test(file.name || "")) {
       setUploadError(copy.uploadBadFormat);
       return;
     }
@@ -255,7 +255,7 @@ function ImportPage({
             >
               <input
                 type="file"
-                accept=".txt,.md,.pdf,.doc,.docx"
+                accept=".txt,.md,.pdf,.docx"
                 disabled={isExtractingCv}
                 onChange={(event) => {
                   handlePickedFile(event.target.files?.[0]);
@@ -281,7 +281,7 @@ function ImportPage({
                     {copy.dropOr} <em>{copy.dropBrowse}</em>
                   </span>
                   <span className="iw-formats">
-                    {["PDF", "DOCX", "DOC", "TXT"].map((format) => (
+                    {["PDF", "DOCX", "TXT"].map((format) => (
                       <i key={format}>{format}</i>
                     ))}
                     <small>{copy.dropMaxSize}</small>
