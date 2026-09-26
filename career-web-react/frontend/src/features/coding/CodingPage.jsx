@@ -17,6 +17,7 @@ import {
 import "./coding.css";
 import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
 import { CodeEditorArt } from "../../components/ModuleWorkspace.jsx";
+import { MarkdownText } from "../../components/MarkdownText.jsx";
 
 // Badge de langage (monogramme aux couleurs du langage), à la place d'emojis.
 function LangBadge({ lang }) {
@@ -451,7 +452,7 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
 
                 {/* Onglet 1: Énoncé */}
                 {activeLeftTab === "problem" && (
-                  <div className="coding-challenge-desc">{challenge.description}</div>
+                  <MarkdownText text={challenge.description} className="coding-challenge-desc" />
                 )}
 
                 {/* Onglet 2: Exemples */}
@@ -473,7 +474,7 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
                           </div>
                         )}
                         {ex.explanation && (
-                          <div className="coding-example-expl">{ex.explanation}</div>
+                          <MarkdownText text={ex.explanation} className="coding-example-expl" />
                         )}
                       </div>
                     ))}
@@ -494,7 +495,7 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
                         <span className="coding-hint-label">
                           <UiIcon name="thumbUp" /> Indice {idx + 1}
                         </span>
-                        <span className="coding-hint-text">{hint}</span>
+                        <MarkdownText text={hint} className="coding-hint-text" />
                       </div>
                     ))}
 
@@ -615,149 +616,150 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
         </div>
       </div>
 
-      {/* 4. Résultats & Revue de Code par l'IA */}
-      {evaluation && (
-        <div ref={reviewRef} className="coding-review-card">
-          <div className="coding-review-hero">
-            <div className="coding-score-block">
-              <div
-                className={`coding-score-circle ${
-                  evaluation.score >= 80
-                    ? "score-high"
-                    : evaluation.score >= 50
-                    ? "score-medium"
-                    : "score-low"
-                }`}
-              >
-                <span className="coding-score-number">{evaluation.score}</span>
-                <span className="coding-score-percent">/ 100</span>
+      {/* 4. Correction de l'IA */}
+      {evaluation && (() => {
+        const tier = evaluation.score >= 80 ? "high" : evaluation.score >= 50 ? "mid" : "low";
+        const radius = 44;
+        const length = 2 * Math.PI * radius;
+        const offset = length * (1 - Math.max(0, Math.min(100, evaluation.score)) / 100);
+        const solution = String(evaluation.suggestedSolution || "")
+          .replace(/^```[\w+#.-]*\s*\n?/, "")
+          .replace(/\n?```\s*$/, "");
+        return (
+          <div ref={reviewRef} className="cr-card">
+            <div className={`cr-hero tier-${tier}`}>
+              <div className="cr-gauge" role="img" aria-label={`${evaluation.score}/100`}>
+                <svg viewBox="0 0 110 110" aria-hidden="true">
+                  <circle cx="55" cy="55" r={radius} className="cr-gauge-track" />
+                  <circle cx="55" cy="55" r={radius} className="cr-gauge-value" strokeDasharray={length} strokeDashoffset={offset} />
+                </svg>
+                <div className="cr-gauge-label">
+                  <strong>{evaluation.score}</strong>
+                  <span>/100</span>
+                </div>
               </div>
-              <div className="coding-verdict-details">
-                <span className="coding-verdict-title">{copy.evaluationTitle}</span>
-                <span className={`coding-verdict-badge ${evaluation.verdict}`}>
-                  {copy.verdicts[evaluation.verdict] || evaluation.verdict}
-                </span>
+              <div className="cr-hero-body">
+                <span className="mw-eyebrow">{copy.reviewEyebrow}</span>
+                <h3>{copy.verdicts[evaluation.verdict] || evaluation.verdict}</h3>
+                <p>
+                  {challenge?.title}
+                  {challenge?.title ? " · " : ""}
+                  {effectiveLanguage}
+                </p>
               </div>
-            </div>
-
-            <button
-              type="button"
-              className="btn-main"
-              disabled={isSaving}
-              onClick={handleSaveSession}
-            >
-              {isSaving ? <span className="btn-spinner" /> : <UiIcon name="plus" />}
-              {copy.saveSessionBtn}
-            </button>
-          </div>
-
-          <div className="coding-review-grid">
-            {/* Exactitude & Cas limites */}
-            {evaluation.correctness ? (
-            <div className="coding-review-item">
-              <div className="coding-review-item-header">
-                <UiIcon name="check" />
-                {copy.correctnessTitle}
-              </div>
-              <div style={{ fontSize: "0.92rem", lineHeight: 1.55, color: "var(--text)" }}>
-                {evaluation.correctness}
+              <div className="cr-hero-actions">
+                <button type="button" className="btn-main ready" disabled={isSaving} onClick={handleSaveSession}>
+                  {isSaving ? <span className="btn-spinner" /> : <UiIcon name="save" />}
+                  {copy.saveSessionBtn}
+                </button>
               </div>
             </div>
-            ) : null}
 
-            {/* Complexité Algorithmique (uniquement si l'IA l'a évaluée) */}
             {evaluation.timeComplexity || evaluation.spaceComplexity ? (
-            <div className="coding-review-item">
-              <div className="coding-review-item-header">
-                <UiIcon name="chart" />
-                {copy.complexityTitle}
-              </div>
-              <div className="coding-complexity-tags">
+              <div className="cr-complexity">
                 {evaluation.timeComplexity ? (
-                  <div className="complexity-pill">
-                    <span><UiIcon name="history" /> {copy.timeComplexity} :</span>
-                    <strong>{evaluation.timeComplexity}</strong>
+                  <div className="cr-tile">
+                    <span className="cr-tile-label">
+                      <UiIcon name="history" /> {copy.timeComplexity}
+                    </span>
+                    <MarkdownText text={evaluation.timeComplexity} className="cr-tile-value" />
                   </div>
                 ) : null}
                 {evaluation.spaceComplexity ? (
-                  <div className="complexity-pill">
-                    <span><UiIcon name="file" /> {copy.spaceComplexity} :</span>
-                    <strong>{evaluation.spaceComplexity}</strong>
+                  <div className="cr-tile">
+                    <span className="cr-tile-label">
+                      <UiIcon name="file" /> {copy.spaceComplexity}
+                    </span>
+                    <MarkdownText text={evaluation.spaceComplexity} className="cr-tile-value" />
                   </div>
                 ) : null}
               </div>
-            </div>
             ) : null}
 
-            {/* Qualité & Bonnes Pratiques */}
-            {evaluation.quality ? (
-            <div className="coding-review-item">
-              <div className="coding-review-item-header">
-                <UiIcon name="thumbUp" />
-                {copy.qualityTitle}
-              </div>
-              <div style={{ fontSize: "0.92rem", lineHeight: 1.55, color: "var(--text)" }}>
-                {evaluation.quality}
-              </div>
+            <div className="cr-grid">
+              {evaluation.correctness ? (
+                <section className="cr-block">
+                  <h4>
+                    <span className="cr-block-icon">
+                      <UiIcon name="check" />
+                    </span>
+                    {copy.correctnessTitle}
+                  </h4>
+                  <MarkdownText text={evaluation.correctness} />
+                </section>
+              ) : null}
+              {evaluation.quality ? (
+                <section className="cr-block">
+                  <h4>
+                    <span className="cr-block-icon">
+                      <UiIcon name="thumbUp" />
+                    </span>
+                    {copy.qualityTitle}
+                  </h4>
+                  <MarkdownText text={evaluation.quality} />
+                </section>
+              ) : null}
             </div>
-            ) : null}
 
-            {/* Bugs & Points d'attention */}
             {evaluation.bugs && evaluation.bugs.length > 0 ? (
-              <div className="coding-review-item" style={{ background: "#fef2f2", borderColor: "#fecaca" }}>
-                <div className="coding-review-item-header" style={{ color: "#991b1b" }}>
-                  <UiIcon name="alert" />
+              <section className="cr-block cr-bugs">
+                <h4>
+                  <span className="cr-block-icon">
+                    <UiIcon name="alert" />
+                  </span>
                   {copy.bugsTitle}
-                </div>
-                <ul style={{ margin: 0, paddingLeft: "18px", fontSize: "0.9rem", color: "#7f1d1d" }}>
-                  {evaluation.bugs.map((b, i) => (
-                    <li key={i}>{b}</li>
+                  <em>{evaluation.bugs.length}</em>
+                </h4>
+                <ul>
+                  {evaluation.bugs.map((bug, index) => (
+                    <li key={index}>
+                      <MarkdownText text={bug} />
+                    </li>
                   ))}
                 </ul>
-              </div>
+              </section>
             ) : null}
+
+            {evaluation.explanation ? (
+              <section className="cr-block">
+                <h4>
+                  <span className="cr-block-icon">
+                    <UiIcon name="chat" />
+                  </span>
+                  {copy.explanationTitle}
+                </h4>
+                <MarkdownText text={evaluation.explanation} />
+              </section>
+            ) : null}
+
+            {solution ? (
+              <section className="cr-solution">
+                <div className="cr-solution-head">
+                  <span>
+                    <UiIcon name="code" /> {copy.solutionTitle}
+                  </span>
+                  <button type="button" className="cr-copy" onClick={() => handleCopyCode(solution, "solution")}>
+                    <UiIcon name={copiedSolution ? "check" : "file"} />
+                    {copiedSolution ? copy.codeCopied : copy.copyCodeBtn}
+                  </button>
+                </div>
+                <pre>
+                  <code>{solution}</code>
+                </pre>
+              </section>
+            ) : null}
+
+            <AiDisclaimer
+              language={language}
+              text={
+                language === "en"
+                  ? "AI-generated review: the score and feedback are indicative. Always test your code yourself."
+                  : "Correction générée par l'IA : la note et les retours sont indicatifs. Testez toujours votre code vous-même."
+              }
+            />
           </div>
-
-          {/* Explication & Pédagogie */}
-          {evaluation.explanation && (
-            <div className="coding-review-item">
-              <div className="coding-review-item-header">
-                <UiIcon name="chat" />
-                {copy.explanationTitle}
-              </div>
-              <div style={{ fontSize: "0.95rem", lineHeight: 1.6, color: "var(--text)", whiteSpace: "pre-wrap" }}>
-                {evaluation.explanation}
-              </div>
-            </div>
-          )}
-
-          {/* Solution Optimale de Référence */}
-          {evaluation.suggestedSolution && (
-            <div className="coding-solution-box">
-              <div className="coding-solution-header">
-                <span>{copy.solutionTitle}</span>
-                <button
-                  type="button"
-                  className="btn-editor-action"
-                  onClick={() => handleCopyCode(evaluation.suggestedSolution, "solution")}
-                >
-                  <UiIcon name={copiedSolution ? "check" : "docClassic"} />
-                  {copiedSolution ? copy.codeCopied : copy.copyCodeBtn}
-                </button>
-              </div>
-              <pre className="coding-solution-pre">{evaluation.suggestedSolution}</pre>
-            </div>
-          )}
-          <AiDisclaimer
-            language={language}
-            text={
-              language === "en"
-                ? "AI-generated review: the score and feedback are indicative. Always test your code yourself."
-                : "Correction générée par l'IA : la note et les retours sont indicatifs. Testez toujours votre code vous-même."
-            }
-          />
-        </div>
-      )}
+        );
+      })()}
 
       </>
       ) : null}

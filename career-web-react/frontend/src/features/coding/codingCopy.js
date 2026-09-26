@@ -70,13 +70,14 @@ export const CODING_COPY = {
     evaluatingBtn: "Analyse et revue IA...",
     htmlPreviewTab: "Aperçu en direct",
 
-    evaluationTitle: "3. Bilan & Revue de Code de l'IA",
+    evaluationTitle: "Correction de l'IA",
+    reviewEyebrow: "Correction de l'IA",
     scoreLabel: "Score d'évaluation",
     verdictLabel: "Verdict",
     verdicts: {
-      success: "Excellente solution — Prêt pour l'entretien",
-      partial: "Partiellement réussi — Des optimisations recommandées",
-      needs_work: "À retravailler — Corriger la logique ou les erreurs"
+      success: "Excellente solution, prête pour l'entretien",
+      partial: "Solution partielle : quelques optimisations à apporter",
+      needs_work: "À retravailler : la logique doit être corrigée"
     },
     correctnessTitle: "Exactitude & Gestion des cas limites",
     complexityTitle: "Complexité algorithmique (Big-O)",
@@ -141,7 +142,8 @@ export const CODING_COPY = {
     evaluatingBtn: "AI analysis in progress...",
     htmlPreviewTab: "Live Preview",
 
-    evaluationTitle: "3. AI Code Review & Feedback",
+    evaluationTitle: "AI review",
+    reviewEyebrow: "AI review",
     scoreLabel: "Evaluation Score",
     verdictLabel: "Verdict",
     verdicts: {
