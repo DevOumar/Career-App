@@ -103,7 +103,8 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
         language: effectiveLanguage,
         level,
         topic,
-        customTopic
+        customTopic,
+        uiLanguage: language
       });
       if (res) {
         setChallenge(res);
@@ -137,7 +138,8 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
         userId: user?.id,
         language: effectiveLanguage,
         challenge,
-        code: userCode
+        code: userCode,
+        uiLanguage: language
       });
 
       if (res) {
