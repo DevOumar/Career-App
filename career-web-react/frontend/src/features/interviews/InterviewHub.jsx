@@ -23,15 +23,47 @@ const TABS = [
   }
 ];
 
+const INTERVIEW_TAB_SESSION_KEY = "career_app_interview_tab";
+const VALID_TAB_IDS = new Set(TABS.map((item) => item.id));
+
+function readSavedTab() {
+  if (typeof window === "undefined") return "";
+  try {
+    const saved = sessionStorage.getItem(INTERVIEW_TAB_SESSION_KEY);
+    return VALID_TAB_IDS.has(saved) ? saved : "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function saveTab(tabId) {
+  if (typeof window === "undefined" || !VALID_TAB_IDS.has(tabId)) return;
+  try {
+    sessionStorage.setItem(INTERVIEW_TAB_SESSION_KEY, tabId);
+  } catch (_error) {
+    // sessionStorage unavailable; keep the in-memory tab only.
+  }
+}
+
 export default function InterviewHub({ language = "fr", initialTab = "interview", user, subscription, onGoToTarifs, userId, avatarDataUrl, analyzedOffer }) {
-  const [tab, setTab] = useState(initialTab);
+  const [tab, setTab] = useState(() => readSavedTab() || initialTab);
   const en = language === "en";
   // Même droit d'accès pour toute la page : le plan doit débloquer les entretiens.
   const isFreePlan = !getPlanById(subscription?.planId)?.unlocksInterviews;
 
   useEffect(() => {
-    setTab(initialTab);
+    if (initialTab === "technical") {
+      setTab("technical");
+      saveTab("technical");
+      return;
+    }
+    setTab(readSavedTab() || initialTab);
   }, [initialTab]);
+
+  function selectTab(nextTab) {
+    setTab(nextTab);
+    saveTab(nextTab);
+  }
 
   return (
     <section className="iv-hub">
@@ -59,7 +91,7 @@ export default function InterviewHub({ language = "fr", initialTab = "interview"
             role="tab"
             aria-selected={tab === item.id}
             className={`iv-tab ${tab === item.id ? "is-active" : ""}`}
-            onClick={() => setTab(item.id)}
+            onClick={() => selectTab(item.id)}
           >
             <span className="iv-tab-icon">
               <UiIcon name={item.icon} />
