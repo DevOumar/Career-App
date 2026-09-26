@@ -1,9 +1,18 @@
 import { actionIdempotencyKey, completeIdempotentAction, newIdempotencyKey } from "./idempotency.js";
 const explicitApiBase = String(import.meta?.env?.VITE_API_URL || "").trim();
-const hostedApiBase =
-  typeof window !== "undefined" && window.location.hostname === "career-cv-henna.vercel.app"
-    ? "https://career-app-api-mlk9.onrender.com/api"
-    : "";
+const HOSTED_API_BASE = "https://career-app-api-mlk9.onrender.com/api";
+const HOSTED_FRONTEND_HOSTS = new Set([
+  "career-cv-henna.vercel.app",
+  "careercv.fr",
+  "www.careercv.fr"
+]);
+
+function getHostedApiBase() {
+  if (typeof window === "undefined") return "";
+  return HOSTED_FRONTEND_HOSTS.has(window.location.hostname) ? HOSTED_API_BASE : "";
+}
+
+const hostedApiBase = getHostedApiBase();
 const fallbackApiBases = [
   hostedApiBase,
   "http://127.0.0.1:8787/api",
