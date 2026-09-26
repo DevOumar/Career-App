@@ -40,6 +40,12 @@ export function getFriendlyErrorMessage(error, language = "fr") {
 }
 
 export function getCvImportErrorMessage(error, language = "fr") {
+  // CV scanné / exporté en image : message complet, jamais tronqué.
+  if (error?.code === "CV_IMAGE_PDF") {
+    return language === "en"
+      ? "This CV looks like an image (scanned PDF or exported as an image), so its text cannot be read. Export it as a PDF from Word, Canva or Google Docs (selectable text), or import the DOCX file."
+      : "Ce CV semble être une image (PDF scanné ou exporté en image) : son texte ne peut pas être lu. Exportez-le en PDF depuis Word, Canva ou Google Docs (texte sélectionnable), ou importez le fichier DOCX.";
+  }
   const friendly = getFriendlyErrorMessage(error, language);
   const generic =
     language === "en"

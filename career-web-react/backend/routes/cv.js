@@ -253,6 +253,9 @@ export function registerCvRoutes(app) {
 
 app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
   try {
+    if (!req.sessionUserId) {
+      return res.status(401).json({ error: "Authentification requise." });
+    }
     const fileName = coerceString(req.body?.fileName || "cv.txt");
     const mimeType = coerceString(req.body?.mimeType);
     const sourceText = await extractTextFromUpload({
@@ -262,19 +265,31 @@ app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
     });
 
     if (sourceText.length < 20) {
+      // PDF sans texte lisible : presque toujours un CV scanné ou exporté en
+      // image. On l'explique clairement plutôt qu'un message générique.
+      const isPdf = /\.pdf$/i.test(fileName) || /pdf/i.test(mimeType);
       return res.status(422).json({
-        error: "Impossible d'extraire assez de texte depuis ce fichier. Essaie un PDF texte ou un DOCX plus lisible."
+        code: isPdf ? "CV_IMAGE_PDF" : "CV_UNREADABLE",
+        error: isPdf
+          ? "Ce CV semble être une image (PDF scanné ou exporté en image) : son texte ne peut pas être lu. Exportez-le en PDF depuis Word, Canva ou Google Docs (texte sélectionnable), ou importez le fichier DOCX."
+          : "Impossible d'extraire assez de texte depuis ce fichier. Importez un PDF texte ou un DOCX."
       });
     }
 
     let parsed = null;
     let extractionProvider = "local";
-    try {
-      parsed = await extractCvWithAi(sourceText);
-      if (parsed) extractionProvider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
-    } catch (aiError) {
-      parsed = null;
-      console.warn(`Extraction IA indisponible: ${aiError.message}`);
+    // Jusqu'à 3 essais espacés : une limite de débit passagère du
+    // fournisseur IA (plusieurs imports rapprochés) ne doit pas faire
+    // retomber sur l'analyse locale, bien moins précise.
+    for (let attempt = 0; attempt < 3 && !parsed; attempt += 1) {
+      if (attempt) await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+      try {
+        parsed = await extractCvWithAi(sourceText);
+        if (parsed) extractionProvider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+      } catch (aiError) {
+        parsed = null;
+        console.warn(`Extraction IA indisponible (essai ${attempt + 1}/3): ${aiError.message}`);
+      }
     }
 
     const finalParsed = postProcessCvExtraction(sourceText, parsed);
@@ -293,6 +308,9 @@ app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
 
 app.post("/api/jobs/extract", aiActionRateLimiter, async (req, res) => {
   try {
+    if (!req.sessionUserId) {
+      return res.status(401).json({ error: "Authentification requise." });
+    }
     const text = cleanExtractedText(req.body?.text);
     if (text.length < 50) {
       return res.status(422).json({ error: "Colle une description de poste plus complète avant de lancer l'extraction." });
@@ -319,6 +337,9 @@ app.post("/api/jobs/extract", aiActionRateLimiter, async (req, res) => {
 
 app.post("/api/cv/optimize-ats", aiActionRateLimiter, async (req, res) => {
   try {
+    if (!req.sessionUserId) {
+      return res.status(401).json({ error: "Authentification requise." });
+    }
     const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
     const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
     const language = req.body?.language === "en" ? "en" : "fr";

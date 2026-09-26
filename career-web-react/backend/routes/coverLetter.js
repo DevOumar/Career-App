@@ -250,6 +250,9 @@ export function registerCoverLetterRoutes(app) {
 
 app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
   try {
+    if (!req.sessionUserId) {
+      return res.status(401).json({ error: "Authentification requise." });
+    }
     const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
     const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
     const tone = coerceString(req.body?.tone) || "formal";
