@@ -13,6 +13,10 @@ export function registerCodingRoutes(app) {
     parseJsonField
   } = app.locals.ctx;
 
+  // Limites des champs envoyés à l'IA (coût et injection de consignes).
+  const clip = (value, max) => String(value ?? "").slice(0, max);
+  const CODE_MAX_CHARS = 20000;
+
   async function callLlm(systemPrompt, userPrompt, jsonMode = true) {
     const apiKey = GROQ_API_KEY || OPENAI_API_KEY || XAI_API_KEY;
     const preferredGroqModel = String(AI_MODEL || "").trim() || "openai/gpt-oss-120b";
@@ -247,12 +251,12 @@ print(two_sum([3, 2, 4], 6))       # [1, 2]
   // 1. Générer un exercice de coding sur-mesure
   app.post("/api/coding/generate", aiActionRateLimiter, async (req, res) => {
     try {
-      const {
-        language = "Python",
-        level = "intermediate",
-        topic = "algorithms",
-        customTopic = ""
-      } = req.body || {};
+      const userId = coerceString(req.body?.userId);
+      if (!requireMatchingSession(req, res, userId)) return;
+      const language = clip(req.body?.language || "Python", 40);
+      const level = clip(req.body?.level || "intermediate", 20);
+      const topic = clip(req.body?.topic || "algorithms", 80);
+      const customTopic = clip(req.body?.customTopic, 300);
 
       const levelLabel =
         level === "beginner" ? "Débutant (Junior / Fondations)" : level === "advanced" ? "Avancé (Senior / Haute performance)" : "Intermédiaire (Standard d'entretien)";
@@ -301,8 +305,10 @@ Règles impératives :
         }
       }
 
+      // IA indisponible ou réponse inexploitable : on le dit, plutôt que de
+      // présenter un exercice pré-écrit comme généré pour ce candidat.
       if (!parsed || !parsed.title || !parsed.starterCode) {
-        parsed = getFallbackChallenge(language, level, topic, customTopic);
+        return res.status(503).json({ error: "La génération d'exercice est momentanément indisponible. Réessayez dans quelques instants." });
       }
 
       res.json({
@@ -325,15 +331,21 @@ Règles impératives :
   // 2. Évaluer et faire la revue de code
   app.post("/api/coding/review", aiActionRateLimiter, async (req, res) => {
     try {
-      const {
-        language = "Python",
-        challenge = {},
-        code = ""
-      } = req.body || {};
+      const userId = coerceString(req.body?.userId);
+      if (!requireMatchingSession(req, res, userId)) return;
+      const language = clip(req.body?.language || "Python", 40);
+      const rawChallenge = req.body?.challenge && typeof req.body.challenge === "object" ? req.body.challenge : {};
+      if (JSON.stringify(rawChallenge).length > 20000) {
+        return res.status(413).json({ error: "Énoncé d'exercice trop volumineux." });
+      }
+      const challenge = rawChallenge;
 
-      const userCode = (code || "").trim();
+      const userCode = String(req.body?.code || "").trim();
       if (!userCode) {
         return res.status(400).json({ error: "Aucun code soumis pour évaluation." });
+      }
+      if (userCode.length > CODE_MAX_CHARS) {
+        return res.status(413).json({ error: `Code trop long (${CODE_MAX_CHARS} caractères maximum).` });
       }
 
       const systemPrompt = `Tu es un Lead Software Engineer et Reviewer de code expérimenté.
@@ -389,21 +401,9 @@ ${userCode}
         }
       }
 
+      // IA indisponible ou réponse inexploitable : aucune note n'est inventée.
       if (!parsed || typeof parsed.score !== "number") {
-        // Intelligent heuristics fallback
-        const lines = userCode.split("\n").length;
-        const score = Math.min(90, Math.max(65, 50 + lines * 3));
-        parsed = {
-          score,
-          verdict: score >= 80 ? "success" : "partial",
-          correctness: "La logique principale répond à l'énoncé. Pensez à vérifier attentivement les cas de listes vides ou de valeurs nulles.",
-          timeComplexity: "O(n)",
-          spaceComplexity: "O(1) ou O(n)",
-          quality: "Code propre et bien découpé. Les conventions de nommage respectent les standards du langage.",
-          bugs: [],
-          suggestedSolution: challenge.starterCode || userCode,
-          explanation: "Bonne approche globale. Pour aller plus loin en entretien, explicitez systématiquement votre raisonnement et la complexité temporelle avant de commencer à coder."
-        };
+        return res.status(503).json({ error: "La correction IA est momentanément indisponible. Votre code n'est pas perdu : réessayez dans quelques instants." });
       }
 
       res.json({
@@ -411,10 +411,10 @@ ${userCode}
         review: {
           score: Math.min(100, Math.max(0, Math.round(parsed.score))),
           verdict: parsed.verdict || (parsed.score >= 80 ? "success" : "partial"),
-          correctness: parsed.correctness || "Analyse complétée.",
-          timeComplexity: parsed.timeComplexity || "O(n)",
-          spaceComplexity: parsed.spaceComplexity || "O(1)",
-          quality: parsed.quality || "Bonne structure générale.",
+          correctness: parsed.correctness || "",
+          timeComplexity: parsed.timeComplexity || "",
+          spaceComplexity: parsed.spaceComplexity || "",
+          quality: parsed.quality || "",
           bugs: Array.isArray(parsed.bugs) ? parsed.bugs : [],
           suggestedSolution: parsed.suggestedSolution || "",
           explanation: parsed.explanation || ""
@@ -430,12 +430,13 @@ ${userCode}
   app.post("/api/coding/sessions", async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
-      if (!userId) {
-        return res.status(400).json({ error: "userId requis." });
+      if (!requireMatchingSession(req, res, userId)) return;
+      if (JSON.stringify(req.body?.session || {}).length > 200000) {
+        return res.status(413).json({ error: "Session trop volumineuse." });
       }
 
       const session = req.body?.session || {};
-      const id = session.id || crypto.randomUUID();
+      const id = clip(session.id, 80) || crypto.randomUUID();
       const title = String(session.title || "Exercice de code").slice(0, 200);
       const language = String(session.language || "Python").slice(0, 50);
       const level = String(session.level || "intermediate").slice(0, 50);
@@ -455,9 +456,14 @@ ${userCode}
            language = EXCLUDED.language,
            level = EXCLUDED.level,
            updated_at = EXCLUDED.updated_at,
-           payload_json = EXCLUDED.payload_json`,
+           payload_json = EXCLUDED.payload_json
+         WHERE coding_sessions.user_id = EXCLUDED.user_id`,
         [id, userId, title, language, level, now, now, payloadJson]
       );
+      const { rows: ownerRows } = await db.query("SELECT user_id FROM coding_sessions WHERE id = $1", [id]);
+      if (ownerRows[0] && ownerRows[0].user_id !== userId) {
+        return res.status(403).json({ error: "Accès refusé." });
+      }
 
       res.json({ ok: true, id, updatedAt: now });
     } catch (err) {
@@ -470,9 +476,7 @@ ${userCode}
   app.get("/api/coding/sessions", async (req, res) => {
     try {
       const userId = coerceString(req.query?.userId);
-      if (!userId) {
-        return res.json({ ok: true, items: [] });
-      }
+      if (!requireMatchingSession(req, res, userId)) return;
 
       const result = await db.query(
         `SELECT id, title, language, level, created_at, updated_at, payload_json
@@ -507,8 +511,9 @@ ${userCode}
   app.delete("/api/coding/sessions/:id", async (req, res) => {
     try {
       const userId = coerceString(req.query?.userId);
+      if (!requireMatchingSession(req, res, userId)) return;
       const sessionId = coerceString(req.params?.id);
-      if (!userId || !sessionId) {
+      if (!sessionId) {
         return res.status(400).json({ error: "userId et sessionId requis." });
       }
 

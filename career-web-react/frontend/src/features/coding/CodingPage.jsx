@@ -15,6 +15,7 @@ import {
   deleteCodingSession
 } from "../../lib/inMemoryDb.js";
 import "./coding.css";
+import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
 
 export function CodingPage({ language = "fr", user }) {
   const copy = CODING_COPY[language] || CODING_COPY.fr;
@@ -403,7 +404,7 @@ export function CodingPage({ language = "fr", user }) {
               className={`coding-panel-tab ${activeLeftTab === "hints" ? "active" : ""}`}
               onClick={() => setActiveLeftTab("hints")}
             >
-              <UiIcon name="sparkles" />
+              <UiIcon name="thumbUp" />
               {copy.hintsTab}{" "}
               {challenge?.hints?.length ? `(${revealedHintsCount}/${challenge.hints.length})` : ""}
             </button>
@@ -463,7 +464,7 @@ export function CodingPage({ language = "fr", user }) {
                     {(challenge.hints || []).slice(0, revealedHintsCount).map((hint, idx) => (
                       <div key={idx} className="coding-hint-item">
                         <span className="coding-hint-label">
-                          <UiIcon name="sparkles" /> Indice {idx + 1}
+                          <UiIcon name="thumbUp" /> Indice {idx + 1}
                         </span>
                         <span className="coding-hint-text">{hint}</span>
                       </div>
@@ -624,6 +625,7 @@ export function CodingPage({ language = "fr", user }) {
 
           <div className="coding-review-grid">
             {/* Exactitude & Cas limites */}
+            {evaluation.correctness ? (
             <div className="coding-review-item">
               <div className="coding-review-item-header">
                 <UiIcon name="check" />
@@ -633,35 +635,44 @@ export function CodingPage({ language = "fr", user }) {
                 {evaluation.correctness}
               </div>
             </div>
+            ) : null}
 
-            {/* Complexité Algorithmique */}
+            {/* Complexité Algorithmique (uniquement si l'IA l'a évaluée) */}
+            {evaluation.timeComplexity || evaluation.spaceComplexity ? (
             <div className="coding-review-item">
               <div className="coding-review-item-header">
                 <UiIcon name="chart" />
                 {copy.complexityTitle}
               </div>
               <div className="coding-complexity-tags">
-                <div className="complexity-pill">
-                  <span>⏱️ {copy.timeComplexity} :</span>
-                  <strong>{evaluation.timeComplexity || "O(n)"}</strong>
-                </div>
-                <div className="complexity-pill">
-                  <span>💾 {copy.spaceComplexity} :</span>
-                  <strong>{evaluation.spaceComplexity || "O(1)"}</strong>
-                </div>
+                {evaluation.timeComplexity ? (
+                  <div className="complexity-pill">
+                    <span>⏱️ {copy.timeComplexity} :</span>
+                    <strong>{evaluation.timeComplexity}</strong>
+                  </div>
+                ) : null}
+                {evaluation.spaceComplexity ? (
+                  <div className="complexity-pill">
+                    <span>💾 {copy.spaceComplexity} :</span>
+                    <strong>{evaluation.spaceComplexity}</strong>
+                  </div>
+                ) : null}
               </div>
             </div>
+            ) : null}
 
             {/* Qualité & Bonnes Pratiques */}
+            {evaluation.quality ? (
             <div className="coding-review-item">
               <div className="coding-review-item-header">
-                <UiIcon name="sparkles" />
+                <UiIcon name="thumbUp" />
                 {copy.qualityTitle}
               </div>
               <div style={{ fontSize: "0.92rem", lineHeight: 1.55, color: "var(--text)" }}>
                 {evaluation.quality}
               </div>
             </div>
+            ) : null}
 
             {/* Bugs & Points d'attention */}
             {evaluation.bugs && evaluation.bugs.length > 0 ? (
@@ -683,7 +694,7 @@ export function CodingPage({ language = "fr", user }) {
           {evaluation.explanation && (
             <div className="coding-review-item">
               <div className="coding-review-item-header">
-                <UiIcon name="bulb" />
+                <UiIcon name="chat" />
                 {copy.explanationTitle}
               </div>
               <div style={{ fontSize: "0.95rem", lineHeight: 1.6, color: "var(--text)", whiteSpace: "pre-wrap" }}>
@@ -709,6 +720,14 @@ export function CodingPage({ language = "fr", user }) {
               <pre className="coding-solution-pre">{evaluation.suggestedSolution}</pre>
             </div>
           )}
+          <AiDisclaimer
+            language={language}
+            text={
+              language === "en"
+                ? "AI-generated review: the score and feedback are indicative. Always test your code yourself."
+                : "Correction générée par l'IA : la note et les retours sont indicatifs. Testez toujours votre code vous-même."
+            }
+          />
         </div>
       )}
 
