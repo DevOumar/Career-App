@@ -318,6 +318,110 @@
   }
 }
 
+@media (max-width: 720px) {
+  .coding-page {
+    padding-inline: 0;
+  }
+
+  .coding-panel-nav,
+  .coding-editor-toolbar,
+  .coding-editor-footer,
+  .coding-review-hero,
+  .coding-score-block {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .coding-panel-nav {
+    overflow-x: auto;
+    flex-direction: row;
+    scrollbar-width: none;
+  }
+
+  .coding-panel-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .coding-panel-tab {
+    flex: 1 0 11rem;
+    justify-content: center;
+    min-height: 54px;
+    padding: 0.75rem 0.85rem;
+  }
+
+  .coding-panel-content,
+  .coding-review-card {
+    padding: 1rem;
+  }
+
+  .coding-editor-toolbar,
+  .coding-editor-footer {
+    gap: 0.75rem;
+  }
+
+  .coding-editor-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .btn-editor-action,
+  .btn-coding-evaluate {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .coding-editor-body {
+    min-height: 380px;
+    max-height: 56vh;
+  }
+
+  .coding-editor-gutters {
+    min-width: 34px;
+    padding-inline: 6px;
+    font-size: 0.78rem;
+  }
+
+  .coding-editor-textarea {
+    min-width: 0;
+    padding: 0.85rem;
+    font-size: 0.82rem;
+  }
+
+  .coding-challenge-title {
+    font-size: 1.08rem;
+  }
+
+  .coding-challenge-desc {
+    font-size: 0.92rem;
+    line-height: 1.55;
+  }
+
+  .coding-review-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .coding-complexity-tags {
+    flex-wrap: wrap;
+  }
+
+  .coding-history-drawer {
+    width: 100vw;
+    max-width: 100vw;
+  }
+}
+
+@media (max-width: 420px) {
+  .coding-editor-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .coding-panel-tab {
+    flex-basis: 9.5rem;
+    font-size: 0.82rem;
+  }
+}
+
 /* Left Panel: Problem, Examples, Hints */
 .coding-panel-left {
   background: var(--surface, #ffffff);
