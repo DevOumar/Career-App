@@ -746,18 +746,18 @@ export async function sendInterviewMessage({ userId, text, history = [], type_en
 }
 
 // Méthodes pour l'entraînement au code (Coding Practice)
-export async function generateCodingChallenge({ userId, language, level, topic, customTopic }) {
+export async function generateCodingChallenge({ userId, language, level, topic, customTopic, uiLanguage }) {
   const data = await request("/coding/generate", {
     method: "POST",
-    body: { userId, language, level, topic, customTopic }
+    body: { userId, language, level, topic, customTopic, uiLanguage }
   });
   return data.challenge;
 }
 
-export async function reviewCodingSolution({ userId, language, challenge, code }) {
+export async function reviewCodingSolution({ userId, language, challenge, code, uiLanguage }) {
   const data = await request("/coding/review", {
     method: "POST",
-    body: { userId, language, challenge, code }
+    body: { userId, language, challenge, code, uiLanguage }
   });
   return data.review;
 }

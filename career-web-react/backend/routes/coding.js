@@ -257,11 +257,14 @@ print(two_sum([3, 2, 4], 6))       # [1, 2]
       const level = clip(req.body?.level || "intermediate", 20);
       const topic = clip(req.body?.topic || "algorithms", 80);
       const customTopic = clip(req.body?.customTopic, 300);
+      const uiLanguage = clip(req.body?.uiLanguage || "fr", 8).toLowerCase();
+      const answerLanguage = uiLanguage === "en" ? "English" : "francais";
 
       const levelLabel =
         level === "beginner" ? "Débutant (Junior / Fondations)" : level === "advanced" ? "Avancé (Senior / Haute performance)" : "Intermédiaire (Standard d'entretien)";
 
-      const systemPrompt = `Tu es un examinateur technique senior et lead developer dans une grande entreprise tech (style Big Tech / Scale-up).
+      const systemPrompt = `Tu dois repondre en ${answerLanguage}. Tous les champs textuels destines au candidat, y compris title, description, examples.explanation, testCases.description, hints et commentaires du starterCode, doivent etre en ${answerLanguage}.
+Tu es un examinateur technique senior et lead developer dans une grande entreprise tech (style Big Tech / Scale-up).
 Ta mission est de concevoir un défi technique de programmation réaliste, captivant et parfaitement calibré pour l'entraînement d'un candidat à un entretien d'embauche.
 
 Règles impératives :
@@ -288,7 +291,7 @@ Règles impératives :
 
       const userPrompt = `Génère un nouveau défi technique d'entraînement en ${language}, niveau ${levelLabel}, thématique : ${topic}.`;
 
-      const rawJson = await callLlm(systemPrompt, userPrompt, true);
+      const rawJson = await callLlm(`Tu dois repondre en ${answerLanguage}.\n${systemPrompt}`, userPrompt, true);
       let parsed = null;
       if (rawJson) {
         try {
@@ -334,6 +337,8 @@ Règles impératives :
       const userId = coerceString(req.body?.userId);
       if (!requireMatchingSession(req, res, userId)) return;
       const language = clip(req.body?.language || "Python", 40);
+      const uiLanguage = clip(req.body?.uiLanguage || "fr", 8).toLowerCase();
+      const answerLanguage = uiLanguage === "en" ? "English" : "francais";
       const rawChallenge = req.body?.challenge && typeof req.body.challenge === "object" ? req.body.challenge : {};
       if (JSON.stringify(rawChallenge).length > 20000) {
         return res.status(413).json({ error: "Énoncé d'exercice trop volumineux." });
@@ -384,7 +389,7 @@ ${userCode}
 
 Évalue ce code et renvoie l'analyse au format JSON demandé.`;
 
-      const rawJson = await callLlm(systemPrompt, userPrompt, true);
+      const rawJson = await callLlm(`Tu dois repondre en ${answerLanguage}.\n${systemPrompt}`, userPrompt, true);
       let parsed = null;
       if (rawJson) {
         try {
