@@ -6,7 +6,6 @@ import { AvatarCircle, getAvatarSource } from "./components/AvatarCircle.jsx";
 import { LanguageSwitch } from "./components/LanguageSwitch.jsx";
 import MfaLoginStep from "./features/account/mfa/MfaLoginStep.jsx";
 import { askLogoutConfirmation } from "./features/account/LogoutConfirmHost.jsx";
-import InterviewPage from "./features/interviews/InterviewPage.jsx";
 import SalaryNegotiationPage from "./features/negotiation/SalaryNegotiationPage.jsx";
 import ApplicationsPage from "./features/applications/ApplicationsPage.jsx";
 import { AdminApp, adminNotifRelativeLabel } from "./features/admin/AdminApp.jsx";
@@ -23,7 +22,7 @@ import HomePage from "./features/home/HomePage.jsx";
 import ProfilePage from "./features/profile/ProfilePage.jsx";
 import CoverLetterPage from "./features/coverLetter/CoverLetterPage.jsx";
 import EmailFinderPage from "./features/emailScout/EmailFinderPage.jsx";
-import { CodingPage } from "./features/coding/CodingPage.jsx";
+import InterviewHub from "./features/interviews/InterviewHub.jsx";
 import {
   CURRENCY_OPTIONS,
   getCurrencyOption,
@@ -161,7 +160,6 @@ const NAV_ITEMS = [
   { id: "import", label: { fr: "Importer CV", en: "Import CV" }, always: true, icon: "upload" },
   { id: "candidatures", label: { fr: "Candidatures", en: "Applications" }, always: true, icon: "briefcase" },
   { id: "entretiens", label: { fr: "Entretiens", en: "Interviews" }, icon: "chat" },
-  { id: "coding", label: { fr: "Coding", en: "Coding" }, icon: "code" },
   { id: "lettre", label: { fr: "Lettre IA", en: "AI Letter" }, icon: "mail" },
   { id: "negociation", label: { fr: "Négociation", en: "Negotiation" }, icon: "scale" },
   { id: "email-finder", label: { fr: "Email Scout", en: "Email Scout" }, icon: "network" },
@@ -2660,19 +2658,16 @@ export default function App() {
         {activePage === "analyse" ? <AnalysisPage matchData={latestMatch} language={language} /> : null}
         {activePage === "offres" ? <OffersPage matchData={latestMatch} premium={premium} language={language} /> : null}
         {activePage === "candidatures" ? <ApplicationsPage language={language} userId={user?.id} cvHistory={cvHistory} /> : null}
-        {activePage === "entretiens" ? (
-          <InterviewPage
+        {activePage === "entretiens" || activePage === "coding" ? (
+          <InterviewHub
             language={language}
+            initialTab={activePage === "coding" ? "technical" : "interview"}
+            user={user}
             subscription={user?.subscription}
             onGoToTarifs={() => goTo("tarifs")}
             userId={user?.id}
             avatarDataUrl={user?.avatarDataUrl}
-          />
-        ) : null}
-        {activePage === "coding" ? (
-          <CodingPage
-            language={language}
-            user={user}
+            analyzedOffer={jobReview}
           />
         ) : null}
         {activePage === "lettre" ? (

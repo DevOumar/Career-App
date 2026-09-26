@@ -1,12 +1,12 @@
 export const CODING_LANGUAGES = [
-  { id: "python", name: "Python", icon: "🐍", defaultExt: "py", desc: { fr: "Algorithmes, Data, Scripts", en: "Algorithms, Data, Scripting" } },
-  { id: "javascript", name: "JavaScript", icon: "🌐", defaultExt: "js", desc: { fr: "Frontend, DOM, Node.js", en: "Frontend, DOM, Node.js" } },
-  { id: "html_css", name: "HTML / CSS", icon: "🎨", defaultExt: "html", desc: { fr: "Mise en page, UI, Styles", en: "Layout, UI, Styles" } },
-  { id: "java", name: "Java", icon: "☕", defaultExt: "java", desc: { fr: "POO, Backend d'entreprise", en: "OOP, Enterprise Backend" } },
-  { id: "cpp", name: "C++", icon: "⚡", defaultExt: "cpp", desc: { fr: "Performance, Structures de données", en: "Performance, Data Structures" } },
-  { id: "sql", name: "SQL", icon: "🗄️", defaultExt: "sql", desc: { fr: "Requêtes, Jointures, Données", en: "Queries, Joins, Relational Data" } },
-  { id: "typescript", name: "TypeScript", icon: "🔷", defaultExt: "ts", desc: { fr: "Typage statique, Web moderne", en: "Static Typing, Modern Web" } },
-  { id: "custom", name: "Autre / Personnalisé", icon: "⚙️", defaultExt: "txt", desc: { fr: "Go, Rust, PHP, C#, React...", en: "Go, Rust, PHP, C#, React..." } }
+  { id: "python", name: "Python", badge: "Py", color: "#3776ab", ink: "#ffd43b", defaultExt: "py", desc: { fr: "Algorithmes, Data, Scripts", en: "Algorithms, Data, Scripting" } },
+  { id: "javascript", name: "JavaScript", badge: "JS", color: "#f7df1e", ink: "#1e1e1e", defaultExt: "js", desc: { fr: "Frontend, DOM, Node.js", en: "Frontend, DOM, Node.js" } },
+  { id: "html_css", name: "HTML / CSS", badge: "</>", color: "#e34f26", ink: "#ffffff", defaultExt: "html", desc: { fr: "Mise en page, UI, Styles", en: "Layout, UI, Styles" } },
+  { id: "java", name: "Java", badge: "Jv", color: "#e76f00", ink: "#ffffff", defaultExt: "java", desc: { fr: "POO, Backend d'entreprise", en: "OOP, Enterprise Backend" } },
+  { id: "cpp", name: "C++", badge: "C++", color: "#00599c", ink: "#ffffff", defaultExt: "cpp", desc: { fr: "Performance, Structures de données", en: "Performance, Data Structures" } },
+  { id: "sql", name: "SQL", badge: "SQL", color: "#336791", ink: "#ffffff", defaultExt: "sql", desc: { fr: "Requêtes, Jointures, Données", en: "Queries, Joins, Relational Data" } },
+  { id: "typescript", name: "TypeScript", badge: "TS", color: "#3178c6", ink: "#ffffff", defaultExt: "ts", desc: { fr: "Typage statique, Web moderne", en: "Static Typing, Modern Web" } },
+  { id: "custom", name: "Autre / Personnalisé", badge: "···", color: "#48464d", ink: "#ffffff", defaultExt: "txt", desc: { fr: "Go, Rust, PHP, C#, React...", en: "Go, Rust, PHP, C#, React..." } }
 ];
 
 export const CODING_LEVELS = [
@@ -16,17 +16,29 @@ export const CODING_LEVELS = [
 ];
 
 export const CODING_TOPICS = [
-  { id: "algorithms", label: { fr: "Algorithmes & Logique", en: "Algorithms & Logic" }, icon: "🧮" },
-  { id: "web_dom", label: { fr: "Web, DOM & Interface", en: "Web, DOM & UI" }, icon: "🖥️" },
-  { id: "oop", label: { fr: "POO & Architecture", en: "OOP & Architecture" }, icon: "🧱" },
-  { id: "data_manipulation", label: { fr: "Manipulation de Données", en: "Data Processing & Parsing" }, icon: "📊" },
-  { id: "sql_queries", label: { fr: "Requêtes & Bases SQL", en: "SQL Queries & DB" }, icon: "💾" },
-  { id: "debugging", label: { fr: "Debugging & Refactoring", en: "Debugging & Refactoring" }, icon: "🔍" },
-  { id: "custom", label: { fr: "Sujet libre / Sur-mesure", en: "Custom Topic" }, icon: "✨" }
+  { id: "algorithms", label: { fr: "Algorithmes & Logique", en: "Algorithms & Logic" }, icon: "matchmark" },
+  { id: "web_dom", label: { fr: "Web, DOM & Interface", en: "Web, DOM & UI" }, icon: "globe" },
+  { id: "oop", label: { fr: "POO & Architecture", en: "OOP & Architecture" }, icon: "network" },
+  { id: "data_manipulation", label: { fr: "Manipulation de Données", en: "Data Processing & Parsing" }, icon: "chart" },
+  { id: "sql_queries", label: { fr: "Requêtes & Bases SQL", en: "SQL Queries & DB" }, icon: "docClassic" },
+  { id: "debugging", label: { fr: "Debugging & Refactoring", en: "Debugging & Refactoring" }, icon: "settings" },
+  { id: "custom", label: { fr: "Sujet libre / Sur-mesure", en: "Custom Topic" }, icon: "edit" }
 ];
 
 export const CODING_COPY = {
   fr: {
+    configTitle: "Paramètres de l'exercice",
+    configText: "Choisissez le langage, le niveau et le thème : l'IA génère un exercice sur mesure.",
+    customLanguageName: "Autre langage",
+    regenerateBtn: "Générer un autre exercice",
+    emptyTitle: "Prêt pour votre test technique ?",
+    emptyText: "Réglez vos paramètres puis générez votre premier exercice.",
+    emptyGeneratingText: "L'IA prépare un exercice adapté à votre niveau.",
+    emptySteps: [
+      "Lisez l'énoncé, les exemples et, si besoin, les indices.",
+      "Codez votre solution dans l'éditeur.",
+      "Soumettez-la : l'IA la corrige avec une note, les bugs et une solution de référence."
+    ],
     heroBadge: "Espace Technique & Recrutement",
     heroTitle: "Entraînement au Code & Tests Techniques",
     heroSubtitle:
@@ -86,6 +98,18 @@ export const CODING_COPY = {
     historyOpenBtn: "Mon historique de code"
   },
   en: {
+    configTitle: "Exercise settings",
+    configText: "Pick the language, level and topic: the AI generates a tailored exercise.",
+    customLanguageName: "Other language",
+    regenerateBtn: "Generate another exercise",
+    emptyTitle: "Ready for your technical test?",
+    emptyText: "Set your options, then generate your first exercise.",
+    emptyGeneratingText: "The AI is preparing an exercise suited to your level.",
+    emptySteps: [
+      "Read the statement, the examples and, if needed, the hints.",
+      "Write your solution in the editor.",
+      "Submit it: the AI reviews it with a score, the bugs and a reference solution."
+    ],
     heroBadge: "Tech & Hiring Space",
     heroTitle: "Coding Practice & Technical Interview Prep",
     heroSubtitle:

@@ -13,6 +13,7 @@ import {
   getSessionToken
 } from "../../lib/inMemoryDb.js";
 import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
+import { ModuleHistorySidebar, ModuleTargetCard, ModuleTipsCard } from "../../components/ModuleWorkspace.jsx";
 
 // L'upload audio envoie un corps binaire brut (pas du JSON), donc il ne
 // passe pas par le client request() générique — mais il doit quand même
@@ -93,7 +94,7 @@ function InterviewAssistantIllustration() {
   );
 }
 
-function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, avatarDataUrl }) {
+function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, avatarDataUrl, analyzedOffer = null }) {
   // Élan et Trajectoire Pro débloquent le simulateur d'entretiens (voir
   // data/plans.js) — seul Essentiel (gratuit) en est exclu.
   const isFreePlan = !getPlanById(subscription?.planId)?.unlocksInterviews;
@@ -814,55 +815,61 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
     );
   }
 
+  const INTERVIEW_TYPES = [
+    { id: "rh", icon: "profile", label: "RH / Soft skills", text: "Motivation, parcours, qualités relationnelles et questions pièges." },
+    { id: "technique", icon: "settings", label: "Technique / Métier", text: "Compétences du poste, mises en situation et cas pratiques." },
+    { id: "direction", icon: "briefcase", label: "Direction / Vision", text: "Leadership, stratégie et projection dans l'entreprise." }
+  ];
+  const TYPE_LABELS = { rh: "RH", technique: "Technique", direction: "Direction" };
+  const hasAnalyzedOffer = Boolean(analyzedOffer && (analyzedOffer.title || analyzedOffer.description));
+
+  function applyAnalyzedOffer() {
+    if (!hasAnalyzedOffer) return;
+    setDomaine([analyzedOffer.title, analyzedOffer.company].filter(Boolean).join(" · ").slice(0, 120));
+    const parts = [
+      analyzedOffer.description,
+      analyzedOffer.missions?.length ? `Missions : ${analyzedOffer.missions.join(" ; ")}` : "",
+      analyzedOffer.skills?.length ? `Compétences : ${analyzedOffer.skills.join(", ")}` : ""
+    ].filter(Boolean);
+    setOffre(parts.join("\n\n"));
+  }
+
   const historySidebar = (
-    <aside className="interview-history">
-      <button type="button" className="interview-new-btn" onClick={handleNewConversation}>
-        <UiIcon name="plus" /> Nouvel entretien
-      </button>
-      <span className="interview-history-label">Historique</span>
-      {conversations.length ? (
-        <ul className="interview-history-list">
-          {conversations.map((conv) => (
-            <li
-              key={conv.id}
-              className={`interview-history-item${conv.id === conversationId ? " active" : ""}`}
-              onClick={() => handleResumeConversation(conv)}
-            >
-              <span className="interview-history-title">{conv.title || "Entretien"}</span>
-              <button
-                type="button"
-                className="interview-history-delete"
-                onClick={(event) => handleDeleteConversation(event, conv)}
-                aria-label="Supprimer"
-              >
-                <UiIcon name="trash" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="interview-history-empty">Aucun entretien enregistré pour l'instant.</p>
-      )}
-    </aside>
+    <ModuleHistorySidebar
+      language={language}
+      newLabel="Nouvel entretien"
+      historyLabel="Historique"
+      emptyLabel="Aucun entretien enregistré pour l'instant."
+      deleteLabel="Supprimer"
+      items={conversations.map((conv) => ({ ...conv, title: conv.title || "Entretien" }))}
+      activeId={conversationId}
+      icon="chat"
+      onNew={handleNewConversation}
+      onSelect={handleResumeConversation}
+      onDelete={handleDeleteConversation}
+      renderMeta={(conv) => {
+        const answers = Array.isArray(conv.messages) ? conv.messages.filter((msg) => msg.role === "candidate" || msg.role === "user").length : 0;
+        return <span>{answers ? `${answers} réponse(s)` : "Non commencé"}</span>;
+      }}
+    >
+      {hasAnalyzedOffer ? <ModuleTargetCard language={language} offer={analyzedOffer} candidate={null} /> : null}
+      <ModuleTipsCard
+        title="Conseils"
+        tips={[
+          "Répondez avec la méthode STAR : situation, tâche, action, résultat.",
+          "Appuyez chaque qualité sur un exemple concret et chiffré.",
+          "Préparez deux ou trois questions à poser au recruteur."
+        ]}
+      />
+    </ModuleHistorySidebar>
   );
 
   // --- SETUP SCREEN ---
   if (!inSession) {
     return (
-      <div className="interview-layout">
+      <div className="mw-layout">
         {historySidebar}
-        <section className="interview-page">
-        <div className="card setup-card">
-          <div className="setup-header">
-            <div className="setup-header-icon">
-              <UiIcon name="matchmark" />
-            </div>
-            <div>
-              <h3>Simulateur d'entretien IA</h3>
-              <p>Configurez votre session pour commencer la simulation avec le recruteur virtuel.</p>
-            </div>
-          </div>
-
+        <section className="mw-main">
           {errorMsg && (
             <div className="interview-setup-error">
               <UiIcon name="alert" />
@@ -871,79 +878,112 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
           )}
 
           {loading ? (
-            <div className="extracting-state">
-              <div className="loader-ring" />
+            <div className="mw-card iv-loading">
+              <span className="iv-loading-pulse" aria-hidden="true">
+                <UiIcon name="aiAgent" />
+              </span>
               <strong>Préparation de votre entretien</strong>
               <span>{statusText || "L'IA prépare vos premières questions…"}</span>
             </div>
           ) : (
-            <div className="setup-form">
-              <div className="form-group">
-                <label>Type d'entretien</label>
-                <div className="interview-type-group">
-                  {[
-                    { id: "rh", icon: "profile", label: "RH / Soft Skills" },
-                    { id: "technique", icon: "settings", label: "Technique / Métier" },
-                    { id: "direction", icon: "briefcase", label: "Direction / Vision" }
-                  ].map((t) => (
+            <>
+              <div className="mw-card">
+                <div className="mw-step-head">
+                  <span className="mw-step-num">1</span>
+                  <div>
+                    <h3>Type d'entretien</h3>
+                    <p>Le recruteur IA adapte ses questions au format choisi.</p>
+                  </div>
+                </div>
+                <div className="mw-options">
+                  {INTERVIEW_TYPES.map((t) => (
                     <button
                       key={t.id}
                       type="button"
-                      className={`interview-type-option ${typeEntretien === t.id ? "active" : ""}`}
+                      className={`mw-option ${typeEntretien === t.id ? "is-active" : ""}`}
                       onClick={() => setTypeEntretien(t.id)}
+                      aria-pressed={typeEntretien === t.id}
                     >
-                      <UiIcon name={t.icon} />
-                      <span>{t.label}</span>
+                      <span className="mw-option-icon">
+                        <UiIcon name={t.icon} />
+                      </span>
+                      <strong>{t.label}</strong>
+                      <small>{t.text}</small>
                     </button>
                   ))}
                 </div>
+
+                <div className="mw-step-head iv-step">
+                  <span className="mw-step-num">2</span>
+                  <div>
+                    <h3>Poste et offre visés</h3>
+                    <p>Facultatif, mais l'entretien est bien plus réaliste avec une offre précise.</p>
+                  </div>
+                  {hasAnalyzedOffer ? (
+                    <button type="button" className="iw-mini-btn iv-use-offer" onClick={applyAnalyzedOffer}>
+                      <UiIcon name="briefcase" /> Utiliser l'offre analysée
+                    </button>
+                  ) : null}
+                </div>
+                <div className="iv-fields">
+                  <label className="cd-field">
+                    <span>Domaine / poste ciblé</span>
+                    <input
+                      id="interview-domaine"
+                      type="text"
+                      maxLength={120}
+                      placeholder="Ex : Développeur Fullstack React, Chef de projet digital…"
+                      value={domaine}
+                      onChange={(e) => setDomaine(e.target.value)}
+                    />
+                  </label>
+                  <label className="cd-field">
+                    <span>Offre d'emploi</span>
+                    <textarea
+                      id="interview-offre"
+                      rows={5}
+                      maxLength={8000}
+                      placeholder="Collez ici le descriptif du poste pour ancrer l'entretien dans un rôle précis…"
+                      value={offre}
+                      onChange={(e) => setOffre(e.target.value)}
+                    />
+                  </label>
+                </div>
               </div>
 
-              <div className="form-group">
-                <label htmlFor="interview-domaine">Domaine / poste ciblé <span className="muted">(optionnel)</span></label>
-                <input
-                  id="interview-domaine"
-                  type="text"
-                  placeholder="Ex : Développeur Fullstack React, Chef de projet digital…"
-                  value={domaine}
-                  onChange={(e) => setDomaine(e.target.value)}
-                />
+              <div className="mw-card">
+                <div className="mw-step-head">
+                  <span className="mw-step-num">3</span>
+                  <div>
+                    <h3>Lancez la simulation</h3>
+                    <p>Entretien {TYPE_LABELS[typeEntretien]}{domaine ? ` · ${domaine}` : ""}</p>
+                  </div>
+                </div>
+                <div className="iv-modes">
+                  <button type="button" className="iv-mode" onClick={() => handleStartSession("chat")} disabled={loading}>
+                    <span className="iv-mode-icon">
+                      <UiIcon name="chat" />
+                    </span>
+                    <span className="iv-mode-text">
+                      <strong>Entretien écrit</strong>
+                      <small>Vous répondez par écrit, à votre rythme. Idéal pour structurer vos réponses.</small>
+                    </span>
+                    <UiIcon name="chevron" className="iv-mode-go" />
+                  </button>
+                  <button type="button" className="iv-mode is-voice" onClick={() => handleStartSession("call")} disabled={loading}>
+                    <span className="iv-mode-icon">
+                      <UiIcon name="phone" />
+                    </span>
+                    <span className="iv-mode-text">
+                      <strong>Appel vocal</strong>
+                      <small>Le recruteur vous parle et vous répondez à voix haute, comme en vrai.</small>
+                    </span>
+                    <UiIcon name="chevron" className="iv-mode-go" />
+                  </button>
+                </div>
               </div>
-
-              <div className="form-group">
-                <label htmlFor="interview-offre">Offre d'emploi visée <span className="muted">(optionnel)</span></label>
-                <textarea
-                  id="interview-offre"
-                  rows={4}
-                  placeholder="Collez ici le descriptif du poste pour ancrer l'entretien dans un rôle précis…"
-                  value={offre}
-                  onChange={(e) => setOffre(e.target.value)}
-                />
-              </div>
-
-              <div className="setup-actions">
-                <button
-                  type="button"
-                  className="btn-main"
-                  onClick={() => handleStartSession("chat")}
-                  disabled={loading}
-                >
-                  <UiIcon name="chat" />
-                  Démarrer l'entretien écrit
-                </button>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  onClick={() => handleStartSession("call")}
-                  disabled={loading}
-                >
-                  <UiIcon name="phone" />
-                  Démarrer l'appel vocal
-                </button>
-              </div>
-            </div>
+            </>
           )}
-        </div>
         </section>
       </div>
     );
@@ -951,9 +991,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
 
   // --- ACTIVE SESSION SCREEN ---
   return (
-    <div className="interview-layout">
+    <div className="mw-layout">
       {historySidebar}
-      <section className="interview-page interview-session">
+      <section className="mw-main interview-page interview-session">
       <div className="interview-session-bar">
         <div className="interview-session-tags">
           <span className={`interview-session-tag ${typeEntretien}`}>

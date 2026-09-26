@@ -16,8 +16,18 @@ import {
 } from "../../lib/inMemoryDb.js";
 import "./coding.css";
 import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
+import { CodeEditorArt } from "../../components/ModuleWorkspace.jsx";
 
-export function CodingPage({ language = "fr", user }) {
+// Badge de langage (monogramme aux couleurs du langage), à la place d'emojis.
+function LangBadge({ lang }) {
+  return (
+    <span className="cd-badge" style={{ background: lang.color, color: lang.ink }} aria-hidden="true">
+      {lang.badge}
+    </span>
+  );
+}
+
+export function CodingPage({ language = "fr", user, embedded = false }) {
   const copy = CODING_COPY[language] || CODING_COPY.fr;
 
   // Configuration de l'exercice
@@ -61,11 +71,6 @@ export function CodingPage({ language = "fr", user }) {
       : CODING_LANGUAGES.find((l) => l.id === selectedLang)?.name || "Python";
 
   const isHtml = effectiveLanguage.toLowerCase().includes("html");
-
-  // Charger automatiquement un premier défi au montage
-  useEffect(() => {
-    handleGenerate();
-  }, []);
 
   // Charger l'historique de l'utilisateur quand il ouvre le tiroir
   useEffect(() => {
@@ -256,128 +261,149 @@ export function CodingPage({ language = "fr", user }) {
   }
 
   return (
-    <div className="coding-page">
-      {/* 1. Header / Hero */}
-      <div className="coding-hero">
-        <div className="coding-hero-top">
-          <span className="coding-hero-badge">
-            <UiIcon name="code" />
-            {copy.heroBadge}
-          </span>
-          <button
-            type="button"
-            className="coding-history-toggle-btn"
-            onClick={() => setHistoryOpen(true)}
-          >
-            <UiIcon name="history" />
-            {copy.historyOpenBtn}
-          </button>
-        </div>
-        <h1>{copy.heroTitle}</h1>
-        <p>{copy.heroSubtitle}</p>
-      </div>
+    <div className={`coding-page ${embedded ? "is-embedded" : ""}`}>
+      <div className={`cd-layout ${challenge ? "has-challenge" : ""}`}>
+        {/* Configuration de l'exercice */}
+        <div className="mw-card cd-config">
+          <div className="cd-config-head">
+            <div>
+              <h3>{copy.configTitle}</h3>
+              <p>{copy.configText}</p>
+            </div>
+            <button type="button" className="iw-mini-btn" onClick={() => setHistoryOpen(true)}>
+              <UiIcon name="history" /> {copy.historyOpenBtn}
+            </button>
+          </div>
 
-      {/* 2. Configuration & Paramètres */}
-      <div className="coding-config-card">
-        <h2 className="coding-config-title">
-          <UiIcon name="settings" />
-          {copy.configSectionTitle}
-        </h2>
-
-        {/* Sélection du Langage */}
-        <div className="coding-config-group">
-          <label className="coding-config-label">{copy.languageLabel}</label>
-          <div className="coding-languages-grid">
+          <div className="mw-step-head">
+            <span className="mw-step-num">1</span>
+            <div>
+              <h3>{copy.languageLabel}</h3>
+            </div>
+          </div>
+          <div className="cd-langs">
             {CODING_LANGUAGES.map((lang) => (
               <button
                 key={lang.id}
                 type="button"
-                className={`coding-lang-chip ${selectedLang === lang.id ? "active" : ""}`}
+                className={`cd-lang ${selectedLang === lang.id ? "is-active" : ""}`}
                 onClick={() => setSelectedLang(lang.id)}
+                aria-pressed={selectedLang === lang.id}
               >
-                <span className="coding-lang-icon">{lang.icon}</span>
-                <span>{lang.name}</span>
+                <LangBadge lang={lang} />
+                <span className="cd-lang-text">
+                  <strong>{lang.id === "custom" ? copy.customLanguageName : lang.name}</strong>
+                  <small>{lang.desc[language] || lang.desc.fr}</small>
+                </span>
               </button>
             ))}
           </div>
-
           {selectedLang === "custom" ? (
             <input
               type="text"
-              className="coding-custom-lang-input"
+              className="coding-custom-lang-input cd-input"
               placeholder={copy.customLanguagePlaceholder}
               value={customLang}
+              maxLength={40}
               onChange={(e) => setCustomLang(e.target.value)}
             />
           ) : null}
-        </div>
 
-        {/* Sélection du Niveau */}
-        <div className="coding-config-group">
-          <label className="coding-config-label">{copy.levelLabel}</label>
-          <div className="coding-levels-grid">
-            {CODING_LEVELS.map((lvl) => (
+          <div className="mw-step-head cd-step">
+            <span className="mw-step-num">2</span>
+            <div>
+              <h3>{copy.levelLabel}</h3>
+            </div>
+          </div>
+          <div className="mw-options">
+            {CODING_LEVELS.map((lvl, index) => (
               <button
                 key={lvl.id}
                 type="button"
-                className={`coding-level-card ${level === lvl.id ? "active" : ""}`}
+                className={`mw-option ${level === lvl.id ? "is-active" : ""}`}
                 onClick={() => setLevel(lvl.id)}
+                aria-pressed={level === lvl.id}
               >
-                <span className="coding-level-name">
-                  {lvl.label[language] || lvl.label.fr}
+                <span className="cd-level-bars" aria-hidden="true">
+                  {[0, 1, 2].map((bar) => (
+                    <i key={bar} className={bar <= index ? "on" : ""} />
+                  ))}
                 </span>
-                <span className="coding-level-tag">
-                  {lvl.tag[language] || lvl.tag.fr}
-                </span>
+                <strong>{lvl.label[language] || lvl.label.fr}</strong>
+                <small>{lvl.tag[language] || lvl.tag.fr}</small>
               </button>
             ))}
           </div>
-        </div>
 
-        {/* Sélection de la Thématique */}
-        <div className="coding-config-group">
-          <label className="coding-config-label">{copy.topicLabel}</label>
-          <div className="coding-topics-grid">
+          <div className="mw-step-head cd-step">
+            <span className="mw-step-num">3</span>
+            <div>
+              <h3>{copy.topicLabel}</h3>
+            </div>
+          </div>
+          <div className="cd-topics">
             {CODING_TOPICS.map((top) => (
               <button
                 key={top.id}
                 type="button"
-                className={`coding-topic-pill ${topic === top.id ? "active" : ""}`}
+                className={`cd-topic ${topic === top.id ? "is-active" : ""}`}
                 onClick={() => setTopic(top.id)}
+                aria-pressed={topic === top.id}
               >
-                <span>{top.icon}</span>
-                <span>{top.label[language] || top.label.fr}</span>
+                <UiIcon name={top.icon} />
+                {top.label[language] || top.label.fr}
               </button>
             ))}
           </div>
-        </div>
+          <label className="cd-field">
+            <span>{copy.customTopicLabel}</span>
+            <input
+              type="text"
+              className="coding-custom-lang-input cd-input"
+              placeholder={copy.customTopicPlaceholder}
+              value={customTopic}
+              maxLength={300}
+              onChange={(e) => setCustomTopic(e.target.value)}
+            />
+          </label>
 
-        {/* Consigne libre spécifique */}
-        <div className="coding-config-group">
-          <label className="coding-config-label">{copy.customTopicLabel}</label>
-          <input
-            type="text"
-            className="coding-custom-lang-input"
-            placeholder={copy.customTopicPlaceholder}
-            value={customTopic}
-            onChange={(e) => setCustomTopic(e.target.value)}
-          />
-        </div>
-
-        {/* Bouton Générer */}
-        <div className="coding-generate-actions">
-          <button
-            type="button"
-            className="btn-coding-generate"
-            disabled={isGenerating}
-            onClick={handleGenerate}
-          >
+          <button type="button" className="btn-main ready mw-cta cd-generate" disabled={isGenerating} onClick={handleGenerate}>
             {isGenerating ? <span className="btn-spinner" /> : <UiIcon name="code" />}
-            {isGenerating ? copy.generatingBtn : copy.generateBtn}
+            {isGenerating ? copy.generatingBtn : challenge ? copy.regenerateBtn : copy.generateBtn}
           </button>
         </div>
+
+        {!challenge ? (
+          <div className="mw-card cd-empty">
+            {isGenerating ? (
+              <>
+                <span className="btn-spinner dark" />
+                <strong>{copy.generatingBtn}</strong>
+                <p>{copy.emptyGeneratingText}</p>
+              </>
+            ) : (
+              <>
+                <CodeEditorArt />
+                <strong>{copy.emptyTitle}</strong>
+                <p>{copy.emptyText}</p>
+                <ol className="mw-steps-list cd-empty-steps">
+                  {copy.emptySteps.map((step, index) => (
+                    <li key={step}>
+                      <span className="mw-step-num">{index + 1}</span>
+                      <div>
+                        <p>{step}</p>
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
+          </div>
+        ) : null}
       </div>
 
+      {challenge ? (
+      <>
       {/* 3. Split Workspace (Énoncé & Éditeur) */}
       <div className="coding-workspace">
         {/* Volet Gauche : Énoncé, Exemples, Indices */}
@@ -647,13 +673,13 @@ export function CodingPage({ language = "fr", user }) {
               <div className="coding-complexity-tags">
                 {evaluation.timeComplexity ? (
                   <div className="complexity-pill">
-                    <span>⏱️ {copy.timeComplexity} :</span>
+                    <span><UiIcon name="history" /> {copy.timeComplexity} :</span>
                     <strong>{evaluation.timeComplexity}</strong>
                   </div>
                 ) : null}
                 {evaluation.spaceComplexity ? (
                   <div className="complexity-pill">
-                    <span>💾 {copy.spaceComplexity} :</span>
+                    <span><UiIcon name="file" /> {copy.spaceComplexity} :</span>
                     <strong>{evaluation.spaceComplexity}</strong>
                   </div>
                 ) : null}
@@ -731,6 +757,9 @@ export function CodingPage({ language = "fr", user }) {
         </div>
       )}
 
+      </>
+      ) : null}
+
       {/* 5. Tiroir de l'historique d'entraînement */}
       {historyOpen && (
         <div className="modal-overlay" onClick={() => setHistoryOpen(false)}>
@@ -744,8 +773,11 @@ export function CodingPage({ language = "fr", user }) {
                 type="button"
                 className="modal-close"
                 onClick={() => setHistoryOpen(false)}
+                aria-label={language === "en" ? "Close" : "Fermer"}
               >
-                ×
+                <svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true">
+                  <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+                </svg>
               </button>
             </div>
 

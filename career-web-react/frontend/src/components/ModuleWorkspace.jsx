@@ -650,3 +650,102 @@ export function HistoryHeroArt() {
     </svg>
   );
 }
+
+// Entretiens : visio avec le recruteur IA + fenêtre de code (test technique).
+export function InterviewHeroArt() {
+  return (
+    <svg viewBox="0 0 360 260" className="mw-art" aria-hidden="true">
+      <defs>
+        <linearGradient id="iv-bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#ffe6d5" />
+          <stop offset="1" stopColor="#e7e4ff" />
+        </linearGradient>
+        <linearGradient id="iv-rec" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stopColor="#6d5ff5" />
+          <stop offset="1" stopColor="#3a2fb0" />
+        </linearGradient>
+      </defs>
+      <circle cx="176" cy="132" r="112" fill="url(#iv-bg)" />
+      {/* fenêtre de visio */}
+      <rect x="40" y="46" width="176" height="128" rx="14" fill="#fff" stroke="#ece6f5" strokeWidth="2" />
+      <rect x="40" y="46" width="176" height="22" rx="14" fill="#f4f2ff" />
+      <rect x="40" y="58" width="176" height="10" fill="#f4f2ff" />
+      <circle cx="56" cy="57" r="3.5" fill="#f26a2e" />
+      <circle cx="67" cy="57" r="3.5" fill="#f5b48f" />
+      <circle cx="78" cy="57" r="3.5" fill="#bfe3c8" />
+      <rect x="52" y="76" width="152" height="86" rx="10" fill="url(#iv-rec)" />
+      <circle cx="128" cy="108" r="17" fill="#f1cbb0" />
+      <path d="M111 104c2-16 32-16 34 0-8-5-26-5-34 0z" fill="#1d1b2e" />
+      <path d="M100 162c0-22 12-34 28-34s28 12 28 34z" fill="#fff" fillOpacity="0.92" />
+      <path d="M122 132l6 9 6-9" fill="#3a2fb0" />
+      <rect x="160" y="84" width="38" height="12" rx="6" fill="#fff" fillOpacity="0.22" />
+      <circle cx="167" cy="90" r="3" fill="#ff4d4f" />
+      {/* ondes vocales */}
+      <g className="iv-wave">
+        <rect x="60" y="140" width="4" height="12" rx="2" fill="#fff" fillOpacity="0.8" />
+        <rect x="68" y="134" width="4" height="24" rx="2" fill="#fff" fillOpacity="0.8" />
+        <rect x="76" y="138" width="4" height="16" rx="2" fill="#fff" fillOpacity="0.8" />
+      </g>
+      {/* bulle de conversation */}
+      <rect x="150" y="22" width="92" height="34" rx="14" fill="#fff" stroke="#f1dccd" strokeWidth="2" />
+      <path d="M170 56l-4 12 14-12" fill="#fff" />
+      <rect x="162" y="33" width="56" height="5" rx="2.5" fill="#b83309" />
+      <rect x="162" y="43" width="40" height="5" rx="2.5" fill="#ecdfd4" />
+      {/* fenêtre de code */}
+      <rect x="196" y="120" width="130" height="104" rx="14" fill="#0f0e17" />
+      <circle cx="210" cy="134" r="3.5" fill="#ff5f57" />
+      <circle cx="221" cy="134" r="3.5" fill="#febc2e" />
+      <circle cx="232" cy="134" r="3.5" fill="#28c840" />
+      <rect x="210" y="148" width="24" height="5" rx="2.5" fill="#c792ea" />
+      <rect x="238" y="148" width="40" height="5" rx="2.5" fill="#82aaff" />
+      <rect x="220" y="160" width="30" height="5" rx="2.5" fill="#f78c6c" />
+      <rect x="254" y="160" width="46" height="5" rx="2.5" fill="#a6accd" />
+      <rect x="220" y="172" width="52" height="5" rx="2.5" fill="#c3e88d" />
+      <rect x="230" y="184" width="36" height="5" rx="2.5" fill="#a6accd" />
+      <rect x="210" y="196" width="18" height="5" rx="2.5" fill="#c792ea" />
+      <circle cx="306" cy="206" r="13" fill="#237804" />
+      <path d="M300 206l4 4 8-9" stroke="#fff" strokeWidth="2.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M318 40l3.5 9 9 3.5-9 3.5-3.5 9-3.5-9-9-3.5 9-3.5z" fill="#f26a2e" />
+      <path d="M36 196l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#6d5ff5" />
+    </svg>
+  );
+}
+
+// Test technique : état d'accueil de l'éditeur, avant le premier exercice.
+export function CodeEditorArt() {
+  return (
+    <svg viewBox="0 0 260 170" className="iw-art" aria-hidden="true">
+      <defs>
+        <linearGradient id="ce-bg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#e7e4ff" />
+          <stop offset="1" stopColor="#ffe6d5" />
+        </linearGradient>
+      </defs>
+      <ellipse cx="130" cy="88" rx="110" ry="74" fill="url(#ce-bg)" opacity="0.8" />
+      <rect x="48" y="26" width="164" height="118" rx="14" fill="#0f0e17" />
+      <circle cx="63" cy="41" r="4" fill="#ff5f57" />
+      <circle cx="75" cy="41" r="4" fill="#febc2e" />
+      <circle cx="87" cy="41" r="4" fill="#28c840" />
+      <rect x="60" y="58" width="8" height="5" rx="2" fill="#4a4760" />
+      <rect x="60" y="70" width="8" height="5" rx="2" fill="#4a4760" />
+      <rect x="60" y="82" width="8" height="5" rx="2" fill="#4a4760" />
+      <rect x="60" y="94" width="8" height="5" rx="2" fill="#4a4760" />
+      <rect x="60" y="106" width="8" height="5" rx="2" fill="#4a4760" />
+      <rect x="76" y="58" width="26" height="5" rx="2.5" fill="#c792ea" />
+      <rect x="106" y="58" width="44" height="5" rx="2.5" fill="#82aaff" />
+      <rect x="86" y="70" width="32" height="5" rx="2.5" fill="#f78c6c" />
+      <rect x="122" y="70" width="50" height="5" rx="2.5" fill="#a6accd" />
+      <rect x="86" y="82" width="58" height="5" rx="2.5" fill="#c3e88d" />
+      <rect x="96" y="94" width="40" height="5" rx="2.5" fill="#a6accd" />
+      <rect x="76" y="106" width="20" height="5" rx="2.5" fill="#c792ea" />
+      <rect x="100" y="104" width="2" height="10" fill="#f26a2e" className="cd-caret" />
+      <rect x="170" y="112" width="62" height="40" rx="12" fill="#fff" />
+      <circle cx="188" cy="132" r="10" fill="#237804" />
+      <path d="M183 132l3.5 3.5 7-7.5" stroke="#fff" strokeWidth="2.4" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <rect x="204" y="126" width="20" height="5" rx="2.5" fill="#0c0c10" />
+      <rect x="204" y="135" width="14" height="4" rx="2" fill="#c9c3ba" />
+      <path d="M30 40l3.5 9 9 3.5-9 3.5-3.5 9-3.5-9-9-3.5 9-3.5z" fill="#f26a2e" />
+      <path d="M232 30l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#6d5ff5" />
+    </svg>
+  );
+}
