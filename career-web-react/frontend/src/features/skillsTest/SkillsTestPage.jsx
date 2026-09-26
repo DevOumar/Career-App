@@ -126,6 +126,20 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
     setError("");
   }
 
+  // Vue en lecture seule d'un test deja note, depuis l'historique : reutilise
+  // l'ecran de resultat existant avec les donnees deja presentes dans le
+  // payload (test.questions/results/finalScore), aucun appel reseau. Ne
+  // touche pas testId/answers/currentQuestionIndex d'un test "in-progress"
+  // en cours de reponse : seuls stage/questions/results/finalScore changent,
+  // "Refaire un test" repart de toute facon a zero via handleRetake().
+  function handleViewTest(test) {
+    if (test.status !== "graded") return;
+    setQuestions(test.questions || []);
+    setResults(test.results || []);
+    setFinalScore(test.finalScore || 0);
+    setStage("result");
+  }
+
   async function handleDeleteTest(event, test) {
     event.stopPropagation();
     if (!userId) return;
@@ -171,7 +185,12 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
       {tests.length ? (
         <ul className="negotiation-history-list">
           {tests.map((test) => (
-            <li key={test.id} className="negotiation-history-item">
+            <li
+              key={test.id}
+              className="negotiation-history-item"
+              style={{ cursor: test.status === "graded" ? "pointer" : "default" }}
+              onClick={test.status === "graded" ? () => handleViewTest(test) : undefined}
+            >
               <span className="negotiation-history-main">
                 <span className="negotiation-history-title">{test.title || copy.untitled}</span>
                 <span className="negotiation-history-badges">

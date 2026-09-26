@@ -68,7 +68,9 @@ export function registerSkillsTestRoutes(app) {
       // client lui renverra.
       const id = `skillstest-${crypto.randomUUID()}`;
       const createdAt = nowIso();
-      const title = coerceString(req.body?.title) || `Test de compétences${offer?.title ? ` · ${offer.title}` : ""}`;
+      // Le prefixe "Test de competences" est deja le titre de la page :
+      // l'historique n'affiche que le titre de l'offre, sans le repeter.
+      const title = coerceString(req.body?.title) || coerceString(offer?.title) || "Test de compétences";
       const payload = { offer, language, status: "pending", questions, provider, createdAt };
 
       await db.query(
