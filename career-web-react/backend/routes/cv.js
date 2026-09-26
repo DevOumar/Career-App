@@ -95,6 +95,9 @@ export function registerCvRoutes(app) {
     normalizeSkillList,
     stripNullBytes,
     coerceString,
+    computeContentHash,
+    CV_TRASH_RETENTION_DAYS,
+    hardDeleteCvs,
     coerceInteger,
     sanitizeAccountType,
     hashPassword,
@@ -366,23 +369,51 @@ app.post("/api/cv", async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
+    const fileName = (coerceString(cvRecord.fileName || "cv.txt") || "cv.txt").slice(0, 255);
+    const sourceText = stripNullBytes(cvRecord.sourceText || "");
+    if (sourceText.trim().length < 20) {
+      return res.status(422).json({ error: "Le contenu du CV est vide ou illisible." });
+    }
+    if (sourceText.length > 200_000) {
+      return res.status(413).json({ error: "Le CV est trop volumineux." });
+    }
+    const parsedJson = JSON.stringify(cvRecord.parsed || {});
+    const contentHash = computeContentHash(sourceText);
+
+    // Idempotence par contenu : le même CV (même texte, quel que soit le nom
+    // du fichier) déjà importé par cet utilisateur est mis à jour — pas de
+    // doublon dans l'historique ni dans les statistiques.
+    const { rows: sameRows } = await db.query(
+      "SELECT id, created_at, deleted_at FROM cvs WHERE user_id = $1 AND content_hash = $2 ORDER BY created_at DESC LIMIT 1",
+      [userId, contentHash]
+    );
+    if (sameRows[0]) {
+      // Un CV réimporté alors qu'il est dans la corbeille en ressort.
+      await db.query("UPDATE cvs SET file_name = $1, parsed_json = $2, deleted_at = NULL WHERE id = $3", [
+        fileName,
+        parsedJson,
+        sameRows[0].id
+      ]);
+      return res.status(200).json({
+        duplicate: true,
+        restored: Boolean(sameRows[0].deleted_at),
+        cv: {
+          id: sameRows[0].id,
+          userId,
+          createdAt: sameRows[0].created_at,
+          fileName,
+          sourceText,
+          parsed: cvRecord.parsed || {}
+        }
+      });
+    }
+
     const id = `cv-${crypto.randomUUID()}`;
     const createdAt = nowIso();
-    const fileName = coerceString(cvRecord.fileName || "cv.txt") || "cv.txt";
-    const sourceText = stripNullBytes(cvRecord.sourceText || "");
-    const parsedJson = JSON.stringify(cvRecord.parsed || {});
-
     await db.query(
-      `INSERT INTO cvs (id, user_id, created_at, file_name, source_text, parsed_json)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [
-        id,
-        userId,
-        createdAt,
-        fileName,
-        sourceText,
-        parsedJson
-      ]
+      `INSERT INTO cvs (id, user_id, created_at, file_name, source_text, parsed_json, content_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [id, userId, createdAt, fileName, sourceText, parsedJson, contentHash]
     );
 
     return res.status(201).json({
@@ -409,7 +440,7 @@ app.get("/api/cv", async (req, res) => {
     }
 
     const { rows } = await db.query(
-      "SELECT id, user_id, created_at, file_name, source_text, parsed_json FROM cvs WHERE user_id = $1 ORDER BY created_at DESC",
+      "SELECT id, user_id, created_at, file_name, source_text, parsed_json FROM cvs WHERE user_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC",
       [userId]
     );
 
@@ -423,6 +454,103 @@ app.get("/api/cv", async (req, res) => {
     }));
 
     return res.json({ items });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Corbeille des CV
+// ---------------------------------------------------------------------------
+// Supprimer un CV le place d'abord en corbeille (restaurable pendant
+// CV_TRASH_RETENTION_DAYS jours) ; la suppression définitive est explicite
+// (ou automatique à l'échéance). Toutes les opérations ne portent que sur les
+// CV de l'utilisateur connecté et sont idempotentes : rejouer la même
+// demande ne change rien de plus.
+function readCvIds(body) {
+  const raw = Array.isArray(body?.ids) ? body.ids : [];
+  return [...new Set(raw.map((value) => coerceString(value).trim()).filter(Boolean))].slice(0, 500);
+}
+
+function cvPurgeAt(deletedAt) {
+  return new Date(new Date(deletedAt).getTime() + CV_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+}
+
+app.get("/api/cv/trash", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const { rows } = await db.query(
+      "SELECT id, created_at, deleted_at, file_name, parsed_json FROM cvs WHERE user_id = $1 AND deleted_at IS NOT NULL ORDER BY deleted_at DESC",
+      [userId]
+    );
+    return res.json({
+      retentionDays: CV_TRASH_RETENTION_DAYS,
+      items: rows.map((row) => ({
+        id: row.id,
+        createdAt: row.created_at,
+        deletedAt: row.deleted_at,
+        purgeAt: cvPurgeAt(row.deleted_at),
+        fileName: row.file_name,
+        parsed: parseJsonField(row.parsed_json, {})
+      }))
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/cv/trash", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const ids = readCvIds(req.body);
+    if (!ids.length) return res.status(400).json({ error: "Sélectionnez au moins un CV." });
+    const result = await db.query(
+      "UPDATE cvs SET deleted_at = $1 WHERE user_id = $2 AND id = ANY($3) AND deleted_at IS NULL",
+      [nowIso(), userId, ids]
+    );
+    const moved = Number(result?.rowCount ?? result?.affectedRows ?? 0);
+    await logSecurityEvent(req, userId, "cv_trashed", { count: moved });
+    return res.json({ moved, retentionDays: CV_TRASH_RETENTION_DAYS });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.post("/api/cv/restore", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const ids = readCvIds(req.body);
+    if (!ids.length) return res.status(400).json({ error: "Sélectionnez au moins un CV." });
+    const result = await db.query(
+      "UPDATE cvs SET deleted_at = NULL WHERE user_id = $1 AND id = ANY($2) AND deleted_at IS NOT NULL",
+      [userId, ids]
+    );
+    const restored = Number(result?.rowCount ?? result?.affectedRows ?? 0);
+    await logSecurityEvent(req, userId, "cv_restored", { count: restored });
+    return res.json({ restored });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Suppression définitive : uniquement des CV déjà en corbeille (ids fournis,
+// ou toute la corbeille avec all=true).
+app.post("/api/cv/purge", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    let ids = readCvIds(req.body);
+    if (req.body?.all === true) {
+      const { rows } = await db.query("SELECT id FROM cvs WHERE user_id = $1 AND deleted_at IS NOT NULL", [userId]);
+      ids = rows.map((row) => row.id);
+    }
+    if (!ids.length) return res.json({ deleted: 0 });
+    const deleted = await hardDeleteCvs(userId, ids);
+    await logSecurityEvent(req, userId, "cv_purged", { count: deleted });
+    return res.json({ deleted });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
   }

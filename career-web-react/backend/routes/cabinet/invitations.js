@@ -372,8 +372,20 @@ app.post("/api/cabinet/recruiters/bulk-invite", async (req, res) => {
     const organizationName = orgProfileRows[0]?.organization_name || cabinet.first_name;
     const transporter = getMailTransporter();
 
-    const results = { sent: [], skippedExisting: [], skippedNoSeat: [] };
+    // Idempotence : une adresse déjà invitée (invitation en attente) n'est ni
+    // réinvitée ni recomptée — réimporter le même fichier ne change rien.
+    const { rows: pendingRows } = await db.query(
+      "SELECT email FROM cabinet_invitations WHERE cabinet_user_id = $1 AND status = 'pending'",
+      [cabinet.cabinetRootId]
+    );
+    const pendingEmails = new Set(pendingRows.map((row) => normalizeEmail(row.email)));
+
+    const results = { sent: [], skippedExisting: [], skippedPending: [], skippedNoSeat: [] };
     for (const email of emails) {
+      if (pendingEmails.has(email)) {
+        results.skippedPending.push(email);
+        continue;
+      }
       if (!activeCode || Number(activeCode.seats_used) >= Number(activeCode.seats_total)) {
         results.skippedNoSeat.push(email);
         continue;
@@ -399,6 +411,7 @@ app.post("/api/cabinet/recruiters/bulk-invite", async (req, res) => {
     await logSecurityEvent(req, userId, "cabinet_invitation_bulk_sent", {
       sentCount: results.sent.length,
       skippedExistingCount: results.skippedExisting.length,
+      skippedPendingCount: results.skippedPending.length,
       skippedNoSeatCount: results.skippedNoSeat.length
     });
 

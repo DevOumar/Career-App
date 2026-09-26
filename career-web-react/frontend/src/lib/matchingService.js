@@ -153,7 +153,6 @@ function scoreOffer({ candidate, offer, premiumAccess }) {
   const score = Math.min(100, skillScore + experienceScore + educationScore + bonus);
 
   const locked = Boolean(offer.premium && !premiumAccess.hasAccess);
-  const verdict = score >= 75 ? "excellent" : score >= 60 ? "bon" : score >= 45 ? "moyen" : "à renforcer";
 
   return {
     offer,
@@ -287,6 +286,20 @@ export function buildLocalMatchInsights({ candidate, offer }) {
       "Analyse locale : alignez votre discours et vos exemples concrets sur les valeurs et le mode de fonctionnement affichés dans l'offre pour renforcer le fit culturel perçu.",
     recommendations
   };
+}
+
+// Un seul score affiché partout : celui de l'analyse de compatibilité
+// (matchInsights.score, IA). Le calcul local ne sert plus qu'au détail
+// (compétences couvertes, domaines) et en repli si l'analyse n'a pas de score.
+export function alignMatchScores(run) {
+  const score = run?.matchInsights?.score;
+  if (!run || typeof score !== "number" || !run.summary) return run;
+  const verdict = typeof run.matchInsights.verdict === "string" && run.matchInsights.verdict ? run.matchInsights.verdict : run.summary.verdict;
+  const best = run.bestMatch ? { ...run.bestMatch, score, verdict } : run.bestMatch;
+  const ranked = Array.isArray(run.rankedOffers) && run.rankedOffers.length
+    ? run.rankedOffers.map((item, index) => (index === 0 ? { ...item, score, verdict } : item))
+    : run.rankedOffers;
+  return { ...run, summary: { ...run.summary, globalScore: score, verdict }, bestMatch: best, rankedOffers: ranked, portfolioScore: score };
 }
 
 export function runMatching({ user, cvRecord, offerText, offers, premiumAccess }) {

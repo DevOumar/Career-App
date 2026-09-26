@@ -247,6 +247,50 @@ export function registerApplicationsRoutes(app) {
     toPublicJobApplication
   } = app.locals.ctx;
 
+// Contrôles serveur du formulaire de candidature (mêmes règles que le front).
+const APPLICATION_LIMITS = { title: 160, company: 160, location: 160, offerUrl: 2048, notes: 5000 };
+
+function validateApplicationInput(body) {
+  for (const [field, max] of Object.entries(APPLICATION_LIMITS)) {
+    if (body[field] !== undefined && coerceString(body[field]).trim().length > max) {
+      return `Champ trop long (${max} caractères maximum).`;
+    }
+  }
+  const url = body.offerUrl !== undefined ? coerceString(body.offerUrl).trim() : "";
+  if (url) {
+    let parsed = null;
+    try {
+      parsed = new URL(url);
+    } catch (_error) {
+      parsed = null;
+    }
+    if (!parsed || !["http:", "https:"].includes(parsed.protocol)) {
+      return "Le lien de l'offre doit être une adresse web valide (https://…).";
+    }
+  }
+  if (body.matchScore !== undefined && body.matchScore !== null && body.matchScore !== "") {
+    const score = Number(body.matchScore);
+    if (!Number.isFinite(score) || score < 0 || score > 100) {
+      return "Le score doit être compris entre 0 et 100.";
+    }
+  }
+  for (const field of ["appliedAt", "nextActionAt"]) {
+    const value = body[field] !== undefined ? coerceString(body[field]).trim() : "";
+    if (value && Number.isNaN(new Date(value).getTime())) {
+      return "Date invalide.";
+    }
+  }
+  return "";
+}
+
+// Le CV lié doit appartenir à l'utilisateur.
+async function checkApplicationCv(userId, cvIdInput) {
+  const cvId = coerceString(cvIdInput).trim();
+  if (!cvId) return "";
+  const { rows } = await db.query("SELECT id FROM cvs WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL", [cvId, userId]);
+  return rows[0] ? "" : "Le CV sélectionné est introuvable.";
+}
+
 app.get("/api/applications", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);
@@ -273,14 +317,22 @@ app.post("/api/applications", async (req, res) => {
     if (!userId) {
       return res.status(400).json({ error: "userId requis." });
     }
-    const title = coerceString(req.body?.title);
-    const company = coerceString(req.body?.company);
+    const title = coerceString(req.body?.title).trim();
+    const company = coerceString(req.body?.company).trim();
     if (!title && !company) {
       return res.status(422).json({ error: "Indique au moins un poste ou une entreprise." });
+    }
+    const invalid = validateApplicationInput(req.body || {});
+    if (invalid) {
+      return res.status(422).json({ error: invalid });
     }
     const user = await getUserRowById(userId);
     if (!user) {
       return res.status(404).json({ error: "Utilisateur introuvable." });
+    }
+    const cvCheck = await checkApplicationCv(userId, req.body?.cvId);
+    if (cvCheck) {
+      return res.status(422).json({ error: cvCheck });
     }
 
     const status = JOB_APPLICATION_STATUSES.has(coerceString(req.body?.status)) ? coerceString(req.body.status) : "to_apply";
@@ -299,12 +351,12 @@ app.post("/api/applications", async (req, res) => {
         status,
         title,
         company,
-        coerceString(req.body?.location),
-        coerceString(req.body?.offerUrl),
+        coerceString(req.body?.location).trim(),
+        coerceString(req.body?.offerUrl).trim(),
         stripNullBytes(coerceString(req.body?.offerText)),
         Number.isFinite(matchScore) ? matchScore : null,
         coerceString(req.body?.cvId),
-        coerceString(req.body?.notes),
+        coerceString(req.body?.notes).trim(),
         coerceString(req.body?.appliedAt),
         coerceString(req.body?.nextActionAt),
         now,
@@ -339,6 +391,21 @@ app.put("/api/applications/:id", async (req, res) => {
     }
 
     const patch = req.body || {};
+    const invalid = validateApplicationInput(patch);
+    if (invalid) {
+      return res.status(422).json({ error: invalid });
+    }
+    const nextTitle = patch.title !== undefined ? coerceString(patch.title).trim() : existing.title;
+    const nextCompany = patch.company !== undefined ? coerceString(patch.company).trim() : existing.company;
+    if (!nextTitle && !nextCompany) {
+      return res.status(422).json({ error: "Indique au moins un poste ou une entreprise." });
+    }
+    if (patch.cvId !== undefined) {
+      const cvCheck = await checkApplicationCv(userId, patch.cvId);
+      if (cvCheck) {
+        return res.status(422).json({ error: cvCheck });
+      }
+    }
     const status = patch.status !== undefined ? (JOB_APPLICATION_STATUSES.has(coerceString(patch.status)) ? coerceString(patch.status) : existing.status) : existing.status;
     const matchScoreProvided = Object.prototype.hasOwnProperty.call(patch, "matchScore");
     const nextMatchScore = matchScoreProvided
@@ -347,8 +414,8 @@ app.put("/api/applications/:id", async (req, res) => {
 
     const next = {
       status,
-      title: patch.title !== undefined ? coerceString(patch.title) : existing.title,
-      company: patch.company !== undefined ? coerceString(patch.company) : existing.company,
+      title: nextTitle,
+      company: nextCompany,
       location: patch.location !== undefined ? coerceString(patch.location) : existing.location,
       offerUrl: patch.offerUrl !== undefined ? coerceString(patch.offerUrl) : existing.offer_url,
       offerText: patch.offerText !== undefined ? stripNullBytes(coerceString(patch.offerText)) : existing.offer_text,

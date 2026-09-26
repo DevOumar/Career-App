@@ -326,6 +326,7 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
               u.first_name, u.last_name, u.email, u.avatar_data_url
        FROM cvs c
        LEFT JOIN users u ON u.id = c.user_id
+       WHERE c.deleted_at IS NULL
        ORDER BY c.created_at DESC LIMIT 500`
     );
     const { rows: matchRows } = await db.query("SELECT id, created_at, payload_json FROM match_runs ORDER BY created_at DESC LIMIT 500");

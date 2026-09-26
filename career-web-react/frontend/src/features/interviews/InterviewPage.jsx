@@ -12,6 +12,7 @@ import {
   getApiBase,
   getSessionToken
 } from "../../lib/inMemoryDb.js";
+import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
 
 // L'upload audio envoie un corps binaire brut (pas du JSON), donc il ne
 // passe pas par le client request() générique — mais il doit quand même
@@ -1011,6 +1012,15 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
       ) : (
         /* CHAT MODE SCREEN */
         <div className="interview-chat-card">
+          <AiDisclaimer
+            language={language}
+            className="is-banner"
+            text={
+              language === "en"
+                ? "AI-simulated interview: feedback and the final report are indicative. Always check them."
+                : "Entretien simulé par l'IA : les retours et le bilan sont indicatifs. Vérifiez-les toujours."
+            }
+          />
           <div className="interview-chat-stream">
             {messages.map((msg) => {
               const isRecruiter = msg.role === "recruiter";

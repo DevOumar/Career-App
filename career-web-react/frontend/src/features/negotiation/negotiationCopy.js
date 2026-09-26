@@ -2,6 +2,32 @@
 export const NEGOTIATION_COPY = {
   fr: {
     title: "Simulateur de négociation salariale",
+    eyebrow: "Module IA · Négociation",
+    unlockCta: "Importer un CV et analyser une offre",
+    tokenChip: "{count} jeton(s) disponible(s)",
+    unlimitedChip: "Sessions illimitées",
+    prepareTitle: "Préparez la session",
+    prepareText: "Indiquez votre objectif : le recruteur IA négociera à partir de l'offre ciblée et de votre profil.",
+    targetHint: "Laissez vide pour que le recruteur ouvre la discussion sans connaître votre objectif.",
+    howTitle: "Comment ça se passe",
+    howSteps: [
+      { title: "Le recruteur ouvre la discussion", text: "Il joue le rôle d'un vrai recruteur de l'entreprise visée, avec ses objections." },
+      { title: "Vous argumentez", text: "Un conseil de coaching s'affiche après chaque réponse pour ajuster votre stratégie." },
+      { title: "Vous recevez votre bilan", text: "Points forts et axes d'amélioration, à relire avant l'entretien réel." }
+    ],
+    tipsTitle: "Conseils",
+    tips: [
+      "Annoncez une fourchette plutôt qu'un montant unique.",
+      "Appuyez-vous sur la fourchette de marché affichée.",
+      "Négociez aussi le reste : télétravail, primes, formation."
+    ],
+    reportReady: "Bilan disponible",
+    exchanges: "{count} échange(s)",
+    notStarted: "Non commencée",
+    targetResumedTitle: "Poste de cette négociation",
+    targetResumedNote: "Offre enregistrée avec la négociation ouverte. « Nouvelle négociation » repart de votre dernière offre analysée.",
+    recruiterName: "Recruteur IA",
+    targetShort: "Objectif :",
     subtitle: "Entraînez-vous face à un recruteur IA réaliste avant l'entretien décisif.",
     targetLabel: "Prétention salariale visée (optionnel)",
     targetPlaceholder: "Ex : 42 000",
@@ -31,6 +57,32 @@ export const NEGOTIATION_COPY = {
   },
   en: {
     title: "Salary Negotiation Simulator",
+    eyebrow: "AI module · Negotiation",
+    unlockCta: "Import a CV and analyze a job offer",
+    tokenChip: "{count} token(s) available",
+    unlimitedChip: "Unlimited sessions",
+    prepareTitle: "Prepare the session",
+    prepareText: "Set your goal: the AI recruiter negotiates based on the targeted job and your profile.",
+    targetHint: "Leave empty to let the recruiter open without knowing your goal.",
+    howTitle: "How it works",
+    howSteps: [
+      { title: "The recruiter opens", text: "They play a real recruiter from the targeted company, objections included." },
+      { title: "You make your case", text: "A coaching tip appears after each answer to adjust your strategy." },
+      { title: "You get your report", text: "Strengths and areas to improve, to review before the real interview." }
+    ],
+    tipsTitle: "Tips",
+    tips: [
+      "Give a range rather than a single figure.",
+      "Lean on the market range shown.",
+      "Negotiate the rest too: remote work, bonuses, training."
+    ],
+    reportReady: "Report ready",
+    exchanges: "{count} exchange(s)",
+    notStarted: "Not started",
+    targetResumedTitle: "Role for this negotiation",
+    targetResumedNote: "Job saved with the open negotiation. \"New negotiation\" starts again from your latest analyzed job.",
+    recruiterName: "AI recruiter",
+    targetShort: "Goal:",
     subtitle: "Train against a realistic AI recruiter before the real conversation.",
     targetLabel: "Target salary (optional)",
     targetPlaceholder: "E.g. 55,000",

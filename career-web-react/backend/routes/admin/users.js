@@ -261,7 +261,7 @@ app.get("/api/admin/users", async (req, res) => {
     const userIds = rows.map((row) => row.id);
     const [{ rows: cvRows }, { rows: matchRows }, { rows: loginRows }] = await Promise.all([
       userIds.length
-        ? db.query("SELECT user_id, COUNT(*)::int AS count FROM cvs WHERE user_id = ANY($1) GROUP BY user_id", [userIds])
+        ? db.query("SELECT user_id, COUNT(*)::int AS count FROM cvs WHERE user_id = ANY($1) AND deleted_at IS NULL GROUP BY user_id", [userIds])
         : { rows: [] },
       userIds.length
         ? db.query("SELECT user_id, COUNT(*)::int AS count FROM match_runs WHERE user_id = ANY($1) GROUP BY user_id", [userIds])

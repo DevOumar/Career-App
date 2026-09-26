@@ -277,6 +277,13 @@ app.post("/api/premium/activate", async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
+    // Idempotent et sans risque pour un compte déjà premium (jetons achetés,
+    // abonnement Stripe) : rien n'est réécrit.
+    const currentSubscription = parseJsonField(user.subscription_json, {});
+    if (currentSubscription.plan === "premium" && currentSubscription.status === "active") {
+      return res.json({ user: await getPublicUserById(userId), premium: await computePremiumAccess(user), alreadyActive: true });
+    }
+
     const access = await computePremiumAccess(user);
     if (!access.eligibility.eligible) {
       return res.status(400).json({ error: "Profil non éligible à l'activation premium." });

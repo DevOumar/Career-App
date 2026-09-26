@@ -413,7 +413,7 @@ app.get("/api/admin/quality", async (req, res) => {
     if (!requireMatchingSession(req, res, adminUserId)) return;
     await requireAdminModule(adminUserId, "quality");
     const search = coerceString(req.query?.search).toLowerCase();
-    const { rows: cvRows } = await db.query("SELECT id, user_id, created_at, file_name, parsed_json FROM cvs ORDER BY created_at DESC LIMIT 500");
+    const { rows: cvRows } = await db.query("SELECT id, user_id, created_at, file_name, parsed_json FROM cvs WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500");
     const userIds = [...new Set(cvRows.map((row) => row.user_id))];
     const { rows: userRows } = userIds.length
       ? await db.query("SELECT id, first_name, last_name, email, avatar_data_url FROM users WHERE id = ANY($1)", [userIds])

@@ -7,31 +7,8 @@ import { UiIcon } from "../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
 import { generateCoverLetter, listCoverLetters, saveCoverLetter, updateCoverLetter, deleteCoverLetter } from "../../lib/inMemoryDb.js";
 import { COVER_LETTER_COPY } from "./coverLetterCopy.js";
-
-function CoverLetterIllustration() {
-  return (
-    <svg viewBox="0 0 320 240" className="module-illustration" aria-hidden="true">
-      <rect x="20" y="20" width="200" height="200" rx="18" fill="var(--surface-2)" stroke="var(--line)" />
-      <rect x="40" y="46" width="160" height="10" rx="5" fill="var(--primary)" opacity="0.85" />
-      <rect x="40" y="70" width="140" height="7" rx="3.5" fill="var(--line-strong)" />
-      <rect x="40" y="86" width="150" height="7" rx="3.5" fill="var(--line-strong)" />
-      <rect x="40" y="102" width="120" height="7" rx="3.5" fill="var(--line-strong)" />
-      <rect x="40" y="126" width="150" height="7" rx="3.5" fill="var(--line-strong)" />
-      <rect x="40" y="142" width="140" height="7" rx="3.5" fill="var(--line-strong)" />
-      <rect x="40" y="158" width="90" height="7" rx="3.5" fill="var(--line-strong)" />
-      <path d="M150 182l20 12 20-12" stroke="var(--primary)" strokeWidth="3" fill="none" strokeLinecap="round" />
-      <circle cx="252" cy="60" r="42" fill="#f5f3ee" />
-      <path
-        d="M234 58l12 12 22-24"
-        stroke="var(--success, #237804)"
-        strokeWidth="6"
-        fill="none"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
+import { ModuleHero, ModuleHistorySidebar, ModuleTargetCard, ModuleTipsCard, LetterHeroArt, LetterTemplateThumb } from "../../components/ModuleWorkspace.jsx";
+import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
 
 const LETTER_TEMPLATES = [
   { id: "classic", label: { fr: "Classique", en: "Classic" }, icon: "docClassic" },
@@ -41,7 +18,7 @@ const LETTER_TEMPLATES = [
 
 const LETTER_TONE_ICONS = { formal: "shield", enthusiastic: "matchmark", direct: "share" };
 
-function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
+function CoverLetterPage({ language, userId, candidate, offer: latestOffer, tokensBalance, onGoToTarifs, onGoToImport, onConsumeToken }) {
   const copy = COVER_LETTER_COPY[language] || COVER_LETTER_COPY.fr;
   const [tone, setTone] = useState("formal");
   const [template, setTemplate] = useState("classic");
@@ -54,6 +31,11 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
   const [draftLetter, setDraftLetter] = useState("");
   const [conversations, setConversations] = useState([]);
   const [conversationId, setConversationId] = useState(null);
+  // Offre active : celle de la conversation reprise (enregistrée avec
+  // elle), sinon la dernière offre analysée dans « Importer CV ». Tout le
+  // module s'y réfère : affichage, appels à l'IA et sauvegarde.
+  const [resumedOffer, setResumedOffer] = useState(null);
+  const offer = resumedOffer || latestOffer;
 
   const hasContext = Boolean(candidate && offer && (offer.title || offer.skills?.length));
   // 999 = solde "infini" (compte associé à un cabinet/école) : dans ce cas
@@ -108,12 +90,14 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     setLetter("");
     setSubject("");
     setConversationId(null);
+    setResumedOffer(null);
     setIsEditing(false);
     setError("");
   }
 
   function handleResumeConversation(conv) {
     setConversationId(conv.id);
+    setResumedOffer(conv.offer && (conv.offer.title || conv.offer.skills?.length) ? conv.offer : null);
     setLetter(conv.letter || "");
     setSubject(conv.subject || "");
     if (conv.tone) setTone(conv.tone);
@@ -191,170 +175,209 @@ function CoverLetterPage({ language, userId, candidate, offer, tokensBalance, on
     setIsEditing(false);
   }
 
+  const toneLabels = { formal: copy.toneFormal, enthusiastic: copy.toneEnthusiastic, direct: copy.toneDirect };
+  const toneDescriptions = { formal: copy.toneFormalDesc, enthusiastic: copy.toneEnthusiasticDesc, direct: copy.toneDirectDesc };
+
   if (!hasContext) {
     return (
-      <section className="module-locked">
-        <div className="module-locked-copy">
-          <h2>{copy.title}</h2>
-          <p>{copy.empty}</p>
+      <section className="mw-locked">
+        <div className="mw-locked-art">
+          <LetterHeroArt />
         </div>
-        <div className="module-locked-art">
-          <CoverLetterIllustration />
-        </div>
+        <span className="mw-eyebrow">{copy.eyebrow}</span>
+        <h2>{copy.title}</h2>
+        <p>{copy.empty}</p>
+        {onGoToImport ? (
+          <button type="button" className="btn-main ready" onClick={onGoToImport}>
+            <UiIcon name="upload" /> {copy.unlockCta}
+          </button>
+        ) : null}
       </section>
     );
   }
 
-  const historySidebar = (
-    <aside className="negotiation-history">
-      <button type="button" className="negotiation-new-btn" onClick={handleNewConversation}>
-        <UiIcon name="plus" /> {copy.newConversation}
-      </button>
-      <span className="negotiation-history-label">{copy.history}</span>
-      {conversations.length ? (
-        <ul className="negotiation-history-list">
-          {conversations.map((conv) => (
-            <li
-              key={conv.id}
-              className={`negotiation-history-item${conv.id === conversationId ? " active" : ""}`}
-              onClick={() => handleResumeConversation(conv)}
-            >
-              <span className="negotiation-history-title">{conv.title || copy.untitled}</span>
-              <button
-                type="button"
-                className="negotiation-history-delete"
-                onClick={(event) => handleDeleteConversation(event, conv)}
-                aria-label={copy.deleteConversation}
-              >
-                <UiIcon name="trash" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="negotiation-history-empty">{copy.noHistory}</p>
-      )}
-    </aside>
-  );
+  const location = offer?.location && offer.location !== "Non précisé" ? offer.location : "";
 
   return (
-    <div className="negotiation-layout">
-      {historySidebar}
-      <section className="cover-letter-page">
-      <header className="module-header feature-page-header">
-        <span className="feature-page-header-icon">
-          <UiIcon name="mail" />
-        </span>
-        <div>
-          <h2>{copy.title}</h2>
-          <p>{copy.subtitle}</p>
-        </div>
-      </header>
+    <div className="mw-layout">
+      <ModuleHistorySidebar
+        language={language}
+        newLabel={copy.newConversation}
+        historyLabel={copy.history}
+        emptyLabel={copy.noHistory}
+        deleteLabel={copy.deleteConversation}
+        items={conversations.map((conv) => ({ ...conv, title: conv.title || copy.untitled }))}
+        activeId={conversationId}
+        icon="mail"
+        onNew={handleNewConversation}
+        onSelect={handleResumeConversation}
+        onDelete={handleDeleteConversation}
+        renderMeta={(conv) => (conv.tone && toneLabels[conv.tone] ? <span>{toneLabels[conv.tone]}</span> : null)}
+      >
+        <ModuleTargetCard
+          language={language}
+          offer={offer}
+          candidate={candidate}
+          title={resumedOffer ? copy.targetResumedTitle : undefined}
+          note={resumedOffer ? copy.targetResumedNote : ""}
+        />
+        <ModuleTipsCard title={copy.tipsTitle} tips={copy.tips} />
+      </ModuleHistorySidebar>
 
-      <div className="cover-letter-config-card">
-        <div className="tone-selector">
-          <span>{copy.toneLabel}</span>
-          <div className="tone-pills">
+      <section className="mw-main">
+        <ModuleHero
+          eyebrow={copy.eyebrow}
+          title={copy.title}
+          subtitle={copy.subtitle}
+          art={<LetterHeroArt />}
+          chips={[
+            offer?.title ? { icon: "briefcase", label: offer.title } : null,
+            offer?.company || location ? { icon: "pin", label: [offer?.company, location].filter(Boolean).join(" · ") } : null,
+            { icon: "pricetag", label: hasUnlimitedTokens ? copy.unlimitedChip : copy.tokenChip.replace("{count}", Math.max(0, tokensBalance)) }
+          ]}
+        />
+
+        <div className="mw-card">
+          <div className="mw-step-head">
+            <span className="mw-step-num">1</span>
+            <div>
+              <h3>{copy.toneLabel}</h3>
+              <p>{copy.toneHint}</p>
+            </div>
+          </div>
+          <div className="mw-options">
             {tones.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className={`tone-pill ${tone === item.id ? "active" : ""}`}
+                className={`mw-option ${tone === item.id ? "is-active" : ""}`}
                 onClick={() => setTone(item.id)}
+                aria-pressed={tone === item.id}
               >
-                <UiIcon name={LETTER_TONE_ICONS[item.id]} />
-                {item.label}
+                <span className="mw-option-icon">
+                  <UiIcon name={LETTER_TONE_ICONS[item.id]} />
+                </span>
+                <strong>{item.label}</strong>
+                <small>{toneDescriptions[item.id]}</small>
               </button>
             ))}
           </div>
-        </div>
 
-        <div className="tone-selector">
-          <span>{copy.templateLabel}</span>
-          <div className="tone-pills">
+          <div className="mw-step-head">
+            <span className="mw-step-num">2</span>
+            <div>
+              <h3>{copy.templateLabel}</h3>
+              <p>{copy.templateHint}</p>
+            </div>
+          </div>
+          <div className="mw-options mw-templates">
             {LETTER_TEMPLATES.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className={`tone-pill template-pill template-pill-${item.id} ${template === item.id ? "active" : ""}`}
+                className={`mw-template ${template === item.id ? "is-active" : ""}`}
                 onClick={() => setTemplate(item.id)}
+                aria-pressed={template === item.id}
               >
-                <UiIcon name={item.icon} />
-                {item.label[language] || item.label.fr}
+                <LetterTemplateThumb variant={item.id} />
+                <span>
+                  <UiIcon name={item.icon} />
+                  {item.label[language] || item.label.fr}
+                </span>
               </button>
             ))}
           </div>
         </div>
-      </div>
 
-      {error ? <p className="field-error">{error}</p> : null}
+        {error ? <p className="field-error">{error}</p> : null}
 
-      {!letter ? (
-        <div className="cover-letter-empty">
-          <CoverLetterIllustration />
-          {outOfTokens ? (
-            <p className="field-hint">
-              {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
-            </p>
-          ) : null}
-          <button type="button" className="btn-main ready" onClick={handleGenerate} disabled={isGenerating}>
-            {isGenerating ? (
-              <>
-                <span className="btn-spinner" /> {copy.generating}
-              </>
-            ) : hasUnlimitedTokens ? (
-              copy.generateUnlimited
-            ) : (
-              copy.generate
-            )}
-          </button>
-        </div>
-      ) : (
-        <div className="letter-document-card">
-          <div className="letter-toolbar no-print">
-            {isEditing ? (
-              <>
-                <button type="button" className="btn-ghost" onClick={cancelEditing}>
-                  {copy.cancelEdit}
-                </button>
-                <button type="button" className="btn-main" onClick={saveEditing}>
-                  {copy.saveEdit}
-                </button>
-              </>
-            ) : (
-              <>
-                <button type="button" className="btn-ghost" onClick={handleGenerate} disabled={isGenerating}>
-                  {isGenerating ? <span className="btn-spinner" /> : null}{" "}
-                  {hasUnlimitedTokens ? copy.regenerateUnlimited : copy.regenerate}
-                </button>
-                <button type="button" className="btn-ghost" onClick={startEditing}>
-                  <UiIcon name="edit" /> {copy.edit}
-                </button>
-                <button type="button" className="btn-ghost" onClick={handleCopy}>
-                  {copied ? copy.copied : copy.copy}
-                </button>
-                <button type="button" className="btn-main" onClick={handleDownload}>
-                  <UiIcon name="download" /> {copy.download}
-                </button>
-              </>
-            )}
-          </div>
-          {isEditing ? (
-            <textarea
-              className={`letter-document letter-document-edit template-${template}`}
-              value={draftLetter}
-              onChange={(event) => setDraftLetter(event.target.value)}
-            />
-          ) : (
-            <div className={`letter-document template-${template}`} id="cover-letter-document">
-              {subject ? <p className="letter-subject">{subject}</p> : null}
-              {letter.split("\n\n").map((paragraph, index) => (
-                <p key={`para-${index}`}>{paragraph}</p>
-              ))}
+        {!letter ? (
+          <div className="mw-card mw-generate">
+            <div className={`mw-paper template-${template}`} aria-hidden="true">
+              <span className="mw-paper-line is-title" />
+              <span className="mw-paper-line" />
+              <span className="mw-paper-line is-short" />
+              <span className="mw-paper-line" />
+              <span className="mw-paper-line is-mid" />
+              <span className="mw-paper-line" />
+              <span className="mw-paper-line is-short" />
             </div>
-          )}
-        </div>
-      )}
+            <div className="mw-generate-copy">
+              <span className="mw-step-num">3</span>
+              <h3>{copy.generateTitle}</h3>
+              <p>{copy.generateText}</p>
+              {outOfTokens ? (
+                <p className="field-hint">
+                  {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
+                </p>
+              ) : null}
+              <button type="button" className="btn-main ready mw-cta" onClick={handleGenerate} disabled={isGenerating}>
+                {isGenerating ? (
+                  <>
+                    <span className="btn-spinner" /> {copy.generating}
+                  </>
+                ) : (
+                  <>
+                    <UiIcon name="edit" /> {hasUnlimitedTokens ? copy.generateUnlimited : copy.generate}
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="letter-document-card">
+            <div className="letter-toolbar no-print">
+              {isEditing ? (
+                <>
+                  <button type="button" className="btn-ghost" onClick={cancelEditing}>
+                    {copy.cancelEdit}
+                  </button>
+                  <button type="button" className="btn-main" onClick={saveEditing}>
+                    {copy.saveEdit}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="btn-ghost" onClick={handleGenerate} disabled={isGenerating}>
+                    {isGenerating ? <span className="btn-spinner" /> : null}{" "}
+                    {hasUnlimitedTokens ? copy.regenerateUnlimited : copy.regenerate}
+                  </button>
+                  <button type="button" className="btn-ghost" onClick={startEditing}>
+                    <UiIcon name="edit" /> {copy.edit}
+                  </button>
+                  <button type="button" className="btn-ghost" onClick={handleCopy}>
+                    {copied ? copy.copied : copy.copy}
+                  </button>
+                  <button type="button" className="btn-main" onClick={handleDownload}>
+                    <UiIcon name="download" /> {copy.download}
+                  </button>
+                </>
+              )}
+            </div>
+            {isEditing ? (
+              <textarea
+                className={`letter-document letter-document-edit template-${template}`}
+                value={draftLetter}
+                onChange={(event) => setDraftLetter(event.target.value)}
+              />
+            ) : (
+              <div className={`letter-document template-${template}`} id="cover-letter-document">
+                {subject ? <p className="letter-subject">{subject}</p> : null}
+                {letter.split("\n\n").map((paragraph, index) => (
+                  <p key={`para-${index}`}>{paragraph}</p>
+                ))}
+              </div>
+            )}
+            <AiDisclaimer
+              language={language}
+              text={
+                language === "en"
+                  ? "AI-generated letter: check facts, dates and names, and personalise it before sending."
+                  : "Lettre générée par l'IA : vérifiez les faits, les dates et les noms, et personnalisez-la avant l'envoi."
+              }
+            />
+          </div>
+        )}
       </section>
     </div>
   );

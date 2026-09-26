@@ -15,34 +15,10 @@ import {
   deleteNegotiationConversation
 } from "../../lib/inMemoryDb.js";
 import { NEGOTIATION_COPY } from "./negotiationCopy.js";
+import { ModuleHero, ModuleHistorySidebar, ModuleTargetCard, ModuleTipsCard, NegotiationHeroArt } from "../../components/ModuleWorkspace.jsx";
+import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
 
-function NegotiationIllustration() {
-  return (
-    <svg viewBox="0 0 320 240" className="module-illustration" aria-hidden="true">
-      <rect x="20" y="150" width="90" height="12" rx="6" fill="var(--line)" />
-      <rect x="60" y="30" width="10" height="130" rx="5" fill="var(--line)" />
-      <rect x="45" y="70" width="40" height="60" rx="8" fill="var(--primary)" opacity="0.85" />
-      <circle cx="65" cy="52" r="16" fill="#f5f3ee" stroke="var(--primary)" strokeWidth="2" />
-      <rect x="210" y="150" width="90" height="12" rx="6" fill="var(--line)" />
-      <rect x="248" y="30" width="10" height="130" rx="5" fill="var(--line)" />
-      <rect x="233" y="70" width="40" height="60" rx="8" fill="#1a0dab" opacity="0.85" />
-      <circle cx="253" cy="52" r="16" fill="#f5f3ee" stroke="#1a0dab" strokeWidth="2" />
-      <path
-        d="M105 100h40a10 10 0 0110 10v4a10 10 0 01-10 10h-24l-10 10v-10h-6a10 10 0 01-10-10v-4a10 10 0 0110-10z"
-        fill="var(--surface-2)"
-        stroke="var(--line)"
-      />
-      <text x="150" y="122" fontSize="16" fontWeight="700" fill="var(--primary)">%</text>
-      <path
-        d="M175 60h40a9 9 0 019 9v4a9 9 0 01-9 9h-8v9l-11-9h-21a9 9 0 01-9-9v-4a9 9 0 019-9z"
-        fill="var(--surface-2)"
-        stroke="var(--line)"
-      />
-    </svg>
-  );
-}
-
-function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
+function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, offer: latestOffer, tokensBalance, onGoToTarifs, onGoToImport, onConsumeToken }) {
   const copy = NEGOTIATION_COPY[language] || NEGOTIATION_COPY.fr;
   const currencyOption = getCurrencyOption(currency);
   const [targetSalary, setTargetSalary] = useState("");
@@ -57,6 +33,11 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
   const [salaryReference, setSalaryReference] = useState(null);
   const [conversations, setConversations] = useState([]);
   const [conversationId, setConversationId] = useState(null);
+  // Offre active : celle de la conversation reprise (enregistrée avec
+  // elle), sinon la dernière offre analysée dans « Importer CV ». Tout le
+  // module s'y réfère : affichage, appels à l'IA et sauvegarde.
+  const [resumedOffer, setResumedOffer] = useState(null);
+  const offer = resumedOffer || latestOffer;
 
   useEffect(() => {
     let cancelled = false;
@@ -116,11 +97,13 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
     setSummary(null);
     setTargetSalary("");
     setConversationId(null);
+    setResumedOffer(null);
     setError("");
   }
 
   function handleResumeConversation(conv) {
     setConversationId(conv.id);
+    setResumedOffer(conv.offer && (conv.offer.title || conv.offer.skills?.length) ? conv.offer : null);
     setMessages(conv.messages || []);
     setSalaryReference(conv.salaryReference || null);
     setSummary(conv.summary || null);
@@ -262,90 +245,137 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
 
   if (!hasContext) {
     return (
-      <section className="module-locked">
-        <div className="module-locked-copy">
-          <h2>{copy.title}</h2>
-          <p>{copy.empty}</p>
+      <section className="mw-locked">
+        <div className="mw-locked-art">
+          <NegotiationHeroArt />
         </div>
-        <div className="module-locked-art">
-          <NegotiationIllustration />
-        </div>
+        <span className="mw-eyebrow">{copy.eyebrow}</span>
+        <h2>{copy.title}</h2>
+        <p>{copy.empty}</p>
+        {onGoToImport ? (
+          <button type="button" className="btn-main ready" onClick={onGoToImport}>
+            <UiIcon name="upload" /> {copy.unlockCta}
+          </button>
+        ) : null}
       </section>
     );
   }
 
+  const location = offer?.location && offer.location !== "Non précisé" ? offer.location : "";
+
   const historySidebar = (
-    <aside className="negotiation-history">
-      <button type="button" className="negotiation-new-btn" onClick={handleNewConversation}>
-        <UiIcon name="plus" /> {copy.newConversation}
-      </button>
-      <span className="negotiation-history-label">{copy.history}</span>
-      {conversations.length ? (
-        <ul className="negotiation-history-list">
-          {conversations.map((conv) => (
-            <li
-              key={conv.id}
-              className={`negotiation-history-item${conv.id === conversationId ? " active" : ""}`}
-              onClick={() => handleResumeConversation(conv)}
-            >
-              <span className="negotiation-history-title">{conv.title || copy.untitled}</span>
-              <button
-                type="button"
-                className="negotiation-history-delete"
-                onClick={(event) => handleDeleteConversation(event, conv)}
-                aria-label={copy.deleteConversation}
-              >
-                <UiIcon name="trash" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="negotiation-history-empty">{copy.noHistory}</p>
-      )}
-    </aside>
+    <ModuleHistorySidebar
+      language={language}
+      newLabel={copy.newConversation}
+      historyLabel={copy.history}
+      emptyLabel={copy.noHistory}
+      deleteLabel={copy.deleteConversation}
+      items={conversations.map((conv) => ({ ...conv, title: conv.title || copy.untitled }))}
+      activeId={conversationId}
+      icon="scale"
+      onNew={handleNewConversation}
+      onSelect={handleResumeConversation}
+      onDelete={handleDeleteConversation}
+      renderMeta={(conv) =>
+        conv.summary ? (
+          <span className="mw-meta-badge">{copy.reportReady}</span>
+        ) : Array.isArray(conv.messages) ? (
+          (() => {
+            const answers = conv.messages.filter((msg) => msg.type === "user").length;
+            return <span>{answers ? copy.exchanges.replace("{count}", answers) : copy.notStarted}</span>;
+          })()
+        ) : null
+      }
+    >
+      <ModuleTargetCard
+        language={language}
+        offer={offer}
+        candidate={candidate}
+        title={resumedOffer ? copy.targetResumedTitle : undefined}
+        note={resumedOffer ? copy.targetResumedNote : ""}
+      />
+      <ModuleTipsCard title={copy.tipsTitle} tips={copy.tips} />
+    </ModuleHistorySidebar>
   );
 
   if (!started) {
     return (
-      <div className="negotiation-layout">
+      <div className="mw-layout">
         {historySidebar}
-        <section className="negotiation-start">
-          <NegotiationIllustration />
-          <h2>{copy.title}</h2>
-          <p>{copy.subtitle}</p>
-          <label className="negotiation-target">
-            <span>{copy.targetLabel}</span>
-            <div className="negotiation-target-input">
-              <input
-                type="text"
-                inputMode="numeric"
-                value={targetSalaryDisplay}
-                onChange={handleTargetSalaryChange}
-                placeholder={copy.targetPlaceholder}
-              />
-              <span className="negotiation-target-suffix">
-                {currencyOption.symbol} {language === "en" ? "/ yr" : "/ an"}
-              </span>
+        <section className="mw-main">
+          <ModuleHero
+            eyebrow={copy.eyebrow}
+            title={copy.title}
+            subtitle={copy.subtitle}
+            art={<NegotiationHeroArt />}
+            chips={[
+              offer?.title ? { icon: "briefcase", label: offer.title } : null,
+              offer?.company || location ? { icon: "pin", label: [offer?.company, location].filter(Boolean).join(" · ") } : null,
+              { icon: "pricetag", label: hasUnlimitedTokens ? copy.unlimitedChip : copy.tokenChip.replace("{count}", Math.max(0, tokensBalance)) }
+            ]}
+          />
+
+          <div className="mw-split">
+            <div className="mw-card mw-start">
+              <div className="mw-step-head">
+                <span className="mw-step-num">
+                  <UiIcon name="scale" />
+                </span>
+                <div>
+                  <h3>{copy.prepareTitle}</h3>
+                  <p>{copy.prepareText}</p>
+                </div>
+              </div>
+              <label className="negotiation-target">
+                <span>{copy.targetLabel}</span>
+                <div className="negotiation-target-input">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={targetSalaryDisplay}
+                    onChange={handleTargetSalaryChange}
+                    placeholder={copy.targetPlaceholder}
+                  />
+                  <span className="negotiation-target-suffix">
+                    {currencyOption.symbol} {language === "en" ? "/ yr" : "/ an"}
+                  </span>
+                </div>
+                <small className="mw-field-hint">{copy.targetHint}</small>
+              </label>
+              {error ? <p className="field-error">{error}</p> : null}
+              {outOfTokens ? (
+                <p className="field-hint">
+                  {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
+                </p>
+              ) : null}
+              <button type="button" className="btn-main ready mw-cta" onClick={handleStart} disabled={isStarting}>
+                {isStarting ? (
+                  <>
+                    <span className="btn-spinner" /> {copy.starting}
+                  </>
+                ) : (
+                  <>
+                    <UiIcon name="chat" /> {hasUnlimitedTokens ? copy.startUnlimited : copy.start}
+                  </>
+                )}
+              </button>
             </div>
-          </label>
-          {error ? <p className="field-error">{error}</p> : null}
-          {outOfTokens ? (
-            <p className="field-hint">
-              {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
-            </p>
-          ) : null}
-          <button type="button" className="btn-main ready" onClick={handleStart} disabled={isStarting}>
-            {isStarting ? (
-              <>
-                <span className="btn-spinner" /> {copy.starting}
-              </>
-            ) : hasUnlimitedTokens ? (
-              copy.startUnlimited
-            ) : (
-              copy.start
-            )}
-          </button>
+
+            <div className="mw-card mw-steps">
+              <h3>{copy.howTitle}</h3>
+              <ol>
+                {copy.howSteps.map((step, index) => (
+                  <li key={step.title}>
+                    <span className="mw-step-num">{index + 1}</span>
+                    <div>
+                      <strong>{step.title}</strong>
+                      <p>{step.text}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
         </section>
       </div>
     );
@@ -353,9 +383,9 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
 
   if (summary) {
     return (
-      <div className="negotiation-layout">
+      <div className="mw-layout">
         {historySidebar}
-        <section className="negotiation-summary">
+        <section className="mw-main negotiation-summary">
           <div className="negotiation-summary-header">
             <div className="negotiation-summary-icon">
               <UiIcon name="matchmark" />
@@ -396,90 +426,124 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
               </ul>
             </div>
           </div>
+          <AiDisclaimer language={language} />
+          <button type="button" className="btn-main ready mw-cta" onClick={handleNewConversation}>
+            <UiIcon name="plus" /> {copy.newConversation}
+          </button>
         </section>
       </div>
     );
   }
 
   return (
-    <div className="negotiation-layout">
+    <div className="mw-layout">
       {historySidebar}
-      <section className="negotiation-page">
-      {salaryReference ? (
-        <div className="salary-reference-banner">
-          <UiIcon name="chart" />
-          <span>
-            {language === "en" ? "Real market range: " : "Fourchette réelle de marché : "}
-            <strong>
-              {formatAmountInCurrency(salaryReference.min, currency)} – {formatAmountInCurrency(salaryReference.max, currency)}
-            </strong>{" "}
-            {language === "en" ? "based on" : "basée sur"}{" "}
-            {salaryReference.sources.map((source) => source.name).join(" + ")}
-            {language === "en" ? " listings." : "."}
+      <section className="mw-main negotiation-page">
+        <div className="mw-chat-head">
+          <span className="mw-chat-avatar">
+            <UiIcon name="briefcase" />
+            <i aria-hidden="true" />
           </span>
+          <div>
+            <strong>{copy.recruiterName}</strong>
+            <small>{[offer?.title, offer?.company].filter(Boolean).join(" · ")}</small>
+          </div>
+          {targetSalaryLabel ? (
+            <span className="mw-chat-target">
+              {copy.targetShort} <strong>{targetSalaryLabel}</strong>
+            </span>
+          ) : null}
         </div>
-      ) : (
-        <div className="salary-reference-banner muted">
-          <UiIcon name="alert" />
-          <span>
-            {language === "en"
-              ? "No real market data found for this role, figures below are AI estimates only."
-              : "Aucune donnée de marché réelle trouvée pour ce poste, les montants ci-dessous sont des estimations IA uniquement."}
-          </span>
-        </div>
-      )}
 
-      <div className="chat card">
-        <div className="chat-stream negotiation-stream">
-          {messages.map((msg, idx) => {
-            if (msg.type === "feedback") {
+        {salaryReference ? (
+          <div className="salary-reference-banner">
+            <UiIcon name="chart" />
+            <span>
+              {language === "en" ? "Real market range: " : "Fourchette réelle de marché : "}
+              <strong>
+                {formatAmountInCurrency(salaryReference.min, currency)} – {formatAmountInCurrency(salaryReference.max, currency)}
+              </strong>{" "}
+              {language === "en" ? "based on" : "basée sur"}{" "}
+              {salaryReference.sources.map((source) => source.name).join(" + ")}
+              {language === "en" ? " listings." : "."}
+            </span>
+          </div>
+        ) : (
+          <div className="salary-reference-banner muted">
+            <UiIcon name="alert" />
+            <span>
+              {language === "en"
+                ? "No real market data found for this role, figures below are AI estimates only."
+                : "Aucune donnée de marché réelle trouvée pour ce poste, les montants ci-dessous sont des estimations IA uniquement."}
+            </span>
+          </div>
+        )}
+
+        <div className="chat card">
+          <div className="chat-stream negotiation-stream">
+            {messages.map((msg, idx) => {
+              if (msg.type === "feedback") {
+                return (
+                  <div key={`${msg.type}-${idx}`} className={`msg ${msg.type}`}>
+                    <p>{msg.text}</p>
+                  </div>
+                );
+              }
               return (
-                <div key={`${msg.type}-${idx}`} className={`msg ${msg.type}`}>
-                  <p>{msg.text}</p>
+                <div key={`${msg.type}-${idx}`} className={`msg-row msg-row-${msg.type}`}>
+                  {msg.type === "ai" ? (
+                    <span className="msg-avatar msg-avatar-ai">
+                      <UiIcon name="briefcase" />
+                    </span>
+                  ) : null}
+                  <div className={`msg ${msg.type}`}>
+                    <p>{msg.text}</p>
+                  </div>
+                  {msg.type === "user" ? (
+                    <span className="msg-avatar msg-avatar-user">
+                      <UiIcon name="profile" />
+                    </span>
+                  ) : null}
                 </div>
               );
+            })}
+          </div>
+          <AiDisclaimer
+            language={language}
+            text={
+              language === "en"
+                ? "AI-simulated recruiter: amounts and advice are indicative. Check them against real market data."
+                : "Recruteur simulé par l'IA : montants et conseils sont indicatifs. Confrontez-les aux données réelles du marché."
             }
-            return (
-              <div key={`${msg.type}-${idx}`} className={`msg-row msg-row-${msg.type}`}>
-                {msg.type === "ai" ? (
-                  <span className="msg-avatar msg-avatar-ai">
-                    <UiIcon name="briefcase" />
-                  </span>
-                ) : null}
-                <div className={`msg ${msg.type}`}>
-                  <p>{msg.text}</p>
-                </div>
-                {msg.type === "user" ? (
-                  <span className="msg-avatar msg-avatar-user">
-                    <UiIcon name="profile" />
-                  </span>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
-        {error ? <p className="field-error">{error}</p> : null}
-        <div className="chat-input-row">
-          <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder={copy.placeholder}
-            rows={2}
           />
-          <button className="btn-main" onClick={handleSend} disabled={isSending}>
-            {isSending ? <span className="btn-spinner" /> : copy.send}
+          {error ? <p className="field-error">{error}</p> : null}
+          <div className="chat-input-row">
+            <textarea
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  handleSend();
+                }
+              }}
+              placeholder={copy.placeholder}
+              rows={2}
+            />
+            <button className="btn-main" onClick={handleSend} disabled={isSending || !input.trim()}>
+              {isSending ? <span className="btn-spinner" /> : copy.send}
+            </button>
+          </div>
+          <button type="button" className="btn-ghost negotiation-finish" onClick={handleFinish} disabled={isFinishing}>
+            {isFinishing ? (
+              <>
+                <span className="btn-spinner" /> {copy.finishing}
+              </>
+            ) : (
+              copy.finish
+            )}
           </button>
         </div>
-        <button type="button" className="btn-ghost negotiation-finish" onClick={handleFinish} disabled={isFinishing}>
-          {isFinishing ? (
-            <>
-              <span className="btn-spinner" /> {copy.finishing}
-            </>
-          ) : (
-            copy.finish
-          )}
-        </button>
-      </div>
       </section>
     </div>
   );

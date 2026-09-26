@@ -256,7 +256,7 @@ app.get("/api/satisfaction/status", async (req, res) => {
     const user = await getUserRowById(userId);
     if (!user) return res.status(404).json({ error: "Utilisateur introuvable." });
 
-    const { rows: cvRows } = await db.query("SELECT COUNT(*)::int AS count FROM cvs WHERE user_id = $1", [userId]);
+    const { rows: cvRows } = await db.query("SELECT COUNT(*)::int AS count FROM cvs WHERE user_id = $1 AND deleted_at IS NULL", [userId]);
     const hasUsage = (cvRows[0]?.count || 0) > 0;
 
     const lastPromptedAt = user.satisfaction_last_prompted_at || "";

@@ -6,6 +6,7 @@ export function registerBillingRoutes(app) {
   const {
     requireMatchingSession,
     claimStripeEventOnce,
+    releaseStripeEventClaim,
     cors,
     crypto,
     express,
@@ -413,7 +414,12 @@ app.post("/api/stripe/create-checkout-session", async (req, res) => {
     // sur la même minute pour le même utilisateur/plan réutilise la même
     // session au lieu d'en créer une seconde. Passée la fenêtre d'une
     // minute, un nouvel achat du même plan crée bien une nouvelle session.
-    const idempotencyKey = `checkout:${userId}:${planId}:${billingCycle}:${quantity}:${Math.floor(Date.now() / 60000)}`;
+    // La clé envoyée par le front (une par tentative d'achat, réutilisée en
+    // cas de retry) prime ; à défaut, fenêtre d'une minute.
+    const clientKey = coerceString(req.headers["idempotency-key"]).trim();
+    const idempotencyKey = clientKey
+      ? `checkout:${userId}:${clientKey}`
+      : `checkout:${userId}:${planId}:${billingCycle}:${quantity}:${Math.floor(Date.now() / 60000)}`;
     const session = await stripe.checkout.sessions.create(params, { idempotencyKey });
     return res.json({ url: session.url });
   } catch (error) {
@@ -458,10 +464,16 @@ app.post("/api/stripe/confirm-checkout-session", async (req, res) => {
       return res.json({ handled: false, reason: "already_processed" });
     }
 
-    const result = await applyStripeWebhookEvent(
-      { type: "checkout.session.completed", data: { object: session } },
-      { db, parseJsonField, getPlanById: getEffectivePlanById, applyPlanToUser, generateLicenseCodeForPlan }
-    );
+    let result;
+    try {
+      result = await applyStripeWebhookEvent(
+        { type: "checkout.session.completed", data: { object: session } },
+        { db, parseJsonField, getPlanById: getEffectivePlanById, applyPlanToUser, generateLicenseCodeForPlan }
+      );
+    } catch (applyError) {
+      await releaseStripeEventClaim(`session:${session.id}`);
+      throw applyError;
+    }
     return res.json(result);
   } catch (error) {
     console.error("Erreur confirmation session Stripe Checkout:", error);
@@ -488,6 +500,24 @@ app.post("/api/plans/activate", async (req, res) => {
     const plan = await getEffectivePlanById(planId);
     if (!plan) {
       return res.status(400).json({ error: "Plan inconnu." });
+    }
+
+    // Un plan payant ne s'obtient QUE par un paiement confirmé (Stripe) ou un
+    // code de licence. Cette route ne sert qu'aux plans gratuits — sauf en
+    // développement local, si ALLOW_UNPAID_PLAN_ACTIVATION=1.
+    if (plan.grantsPremium && process.env.ALLOW_UNPAID_PLAN_ACTIVATION !== "1") {
+      return res.status(402).json({
+        error: "Ce plan est payant : l'activation passe par le paiement sécurisé.",
+        code: "PAYMENT_REQUIRED"
+      });
+    }
+
+    // Idempotent : réactiver le plan déjà actif ne change rien (pas de
+    // jetons recrédités, pas de nouvelle date de début).
+    const currentSubscription = parseJsonField(user.subscription_json, {});
+    if (currentSubscription.planId === plan.id && currentSubscription.status === "active") {
+      const premium = await computePremiumAccess(user);
+      return res.json({ user: await getPublicUserById(userId), premium, licenseCode: null, alreadyActive: true });
     }
 
     await applyPlanToUser(userId, plan, billingCycle, null, null, "instant");

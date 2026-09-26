@@ -9,7 +9,7 @@ import { askLogoutConfirmation } from "./features/account/LogoutConfirmHost.jsx"
 import InterviewPage from "./features/interviews/InterviewPage.jsx";
 import SalaryNegotiationPage from "./features/negotiation/SalaryNegotiationPage.jsx";
 import ApplicationsPage from "./features/applications/ApplicationsPage.jsx";
-import { AdminApp } from "./features/admin/AdminApp.jsx";
+import { AdminApp, adminNotifRelativeLabel } from "./features/admin/AdminApp.jsx";
 import SchoolApp, { SchoolEmptyState } from "./features/school/SchoolApp.jsx";
 import CabinetApp from "./features/cabinet/CabinetApp.jsx";
 import { ImportPage, AnalysisPage, OffersPage, CvHistoryPage } from "./features/cv/CvPages.jsx";
@@ -71,6 +71,7 @@ import {
   updateCoverLetter,
   deleteCoverLetter,
   getLatestMatchRun,
+  listMatchRuns,
   getHealth,
   getMatchFeedback,
   getPremiumSnapshot,
@@ -151,7 +152,7 @@ import {
   verifySecondaryEmail
 } from "./lib/inMemoryDb";
 import { createCvRecord, fileToBase64, parseCvText, readFileAsText } from "./lib/cvService";
-import { extractOfferSummary, runMatching } from "./lib/matchingService";
+import { alignMatchScores, extractOfferSummary, runMatching } from "./lib/matchingService";
 import { PLANS, PLAN_SEGMENTS, getPlanById } from "./data/plans";
 
 const NAV_ITEMS = [
@@ -858,6 +859,28 @@ function candidateNotificationText(item, language) {
   }
 }
 
+// Où mène chaque notification candidat quand on clique dessus.
+function candidateNotificationTarget(item) {
+  switch (item.type) {
+    case "password_changed":
+    case "password_reset_completed":
+    case "login_locked":
+    case "connected_account_linked":
+    case "connected_account_removed":
+      return { panel: "security" };
+    case "payment_confirmed":
+    case "balance_empty":
+    case "balance_low":
+      return { page: "tarifs" };
+    case "application_stale":
+      return { page: "candidatures" };
+    case "profile_incomplete":
+      return { page: "profil" };
+    default:
+      return { page: "notifications" };
+  }
+}
+
 function mergeProfileFromCv(currentProfile, parsedCv) {
   return {
     ...currentProfile,
@@ -869,6 +892,45 @@ function mergeProfileFromCv(currentProfile, parsedCv) {
   };
 }
 
+
+function CandidateNotificationsPage({ language, notifications, unreadCount, isUnread, renderItem, onMarkAllRead }) {
+  const [filter, setFilter] = useState("all");
+  const t = (fr, en) => (language === "en" ? en : fr);
+  const shown = filter === "unread" ? notifications.filter(isUnread) : notifications;
+  return (
+    <section className="cn-notif-page">
+      <header className="cn-notif-page-head">
+        <div>
+          <h2>Notifications</h2>
+          <p>{t("Sécurité du compte, paiements, solde de jetons, candidatures et annonces de votre école.", "Account security, payments, token balance, applications and announcements from your school.")}</p>
+        </div>
+        {unreadCount ? (
+          <button type="button" className="btn-secondary" onClick={onMarkAllRead}>
+            <UiIcon name="check" />
+            {t("Tout marquer comme lu", "Mark all as read")}
+          </button>
+        ) : null}
+      </header>
+      <div className="cn-notif-tabs" role="tablist">
+        {["all", "unread"].map((value) => (
+          <button key={value} type="button" role="tab" aria-selected={filter === value} className={filter === value ? "is-active" : ""} onClick={() => setFilter(value)}>
+            {value === "all" ? t("Toutes", "All") : t("Non lues", "Unread")}
+            {value === "unread" ? <span>({unreadCount})</span> : null}
+          </button>
+        ))}
+      </div>
+      {shown.length ? (
+        <div className="cn-notif-page-list">{shown.map(renderItem)}</div>
+      ) : (
+        <div className="cn-notif-page-empty">
+          <UiIcon name="bell" />
+          <strong>{filter === "unread" ? t("Aucune notification non lue", "No unread notifications") : t("Aucune notification", "No notifications")}</strong>
+          <span>{t("Les nouvelles activités apparaîtront ici.", "New activity will appear here.")}</span>
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default function App() {
   const [token, setToken] = useState(() => localStorage.getItem("career_app_token") || "");
@@ -929,6 +991,7 @@ export default function App() {
   const [offerText, setOfferText] = useState("");
   const [latestCv, setLatestCv] = useState(null);
   const [cvHistory, setCvHistory] = useState([]);
+  const [matchRuns, setMatchRuns] = useState([]);
   const [latestMatch, setLatestMatch] = useState(null);
   const [matchInsights, setMatchInsights] = useState(null);
   const [matchRunId, setMatchRunId] = useState(null);
@@ -995,6 +1058,47 @@ export default function App() {
       setReadNotificationIds(new Set());
     }
   }, [user?.id]);
+
+  function markNotificationsRead(ids) {
+    if (!user?.id) return;
+    const nextIds = new Set([...readNotificationIds, ...ids]);
+    setReadNotificationIds(nextIds);
+    try {
+      localStorage.setItem(`career_app_read_notifications_${user.id}`, JSON.stringify([...nextIds]));
+    } catch (_error) {
+      // stockage indisponible : l'état lu reste valable pour cette session
+    }
+  }
+
+  function openCandidateNotification(item) {
+    markNotificationsRead([item.id]);
+    setNotifOpen(false);
+    const target = candidateNotificationTarget(item);
+    if (target.panel) {
+      setAccountPanel(target.panel);
+      setAccountDrawerOpen(true);
+    } else if (target.page) {
+      goTo(target.page);
+    }
+  }
+
+  function renderCandidateNotif(item, large = false) {
+    const text = candidateNotificationText(item, language);
+    const unread = !readNotificationIds.has(item.id);
+    return (
+      <button key={item.id} type="button" className={`cn-notif-event ${large ? "is-large" : ""} ${unread ? "is-unread" : ""}`} onClick={() => openCandidateNotification(item)}>
+        <span className="cn-notif-icon">
+          <UiIcon name={text.icon} />
+        </span>
+        <span className="cn-notif-body">
+          <strong>{text.title}</strong>
+          {text.detail ? <span>{text.detail}</span> : null}
+          <small>{item.createdAt ? adminNotifRelativeLabel(item.createdAt, language) : language === "en" ? "Needs attention" : "À traiter"}</small>
+        </span>
+        {unread ? <span className="cn-notif-dot" aria-label={language === "en" ? "Unread" : "Non lue"} /> : null}
+      </button>
+    );
+  }
 
   function markAllNotificationsRead() {
     if (!user?.id) return;
@@ -1233,7 +1337,10 @@ export default function App() {
       const cvItems = await listUserCvs(snapshot.user.id);
       setCvHistory(cvItems);
       const matchRun = await getLatestMatchRun(snapshot.user.id);
-      setLatestMatch(matchRun);
+      setLatestMatch(alignMatchScores(matchRun));
+      listMatchRuns(snapshot.user.id)
+        .then(setMatchRuns)
+        .catch(() => setMatchRuns([]));
       setMatchRunId(matchRun?.id || null);
 
       const activeCv = cvItems[0] || null;
@@ -1494,6 +1601,22 @@ export default function App() {
     };
   }
 
+  // Après une mise en corbeille / restauration : recharge l'historique et,
+  // si le CV actif n'est plus disponible, bascule sur le plus récent restant.
+  async function refreshCvHistory() {
+    if (!user) return;
+    const items = await listUserCvs(user.id);
+    setCvHistory(items);
+    if (latestCv && !items.some((cv) => cv.id === latestCv.id)) {
+      const nextCv = items[0] || null;
+      setLatestCv(nextCv);
+      setCvSourceText(nextCv?.sourceText || "");
+      setCvFileName(nextCv?.fileName || "");
+      setCvReview(nextCv?.parsed || null);
+      if (!nextCv) setImportStep("upload");
+    }
+  }
+
   async function saveCvToDb({ fileName, text, parsed: rawParsed }) {
     if (!user) return;
 
@@ -1568,13 +1691,25 @@ export default function App() {
     try {
       clearMessages();
       setCvReview(nextReview);
-      await saveCvToDb({
+      const saved = await saveCvToDb({
         fileName: cvFileName || `cv-${new Date().toISOString().slice(0, 10)}.txt`,
         text: cvSourceText,
         parsed: nextReview
       });
       setImportStep("job");
-      setPageMessage(language === "en" ? "CV saved. Add the target job." : "CV enregistré. Ajoutez maintenant le poste visé.");
+      setPageMessage(
+        saved?.restored
+          ? language === "en"
+            ? "This CV was in your trash: it has been restored. Add the target job."
+            : "Ce CV était dans la corbeille : il a été restauré. Ajoutez maintenant le poste visé."
+          : saved?.duplicate
+          ? language === "en"
+            ? "This CV was already in your history: it has been updated, not duplicated. Add the target job."
+            : "Ce CV était déjà dans votre historique : il a été mis à jour, sans doublon. Ajoutez maintenant le poste visé."
+          : language === "en"
+          ? "CV saved. Add the target job."
+          : "CV enregistré. Ajoutez maintenant le poste visé."
+      );
     } catch (error) {
       setProcessingError(getFriendlyErrorMessage(error, language));
     }
@@ -1915,8 +2050,12 @@ export default function App() {
 
       const matchResponse = await analyzeMatch({ candidate, offer: offerForAi });
 
-      await saveMatchRun(user.id, { ...result, matchInsights: matchResponse.analysis, jobReview: offerForAi, offerText });
-      setLatestMatch(result);
+      const alignedRun = alignMatchScores({ ...result, matchInsights: matchResponse.analysis });
+      await saveMatchRun(user.id, { ...alignedRun, cvId: latestCv?.id || null, jobReview: offerForAi, offerText });
+      setLatestMatch(alignedRun);
+      listMatchRuns(user.id)
+        .then(setMatchRuns)
+        .catch(() => {});
       setMatchInsights(matchResponse.analysis);
 
       try {
@@ -2335,63 +2474,57 @@ export default function App() {
           <div className="topbar-notif" ref={notifRef}>
             <button
               type="button"
-              className="topbar-icon-btn"
-              title={language === "en" ? "Notifications" : "Notifications"}
+              className={`topbar-icon-btn ${unreadNotificationCount ? "has-unread" : ""}`}
+              title="Notifications"
+              aria-label={
+                unreadNotificationCount
+                  ? language === "en"
+                    ? `Notifications, ${unreadNotificationCount} unread`
+                    : `Notifications, ${unreadNotificationCount} non lue(s)`
+                  : "Notifications"
+              }
               onClick={() => setNotifOpen((prev) => !prev)}
             >
               <UiIcon name="bell" />
               {unreadNotificationCount ? (
-                <span className="topbar-notif-badge">{unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}</span>
+                <span className="topbar-notif-badge is-new">{unreadNotificationCount > 9 ? "9+" : unreadNotificationCount}</span>
               ) : null}
             </button>
             {notifOpen ? (
-              <div className="topbar-notif-panel">
-                <div className="topbar-notif-panel-head">
-                  <strong>{language === "en" ? "Notifications" : "Notifications"}</strong>
-                  <span className="muted">
-                    {notifications.length
-                      ? `${notifications.length} ${language === "en" ? "item(s)" : "élément(s)"}`
-                      : language === "en"
-                      ? "Nothing to report"
-                      : "Rien à signaler"}
-                  </span>
+              <div className="cn-notif-panel">
+                <div className="cn-notif-head">
+                  <strong>Notifications</strong>
+                  {unreadNotificationCount ? (
+                    <button type="button" onClick={markAllNotificationsRead}>
+                      {language === "en" ? "Mark all as read" : "Tout marquer comme lu"}
+                    </button>
+                  ) : null}
                 </div>
-                {unreadNotificationCount ? (
-                  <button type="button" className="topbar-notif-mark-read" onClick={markAllNotificationsRead}>
-                    {language === "en" ? "Mark all as read" : "Marquer tout comme lu"}
+                <div className="cn-notif-events">
+                  {notifications.length ? (
+                    notifications.slice(0, 12).map((item) => renderCandidateNotif(item))
+                  ) : (
+                    <div className="cn-notif-none">
+                      <UiIcon name="bell" />
+                      <span>{language === "en" ? "No notifications." : "Aucune notification."}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="cn-notif-foot">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNotifOpen(false);
+                      goTo("notifications");
+                    }}
+                  >
+                    {language === "en" ? "View all notifications" : "Voir toutes les notifications"}
                   </button>
-                ) : null}
-                {notifications.length ? (
-                  <div className="topbar-notif-list">
-                    {notifications.map((item) => {
-                      const text = candidateNotificationText(item, language);
-                      const isUnread = !readNotificationIds.has(item.id);
-                      return (
-                        <div key={item.id} className={`topbar-notif-row ${isUnread ? "unread" : ""}`}>
-                          <span className="topbar-notif-icon">
-                            <UiIcon name={text.icon} />
-                          </span>
-                          <div>
-                            <strong>{text.title}</strong>
-                            <span className="muted" title={text.detail}>{text.detail}</span>
-                            {item.createdAt ? <span className="topbar-notif-time">{formatDateTime(item.createdAt)}</span> : null}
-                          </div>
-                          {isUnread ? <span className="topbar-notif-dot" aria-hidden="true" /> : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="muted topbar-notif-empty">
-                    {language === "en"
-                      ? "Payments, low token balance, account security and stale applications will show up here."
-                      : "Paiements, solde de jetons bas, sécurité du compte et candidatures en attente apparaîtront ici."}
-                  </p>
-                )}
+                </div>
               </div>
             ) : null}
           </div>
-          <LanguageSwitch language={language} setLanguage={setLanguage} variant="dropdown" />
+          <LanguageSwitch language={language} setLanguage={setLanguage} variant="menu" />
           <button type="button" className="topbar-tokens" onClick={() => goTo("tarifs")} title={language === "en" ? "Tokens balance" : "Solde de jetons"}>
             <UiIcon name="pricetag" />
             <span>{tokensDisplay}</span>
@@ -2454,6 +2587,7 @@ export default function App() {
           <HomePage
             onStart={() => goTo("import")}
             onSeeTarifs={() => goTo("tarifs")}
+            onNavigate={goTo}
             user={user}
             premium={premium}
             profileCompleteness={profileCompleteness}
@@ -2497,6 +2631,7 @@ export default function App() {
             tokensBalance={tokensBalance}
             onApplyOptimization={(next) => setCvReview((prev) => ({ ...(prev || {}), ...next }))}
             onSaveCvReview={persistCvReview}
+            onGoToModule={(page) => goTo(page)}
             onConsumeToken={async () => {
               const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
               setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
@@ -2539,6 +2674,7 @@ export default function App() {
             offer={jobReview || extractOfferSummary(offerText)}
             tokensBalance={tokensBalance}
             onGoToTarifs={() => goTo("tarifs")}
+            onGoToImport={() => goTo("import")}
             onConsumeToken={async () => {
               const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
               setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
@@ -2555,6 +2691,7 @@ export default function App() {
             offer={jobReview || extractOfferSummary(offerText)}
             tokensBalance={tokensBalance}
             onGoToTarifs={() => goTo("tarifs")}
+            onGoToImport={() => goTo("import")}
             onConsumeToken={async () => {
               const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
               setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
@@ -2568,6 +2705,7 @@ export default function App() {
             userId={user.id}
             tokensBalance={tokensBalance}
             onGoToTarifs={() => goTo("tarifs")}
+            onGoToImport={() => goTo("import")}
             onConsumeToken={async () => {
               const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
               setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
@@ -2575,7 +2713,19 @@ export default function App() {
             }}
           />
         ) : null}
-        {activePage === "historique" ? <CvHistoryPage cvHistory={cvHistory} latestMatch={latestMatch} language={language} /> : null}
+        {activePage === "historique" ? (
+          <CvHistoryPage cvHistory={cvHistory} matchRuns={matchRuns} language={language} userId={user?.id} onCvsChanged={refreshCvHistory} />
+        ) : null}
+        {activePage === "notifications" ? (
+          <CandidateNotificationsPage
+            language={language}
+            notifications={notifications}
+            unreadCount={unreadNotificationCount}
+            isUnread={(item) => !readNotificationIds.has(item.id)}
+            renderItem={(item) => renderCandidateNotif(item, true)}
+            onMarkAllRead={markAllNotificationsRead}
+          />
+        ) : null}
         {activePage === "tarifs" ? (
           <PricingPage
             user={user}

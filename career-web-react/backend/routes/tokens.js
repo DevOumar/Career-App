@@ -262,40 +262,53 @@ app.post("/api/tokens/consume", async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
-    const subscription = parseJsonField(user.subscription_json, {});
-    const discoveryPlan = getPlanById("candidate_discovery");
-    const currentCredits =
-      typeof subscription.credits === "number" ? subscription.credits : discoveryPlan?.credits ?? 0;
+    // Débit atomique : la mise à jour n'est appliquée que si l'abonnement n'a
+    // pas changé depuis sa lecture (compare-and-swap) ; deux actions
+    // simultanées ne peuvent donc pas dépenser le même jeton. Les autres
+    // champs de l'abonnement (ids Stripe, licence...) sont conservés.
+    let consumed = 0;
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const current = attempt === 0 ? user : await getUserRowById(userId);
+      const subscription = parseJsonField(current.subscription_json, {});
+      const discoveryPlan = getPlanById("candidate_discovery");
+      const currentCredits =
+        typeof subscription.credits === "number" ? subscription.credits : discoveryPlan?.credits ?? 0;
 
-    if (currentCredits >= 999) {
-      const premium = await computePremiumAccess(user);
-      return res.json({ user: await getPublicUserById(userId), premium, consumed: 0 });
+      if (currentCredits >= 999) {
+        const premium = await computePremiumAccess(current);
+        return res.json({ user: await getPublicUserById(userId), premium, consumed: 0 });
+      }
+      if (currentCredits < amount) {
+        return res.status(402).json({ error: "Jetons insuffisants. Passe à un plan supérieur pour continuer." });
+      }
+
+      const nextSubscription = {
+        ...subscription,
+        plan: subscription.plan || "free",
+        status: subscription.status || "active",
+        planId: subscription.planId || "candidate_discovery",
+        billingCycle: subscription.billingCycle || null,
+        credits: currentCredits - amount,
+        licenseCode: subscription.licenseCode || null,
+        startedAt: subscription.startedAt || nowIso(),
+        renewalAt: subscription.renewalAt || null
+      };
+      const updated = await db.query(
+        "UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3 AND subscription_json = $4",
+        [JSON.stringify(nextSubscription), nowIso(), userId, current.subscription_json]
+      );
+      if (Number(updated.rowCount ?? updated.affectedRows ?? 0) > 0) {
+        consumed = amount;
+        break;
+      }
     }
-
-    if (currentCredits < amount) {
-      return res.status(402).json({ error: "Jetons insuffisants. Passe à un plan supérieur pour continuer." });
+    if (!consumed) {
+      return res.status(409).json({ error: "Solde modifié pendant l'opération, réessayez." });
     }
-
-    const nextSubscription = {
-      plan: subscription.plan || "free",
-      status: subscription.status || "active",
-      planId: subscription.planId || "candidate_discovery",
-      billingCycle: subscription.billingCycle || null,
-      credits: currentCredits - amount,
-      licenseCode: subscription.licenseCode || null,
-      startedAt: subscription.startedAt || nowIso(),
-      renewalAt: subscription.renewalAt || null
-    };
-
-    await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [
-      JSON.stringify(nextSubscription),
-      nowIso(),
-      userId
-    ]);
 
     const updatedUser = await getUserRowById(userId);
     const premium = await computePremiumAccess(updatedUser);
-    return res.json({ user: await getPublicUserById(userId), premium, consumed: amount });
+    return res.json({ user: await getPublicUserById(userId), premium, consumed });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Erreur serveur." });
   }

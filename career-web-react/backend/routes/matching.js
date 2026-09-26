@@ -335,6 +335,36 @@ app.post("/api/matches", async (req, res) => {
   }
 });
 
+// Historique des analyses (score de compatibilité et CV utilisé) : sert à
+// afficher, pour chaque CV, le score de sa dernière analyse.
+app.get("/api/matches", async (req, res) => {
+  try {
+    const userId = coerceString(req.query.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    if (!userId) return res.status(400).json({ error: "userId requis." });
+    const { rows } = await db.query(
+      "SELECT id, created_at, payload_json FROM match_runs WHERE user_id = $1 ORDER BY created_at DESC LIMIT 200",
+      [userId]
+    );
+    return res.json({
+      items: rows.map((row) => {
+        const payload = parseJsonField(row.payload_json, {});
+        const summary = getMatchPayloadSummary(payload);
+        return {
+          id: row.id,
+          createdAt: row.created_at,
+          cvId: payload.cvId || null,
+          score: typeof summary.score === "number" ? summary.score : (typeof payload?.summary?.globalScore === "number" ? payload.summary.globalScore : null),
+          title: summary.title,
+          company: summary.company
+        };
+      })
+    });
+  } catch (error) {
+    return res.status(500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
 app.get("/api/matches/latest", async (req, res) => {
   try {
     const userId = coerceString(req.query.userId);

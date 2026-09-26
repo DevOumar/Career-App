@@ -184,9 +184,10 @@ function describeActivity(item, language, currency) {
     );
   }
   if (meta.sentCount != null) {
-    use("sentCount", "skippedExistingCount", "skippedNoSeatCount");
+    use("sentCount", "skippedExistingCount", "skippedPendingCount", "skippedNoSeatCount");
     const bits = [plural(meta.sentCount, ["envoyée", "envoyées"], ["sent", "sent"])];
     if (meta.skippedExistingCount) bits.push(`${meta.skippedExistingCount} ${t("déjà inscrit(s)", "already registered")}`);
+    if (meta.skippedPendingCount) bits.push(`${meta.skippedPendingCount} ${t("déjà invité(s)", "already invited")}`);
     if (meta.skippedNoSeatCount) bits.push(`${meta.skippedNoSeatCount} ${t("sans siège", "without seat")}`);
     add("announcements", bits.join(" · "));
   }

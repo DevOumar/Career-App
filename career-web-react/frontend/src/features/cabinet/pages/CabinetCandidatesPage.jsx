@@ -787,7 +787,10 @@ function CandidateFormDialog({ language, userId, item, confirm, onClose, onSaved
           tone: "brand",
           title: t("Doublon possible", "Possible duplicate"),
           description: candidateName(err.duplicate),
-          detail: t("Un candidat du vivier a déjà cet e-mail ou ce téléphone. L'ajouter quand même ?", "A candidate in the pool already has this email or phone. Add anyway?"),
+          detail:
+            err.duplicateReason === "cv"
+              ? t("Ce CV a déjà été importé pour ce candidat du vivier. L'ajouter quand même ?", "This CV was already imported for this pool candidate. Add anyway?")
+              : t("Un candidat du vivier a déjà cet e-mail ou ce téléphone. L'ajouter quand même ?", "A candidate in the pool already has this email or phone. Add anyway?"),
           confirmLabel: t("Ajouter quand même", "Add anyway")
         });
         if (!ok) return;

@@ -256,7 +256,7 @@ app.get("/api/school/students", async (req, res) => {
     const studentIds = students.map((row) => row.id);
 
     const { rows: cvRows } = studentIds.length
-      ? await db.query("SELECT user_id, created_at FROM cvs WHERE user_id = ANY($1)", [studentIds])
+      ? await db.query("SELECT user_id, created_at FROM cvs WHERE user_id = ANY($1) AND deleted_at IS NULL", [studentIds])
       : { rows: [] };
     const { rows: matchRows } = studentIds.length
       ? await db.query("SELECT user_id, created_at, payload_json FROM match_runs WHERE user_id = ANY($1) ORDER BY created_at DESC", [
@@ -423,8 +423,20 @@ app.post("/api/school/students/bulk-invite", async (req, res) => {
     const organizationName = orgProfileRows[0]?.organization_name || school.first_name;
     const transporter = getMailTransporter();
 
-    const results = { sent: [], skippedExisting: [], skippedNoSeat: [] };
+    // Idempotence : une adresse déjà invitée (invitation en attente) n'est ni
+    // réinvitée ni recomptée — réimporter le même fichier ne change rien.
+    const { rows: pendingRows } = await db.query(
+      "SELECT email FROM school_invitations WHERE school_user_id = $1 AND status = 'pending'",
+      [userId]
+    );
+    const pendingEmails = new Set(pendingRows.map((row) => normalizeEmail(row.email)));
+
+    const results = { sent: [], skippedExisting: [], skippedPending: [], skippedNoSeat: [] };
     for (const email of emails) {
+      if (pendingEmails.has(email)) {
+        results.skippedPending.push(email);
+        continue;
+      }
       if (!activeCode || Number(activeCode.seats_used) >= Number(activeCode.seats_total)) {
         results.skippedNoSeat.push(email);
         continue;
@@ -469,6 +481,7 @@ app.post("/api/school/students/bulk-invite", async (req, res) => {
     await logSecurityEvent(req, userId, "school_invitation_bulk_sent", {
       sentCount: results.sent.length,
       skippedExistingCount: results.skippedExisting.length,
+      skippedPendingCount: results.skippedPending.length,
       skippedNoSeatCount: results.skippedNoSeat.length
     });
 

@@ -393,6 +393,10 @@ export default function CabinetInvitationsPage({ user, language }) {
               <strong>{bulkResult.skippedExisting?.length || 0}</strong>
               <span>{t("déjà inscrit(s)", "already registered")}</span>
             </div>
+            <div className="jy-bulk-stat">
+              <strong>{bulkResult.skippedPending?.length || 0}</strong>
+              <span>{t("déjà invité(s), non renvoyé(s)", "already invited, not resent")}</span>
+            </div>
             <div className="jy-bulk-stat warn">
               <strong>{bulkResult.skippedNoSeat?.length || 0}</strong>
               <span>{t("ignorée(s) : plus de siège", "skipped: no seat left")}</span>

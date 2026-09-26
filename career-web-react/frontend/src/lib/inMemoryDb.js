@@ -1,3 +1,4 @@
+import { actionIdempotencyKey, completeIdempotentAction, newIdempotencyKey } from "./idempotency.js";
 const explicitApiBase = String(import.meta?.env?.VITE_API_URL || "").trim();
 const hostedApiBase =
   typeof window !== "undefined" && window.location.hostname === "career-cv-henna.vercel.app"
@@ -96,7 +97,21 @@ export function registerStepUpHost(host) {
   };
 }
 
+// options.idempotent : true -> clé unique pour cet appel (protège la
+// nouvelle tentative réseau automatique) ; "nom-d-action" -> clé stable tant
+// que l'action n'a pas abouti (voir lib/idempotency.js).
 async function request(path, options = {}) {
+  if (!options.idempotent || options.idempotencyKey) {
+    return requestWithStepUp(path, options);
+  }
+  const scope = options.idempotent === true ? "" : options.idempotent;
+  const idempotencyKey = scope ? actionIdempotencyKey(scope, options.body) : newIdempotencyKey("req");
+  const result = await requestWithStepUp(path, { ...options, idempotencyKey });
+  if (scope) completeIdempotentAction(scope);
+  return result;
+}
+
+async function requestWithStepUp(path, options = {}) {
   try {
     return await rawRequest(path, options);
   } catch (error) {
@@ -147,6 +162,9 @@ async function rawRequest(path, options = {}) {
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
+  if (options.idempotencyKey) {
+    headers["Idempotency-Key"] = options.idempotencyKey;
+  }
 
   let response;
   try {
@@ -160,6 +178,14 @@ async function rawRequest(path, options = {}) {
       resolvedApiBase = "";
       const retryBase = await resolveApiBase();
       response = await fetch(`${retryBase}${path}`, {
+        method: options.method || "GET",
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined
+      });
+    } else if (options.idempotencyKey) {
+      // Requête idempotente : on peut la renvoyer sans risque de doublon,
+      // le serveur ne l'exécute qu'une fois.
+      response = await fetch(`${apiBase}${path}`, {
         method: options.method || "GET",
         headers,
         body: options.body ? JSON.stringify(options.body) : undefined
@@ -417,6 +443,7 @@ export async function updateUserAvatar(userId, avatarDataUrl) {
 export async function activatePremiumSubscription(userId) {
   return request("/premium/activate", {
     method: "POST",
+    idempotent: "premium-activate",
     body: { userId }
   });
 }
@@ -424,6 +451,7 @@ export async function activatePremiumSubscription(userId) {
 export async function activatePlan({ userId, planId, billingCycle }) {
   return request("/plans/activate", {
     method: "POST",
+    idempotent: "plan-activate",
     body: { userId, planId, billingCycle }
   });
 }
@@ -431,6 +459,7 @@ export async function activatePlan({ userId, planId, billingCycle }) {
 export async function createStripeCheckoutSession({ userId, planId, billingCycle, quantity = 1 }) {
   return request("/stripe/create-checkout-session", {
     method: "POST",
+    idempotent: "stripe-checkout",
     body: { userId, planId, billingCycle, quantity }
   });
 }
@@ -438,6 +467,7 @@ export async function createStripeCheckoutSession({ userId, planId, billingCycle
 export async function confirmStripeCheckoutSession({ userId, sessionId }) {
   return request("/stripe/confirm-checkout-session", {
     method: "POST",
+    idempotent: true,
     body: { userId, sessionId }
   });
 }
@@ -462,6 +492,7 @@ export async function getHealth() {
 export async function redeemLicenseCode({ userId, code, confirmSwitch = false }) {
   return request("/plans/redeem", {
     method: "POST",
+    idempotent: "license-redeem",
     body: { userId, code, confirmSwitch }
   });
 }
@@ -469,6 +500,7 @@ export async function redeemLicenseCode({ userId, code, confirmSwitch = false })
 export async function consumeTokens({ userId, amount = 1 }) {
   return request("/tokens/consume", {
     method: "POST",
+    idempotent: true,
     body: { userId, amount }
   });
 }
@@ -483,9 +515,10 @@ export async function findEmail({ userId, companyName, domain, firstName, lastNa
 export async function addCvRecord(userId, cvRecord) {
   const data = await request("/cv", {
     method: "POST",
-    body: { userId, cvRecord }
+    body: { userId, cvRecord },
+    idempotent: "cv-save"
   });
-  return data.cv;
+  return { ...data.cv, duplicate: Boolean(data.duplicate), restored: Boolean(data.restored) };
 }
 
 export async function listJobApplications(userId) {
@@ -494,7 +527,7 @@ export async function listJobApplications(userId) {
 }
 
 export async function createJobApplication(payload) {
-  const data = await request("/applications", { method: "POST", body: payload });
+  const data = await request("/applications", { method: "POST", body: payload, idempotent: "application-create" });
   return data.item;
 }
 
@@ -545,6 +578,24 @@ export async function analyzeMatch({ candidate, offer }) {
   });
 }
 
+// Corbeille des CV (restaurable 30 jours, puis suppression définitive).
+export async function listTrashedCvs(userId) {
+  if (!userId) return { items: [], retentionDays: 30 };
+  return request(`/cv/trash?userId=${encodeURIComponent(userId)}`);
+}
+
+export async function trashCvs(userId, ids) {
+  return request("/cv/trash", { method: "POST", body: { userId, ids }, idempotent: true });
+}
+
+export async function restoreCvs(userId, ids) {
+  return request("/cv/restore", { method: "POST", body: { userId, ids }, idempotent: true });
+}
+
+export async function purgeCvs(userId, { ids = [], all = false } = {}) {
+  return request("/cv/purge", { method: "POST", body: { userId, ids, all }, idempotent: true });
+}
+
 export async function listUserCvs(userId) {
   if (!userId) return [];
   const data = await request(`/cv?userId=${encodeURIComponent(userId)}`);
@@ -562,6 +613,12 @@ export async function saveMatchRun(userId, payload) {
     body: { userId, payload }
   });
   return data.run;
+}
+
+export async function listMatchRuns(userId) {
+  if (!userId) return [];
+  const data = await request(`/matches?userId=${encodeURIComponent(userId)}`);
+  return data.items || [];
 }
 
 export async function getLatestMatchRun(userId) {
@@ -925,6 +982,7 @@ export async function getAdminAnnouncements(adminUserId) {
 export async function sendAdminAnnouncement({ adminUserId, subject, message, audience, attachment }) {
   return request("/admin/announcements/send", {
     method: "POST",
+    idempotent: "admin-announcement",
     body: { adminUserId, subject, message, audience, attachment }
   });
 }
@@ -968,6 +1026,7 @@ export async function getSchoolInvitations(userId) {
 export async function sendSchoolInvitation(userId, email) {
   return request("/school/invitations/send", {
     method: "POST",
+    idempotent: "school-invite",
     body: { userId, email }
   });
 }
@@ -975,6 +1034,7 @@ export async function sendSchoolInvitation(userId, email) {
 export async function sendSchoolInvitationsBulk(userId, emails) {
   return request("/school/students/bulk-invite", {
     method: "POST",
+    idempotent: "school-bulk-invite",
     body: { userId, emails }
   });
 }
@@ -1057,6 +1117,7 @@ export async function getSchoolAnnouncements(userId) {
 export async function sendSchoolAnnouncement(userId, { subject, message, promotionId = "", studentIds = null }) {
   return request("/school/announcements/send", {
     method: "POST",
+    idempotent: "school-announcement",
     body: { userId, subject, message, promotionId, studentIds }
   });
 }
@@ -1108,11 +1169,11 @@ export async function getCabinetInvitations(userId) {
 }
 
 export async function sendCabinetInvitation(userId, email) {
-  return request("/cabinet/invitations/send", { method: "POST", body: { userId, email } });
+  return request("/cabinet/invitations/send", { method: "POST", body: { userId, email }, idempotent: "cabinet-invite" });
 }
 
 export async function sendCabinetInvitationsBulk(userId, emails) {
-  return request("/cabinet/recruiters/bulk-invite", { method: "POST", body: { userId, emails } });
+  return request("/cabinet/recruiters/bulk-invite", { method: "POST", body: { userId, emails }, idempotent: "cabinet-bulk-invite" });
 }
 
 export async function getCabinetLicense(userId) {
@@ -1158,7 +1219,7 @@ export async function extractCabinetCandidateCv(userId, { fileName, mimeType, ba
 }
 
 export async function createCabinetCandidate(userId, payload) {
-  return request("/cabinet/candidates", { method: "POST", body: { userId, ...payload } });
+  return request("/cabinet/candidates", { method: "POST", body: { userId, ...payload }, idempotent: "cabinet-candidate-create" });
 }
 
 export async function updateCabinetCandidate(userId, candidateId, payload) {
@@ -1236,7 +1297,7 @@ export async function getCabinetAnnouncements(userId) {
 }
 
 export async function sendCabinetAnnouncement(userId, { subject, message }) {
-  return request("/cabinet/announcements/send", { method: "POST", body: { userId, subject, message } });
+  return request("/cabinet/announcements/send", { method: "POST", body: { userId, subject, message }, idempotent: "cabinet-announcement" });
 }
 
 export async function getCabinetReports(userId) {
@@ -1289,7 +1350,7 @@ export async function getCabinetInvoices(userId) {
   return request(`/cabinet/invoices?${cabinetQuery(userId)}`);
 }
 export async function createCabinetInvoice(userId, payload) {
-  return request("/cabinet/invoices", { method: "POST", body: { userId, ...payload } });
+  return request("/cabinet/invoices", { method: "POST", body: { userId, ...payload }, idempotent: "cabinet-invoice-create" });
 }
 export async function updateCabinetInvoice(userId, invoiceId, payload) {
   return request(`/cabinet/invoices/${encodeURIComponent(invoiceId)}`, { method: "PUT", body: { userId, ...payload } });

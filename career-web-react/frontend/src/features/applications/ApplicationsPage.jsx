@@ -2,7 +2,7 @@ import React from "react";
 // Module Candidatures : suivi en kanban (À postuler / Postulé / Entretien /
 // Offre / Refusé), ajout manuel via ApplicationFormModal, glisser-déposer
 // pour changer de statut avec toast de félicitations adapté.
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { fillTemplate, formatShortDate } from "../../lib/format.js";
@@ -13,6 +13,7 @@ import {
   deleteJobApplication
 } from "../../lib/inMemoryDb.js";
 import { APPLICATIONS_COPY } from "./applicationsCopy.js";
+import { ModuleHero, ApplicationsHeroArt } from "../../components/ModuleWorkspace.jsx";
 
 const APPLICATION_COLUMNS = ["to_apply", "applied", "interview", "offer", "rejected"];
 
@@ -22,6 +23,7 @@ function ApplicationsPage({ language, userId, cvHistory }) {
   const [isLoading, setIsLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
+  const [dragOverColumn, setDragOverColumn] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -61,9 +63,11 @@ function ApplicationsPage({ language, userId, cvHistory }) {
   async function handleStatusChange(item, status) {
     if (item.status === status) return;
     const previousStatus = item.status;
-    setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, status } : it)));
+    const patch = { status };
+    if (status !== "to_apply" && !item.appliedAt) patch.appliedAt = new Date().toISOString().slice(0, 10);
+    setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, ...patch } : it)));
     try {
-      await updateJobApplication(item.id, { userId, status });
+      await updateJobApplication(item.id, { userId, ...patch });
       const template = copy[STATUS_MESSAGE_KEYS[status]];
       if (template) {
         Swal.fire({
@@ -81,7 +85,7 @@ function ApplicationsPage({ language, userId, cvHistory }) {
         });
       }
     } catch (_error) {
-      setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, status: previousStatus } : it)));
+      setItems((prev) => prev.map((it) => (it.id === item.id ? item : it)));
     }
   }
 
@@ -125,24 +129,78 @@ function ApplicationsPage({ language, userId, cvHistory }) {
     rejected: copy.columnRejected
   };
 
+  // Indicateurs calculés sur les vraies candidatures de l'utilisateur.
+  const countBy = (status) => items.filter((item) => item.status === status).length;
+  const sentCount = countBy("applied") + countBy("interview") + countBy("offer") + countBy("rejected");
+  const answeredCount = countBy("interview") + countBy("offer") + countBy("rejected");
+  const responseRate = sentCount ? Math.round((answeredCount / sentCount) * 100) : null;
+  const today = new Date().toISOString().slice(0, 10);
+  const inSevenDays = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const openItems = items.filter((item) => item.status !== "offer" && item.status !== "rejected" && item.nextActionAt);
+  const overdueCount = openItems.filter((item) => String(item.nextActionAt).slice(0, 10) < today).length;
+  const upcomingCount = openItems.filter((item) => {
+    const day = String(item.nextActionAt).slice(0, 10);
+    return day >= today && day <= inSevenDays;
+  }).length;
+
+  const kpis = [
+    { id: "total", icon: "briefcase", value: items.length, label: copy.kpiTotal },
+    { id: "progress", icon: "chart", value: countBy("applied") + countBy("interview"), label: copy.kpiInProgress },
+    { id: "interview", icon: "chat", value: countBy("interview"), label: copy.kpiInterviews },
+    { id: "rate", icon: "thumbUp", value: responseRate === null ? "—" : `${responseRate} %`, label: copy.kpiResponseRate, hint: copy.kpiResponseRateHint }
+  ];
+
+  function openCreate() {
+    setEditingItem(null);
+    setFormOpen(true);
+  }
+
+  function logoColor(name) {
+    const palette = ["#b83309", "#4b3fd6", "#237804", "#0958d9", "#c41d7f", "#d46b08"];
+    let hash = 0;
+    for (const char of String(name || "?")) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+    return palette[hash % palette.length];
+  }
+
   return (
-    <section className="applications-page">
-      <div className="applications-header">
-        <div>
-          <h2>{copy.title}</h2>
-          <p className="muted">{copy.text}</p>
+    <section className="applications-page ap-page">
+      <ModuleHero
+        eyebrow={copy.heroEyebrow}
+        title={copy.title}
+        subtitle={copy.text}
+        art={<ApplicationsHeroArt />}
+      />
+
+      <div className="ap-toolbar">
+        <div className="ap-kpis">
+          {kpis.map((kpi) => (
+            <div key={kpi.id} className={`ap-kpi kpi-${kpi.id}`} title={kpi.hint || undefined}>
+              <span className="ap-kpi-icon">
+                <UiIcon name={kpi.icon} />
+              </span>
+              <div>
+                <strong>{kpi.value}</strong>
+                <small>{kpi.label}</small>
+              </div>
+            </div>
+          ))}
         </div>
-        <button
-          type="button"
-          className="btn-main ready"
-          onClick={() => {
-            setEditingItem(null);
-            setFormOpen(true);
-          }}
-        >
+        <button type="button" className="btn-main ready ap-add" onClick={openCreate}>
           <UiIcon name="plus" /> {copy.addButton}
         </button>
       </div>
+
+      {overdueCount || upcomingCount ? (
+        <p className={`ap-reminder ${overdueCount ? "is-late" : ""}`}>
+          <UiIcon name="bell" />
+          {[
+            overdueCount ? copy.remindersOverdue.replace("{count}", overdueCount) : "",
+            upcomingCount ? copy.remindersUpcoming.replace("{count}", upcomingCount) : ""
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        </p>
+      ) : null}
 
       {isLoading ? (
         <div className="extracting-state">
@@ -150,56 +208,97 @@ function ApplicationsPage({ language, userId, cvHistory }) {
           <span>{copy.loading}</span>
         </div>
       ) : (
-        <div className="kanban-board">
+        <div className="kanban-board ap-board">
           {APPLICATION_COLUMNS.map((columnKey) => {
             const columnItems = items.filter((item) => item.status === columnKey);
             return (
               <div
                 key={columnKey}
-                className="kanban-column"
-                onDragOver={(event) => event.preventDefault()}
+                className={`kanban-column ap-column status-${columnKey} ${dragOverColumn === columnKey ? "is-over" : ""}`}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  if (dragOverColumn !== columnKey) setDragOverColumn(columnKey);
+                }}
+                onDragLeave={(event) => {
+                  if (!event.currentTarget.contains(event.relatedTarget)) setDragOverColumn("");
+                }}
                 onDrop={(event) => {
                   event.preventDefault();
+                  setDragOverColumn("");
                   const id = event.dataTransfer.getData("text/plain");
                   const item = items.find((it) => it.id === id);
                   if (item) handleStatusChange(item, columnKey);
                 }}
               >
                 <div className="kanban-column-head">
-                  <span>{columnLabels[columnKey]}</span>
+                  <span className="ap-column-name">
+                    <i />
+                    {columnLabels[columnKey]}
+                  </span>
                   <span className="kanban-count">{columnItems.length}</span>
                 </div>
                 <div className="kanban-column-body">
-                  {columnItems.length ? (
-                    columnItems.map((item) => (
+                  {columnItems.map((item) => {
+                    const offerHref = safeOfferHref(item.offerUrl);
+                    const nextDay = item.nextActionAt ? String(item.nextActionAt).slice(0, 10) : "";
+                    const isLate = nextDay && nextDay < today && item.status !== "offer" && item.status !== "rejected";
+                    const scoreTier =
+                      typeof item.matchScore === "number"
+                        ? item.matchScore >= 75
+                          ? "high"
+                          : item.matchScore >= 50
+                          ? "mid"
+                          : "low"
+                        : "";
+                    return (
                       <article
                         key={item.id}
-                        className="kanban-card"
+                        className="kanban-card ap-card"
                         draggable
                         onDragStart={(event) => event.dataTransfer.setData("text/plain", item.id)}
+                        onDragEnd={() => setDragOverColumn("")}
                       >
-                        <div className="kanban-card-head">
-                          <strong>{item.title || "-"}</strong>
-                          {typeof item.matchScore === "number" ? <span className="kanban-score">{item.matchScore}%</span> : null}
+                        <div className="ap-card-top">
+                          <span className="ap-logo" style={{ background: logoColor(item.company || item.title) }}>
+                            {(item.company || item.title || "?").trim().charAt(0).toUpperCase()}
+                          </span>
+                          {scoreTier ? (
+                            <span className={`ap-score tier-${scoreTier}`} title={copy.matchScoreLabel}>
+                              {item.matchScore}%
+                            </span>
+                          ) : null}
                         </div>
-                        {item.company ? <p className="kanban-company">{item.company}</p> : null}
-                        {item.location && item.location !== "Non précisé" ? (
-                          <p className="kanban-location">{item.location}</p>
+                        <strong className="ap-title" title={item.title}>
+                          {item.title || "-"}
+                        </strong>
+                        {item.company || (item.location && item.location !== "Non précisé") ? (
+                          <p className="ap-company">
+                            {[item.company, item.location && item.location !== "Non précisé" ? item.location : ""].filter(Boolean).join(" · ")}
+                          </p>
                         ) : null}
-                        <p className="kanban-date">
-                          {item.status === "applied" && item.appliedAt
-                            ? `${copy.appliedAtLabel} ${formatShortDate(item.appliedAt, language)}`
-                            : `${copy.addedOnLabel} ${formatShortDate(item.createdAt, language)}`}
-                        </p>
-                        <div className="kanban-card-actions">
-                          {item.offerUrl ? (
-                            <a href={item.offerUrl} target="_blank" rel="noreferrer" title={copy.cardOpenOffer}>
-                              <UiIcon name="chevron" />
+                        <div className="ap-meta">
+                          <span>
+                            {item.appliedAt && item.status !== "to_apply"
+                              ? `${copy.appliedAtLabel} ${formatShortDate(item.appliedAt, language)}`
+                              : `${copy.addedOnLabel} ${formatShortDate(item.createdAt, language)}`}
+                          </span>
+                          {nextDay && item.status !== "offer" && item.status !== "rejected" ? (
+                            <span className={`ap-followup ${isLate ? "is-late" : ""}`}>
+                              <UiIcon name="bell" />
+                              {isLate ? copy.followUpLate : `${copy.followUpOn} ${formatShortDate(item.nextActionAt, language)}`}
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="kanban-card-actions ap-actions">
+                          {offerHref ? (
+                            <a href={offerHref} target="_blank" rel="noopener noreferrer" title={copy.cardOpenOffer} aria-label={copy.cardOpenOffer}>
+                              <UiIcon name="share" />
                             </a>
                           ) : null}
                           <button
                             type="button"
                             title={copy.edit}
+                            aria-label={copy.edit}
                             onClick={() => {
                               setEditingItem(item);
                               setFormOpen(true);
@@ -207,15 +306,24 @@ function ApplicationsPage({ language, userId, cvHistory }) {
                           >
                             <UiIcon name="edit" />
                           </button>
-                          <button type="button" title={copy.delete} onClick={() => handleDelete(item)}>
+                          <button type="button" title={copy.delete} aria-label={copy.delete} onClick={() => handleDelete(item)}>
                             <UiIcon name="trash" />
                           </button>
                         </div>
                       </article>
-                    ))
-                  ) : (
-                    <p className="kanban-empty muted">{copy.empty}</p>
-                  )}
+                    );
+                  })}
+                  {!columnItems.length ? (
+                    <div className="ap-drop-empty">
+                      <UiIcon name={columnKey === "to_apply" ? "plus" : "briefcase"} />
+                      <span>{columnKey === "to_apply" && !items.length ? copy.emptyFirst : copy.dropHint}</span>
+                      {columnKey === "to_apply" && !items.length ? (
+                        <button type="button" className="link-button" onClick={openCreate}>
+                          {copy.addButton}
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </div>
             );
@@ -226,7 +334,9 @@ function ApplicationsPage({ language, userId, cvHistory }) {
       {formOpen ? (
         <ApplicationFormModal
           copy={copy}
+          language={language}
           item={editingItem}
+          items={items}
           cvHistory={cvHistory}
           onClose={() => {
             setFormOpen(false);
@@ -239,88 +349,317 @@ function ApplicationsPage({ language, userId, cvHistory }) {
   );
 }
 
-function ApplicationFormModal({ copy, item, cvHistory, onClose, onSubmit }) {
+const APPLICATION_FIELD_LIMITS = { title: 160, company: 160, location: 160, offerUrl: 2048, notes: 5000 };
+
+function normalizeText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+// "www.site.fr/offre" -> "https://www.site.fr/offre" ; renvoie "" si invalide.
+function normalizeOfferUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(withScheme);
+    if (!["http:", "https:"].includes(url.protocol) || !url.hostname.includes(".")) return "";
+    return url.toString();
+  } catch (_error) {
+    return "";
+  }
+}
+
+export function safeOfferHref(value) {
+  return /^https?:\/\//i.test(String(value || "")) ? value : "";
+}
+
+function toDateInput(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+}
+
+function todayInput() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function ApplicationFormModal({ copy, language, item, items, cvHistory, onClose, onSubmit }) {
   const [form, setForm] = useState({
     title: item?.title || "",
     company: item?.company || "",
-    location: item?.location || "",
+    location: item?.location && item.location !== "Non précisé" ? item.location : "",
     offerUrl: item?.offerUrl || "",
     cvId: item?.cvId || "",
     notes: item?.notes || "",
-    status: item?.status || "to_apply"
+    status: item?.status || "to_apply",
+    appliedAt: toDateInput(item?.appliedAt),
+    nextActionAt: toDateInput(item?.nextActionAt)
   });
+  const [touched, setTouched] = useState({});
+  const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [duplicateAcknowledged, setDuplicateAcknowledged] = useState(false);
+  const firstFieldRef = useRef(null);
+
+  useEffect(() => {
+    firstFieldRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    function onKeyDown(event) {
+      if (event.key === "Escape" && !saving) onClose();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [saving, onClose]);
 
   function update(key, value) {
     setForm((prev) => ({ ...prev, [key]: value }));
+    if (key === "title" || key === "company") setDuplicateAcknowledged(false);
+    setError("");
   }
+
+  const cvIds = new Set((cvHistory || []).map((cv) => cv.id));
+  const errors = {};
+  if (!form.title.trim() && !form.company.trim()) {
+    errors.title = copy.formErrorTitleOrCompany;
+  }
+  for (const [field, max] of Object.entries(APPLICATION_FIELD_LIMITS)) {
+    if (form[field].trim().length > max) errors[field] = copy.formErrorTooLong.replace("{max}", max);
+  }
+  if (form.offerUrl.trim() && !normalizeOfferUrl(form.offerUrl)) {
+    errors.offerUrl = copy.formErrorUrl;
+  }
+  if (form.appliedAt && form.appliedAt > todayInput()) {
+    errors.appliedAt = copy.formErrorAppliedFuture;
+  }
+  if (form.nextActionAt && form.appliedAt && form.nextActionAt < form.appliedAt) {
+    errors.nextActionAt = copy.formErrorNextBeforeApplied;
+  }
+  if (form.cvId && !cvIds.has(form.cvId)) {
+    errors.cvId = copy.formErrorCv;
+  }
+
+  const duplicate = (items || []).find(
+    (other) =>
+      other.id !== item?.id &&
+      normalizeText(other.title) === normalizeText(form.title) &&
+      normalizeText(other.company) === normalizeText(form.company) &&
+      (form.title.trim() || form.company.trim())
+  );
+
+  const show = (field) => (submitted || touched[field]) && errors[field];
+  const blur = (field) => () => setTouched((prev) => ({ ...prev, [field]: true }));
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!form.title.trim() && !form.company.trim()) {
-      setError(copy.formError);
+    setSubmitted(true);
+    if (saving || Object.keys(errors).length) return;
+    if (duplicate && !duplicateAcknowledged) {
+      setDuplicateAcknowledged(true);
       return;
     }
     setError("");
     setSaving(true);
     try {
-      await onSubmit(form);
+      await onSubmit(
+        {
+          title: form.title.trim(),
+          company: form.company.trim(),
+          location: form.location.trim(),
+          offerUrl: normalizeOfferUrl(form.offerUrl),
+          cvId: form.cvId,
+          notes: form.notes.trim(),
+          status: form.status,
+          appliedAt: form.appliedAt || (form.status !== "to_apply" && !item?.appliedAt ? todayInput() : form.appliedAt),
+          nextActionAt: form.nextActionAt
+        }
+      );
     } catch (err) {
-      setError(err?.message || copy.formError);
-    } finally {
+      setError(err?.message || copy.formErrorGeneric);
       setSaving(false);
     }
   }
 
+  const statusOptions = [
+    ["to_apply", copy.columnToApply],
+    ["applied", copy.columnApplied],
+    ["interview", copy.columnInterview],
+    ["offer", copy.columnOffer],
+    ["rejected", copy.columnRejected]
+  ];
+  const locale = language === "en" ? "en-GB" : "fr-FR";
+
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(event) => event.stopPropagation()}>
-        <form onSubmit={handleSubmit} className="application-form">
-          <input
-            value={form.title}
-            onChange={(event) => update("title", event.target.value)}
-            placeholder={copy.formTitlePlaceholder}
-          />
-          <input
-            value={form.company}
-            onChange={(event) => update("company", event.target.value)}
-            placeholder={copy.formCompanyPlaceholder}
-          />
-          <input
-            value={form.location}
-            onChange={(event) => update("location", event.target.value)}
-            placeholder={copy.formLocationPlaceholder}
-          />
-          <input
-            value={form.offerUrl}
-            onChange={(event) => update("offerUrl", event.target.value)}
-            placeholder={copy.formUrlPlaceholder}
-          />
-          <label>
-            {copy.formCvLabel}
-            <select value={form.cvId} onChange={(event) => update("cvId", event.target.value)}>
-              <option value="">{copy.formCvNone}</option>
-              {(cvHistory || []).map((cv) => (
-                <option key={cv.id} value={cv.id}>
-                  {cv.fileName} · {new Date(cv.createdAt).toLocaleDateString()}
-                </option>
-              ))}
-            </select>
-          </label>
-          <textarea
-            rows={3}
-            value={form.notes}
-            onChange={(event) => update("notes", event.target.value)}
-            placeholder={copy.notesPlaceholder}
-          />
-          {error ? <p className="field-error">{error}</p> : null}
-          <div className="modal-actions">
-            <button type="button" className="btn-secondary" onClick={onClose}>
+    <div className="modal-overlay" onClick={() => !saving && onClose()}>
+      <div
+        className="modal-card app-form-card"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="app-form-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="app-form-head">
+          <span className="app-form-head-icon">
+            <UiIcon name={item ? "edit" : "briefcase"} />
+          </span>
+          <div>
+            <h3 id="app-form-title">{item ? copy.formEditTitle : copy.formNewTitle}</h3>
+            <p>{copy.formSubtitle}</p>
+          </div>
+          <button type="button" className="app-form-close" onClick={onClose} disabled={saving} aria-label={copy.formCancel}>
+            <svg viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+            </svg>
+          </button>
+        </header>
+
+        <form onSubmit={handleSubmit} className="app-form" noValidate>
+          <div className="app-form-grid">
+            <label className={`app-field ${show("title") ? "has-error" : ""}`}>
+              <span>
+                {copy.formTitleLabel} <em>*</em>
+              </span>
+              <input
+                ref={firstFieldRef}
+                value={form.title}
+                maxLength={APPLICATION_FIELD_LIMITS.title}
+                onChange={(event) => update("title", event.target.value)}
+                onBlur={blur("title")}
+                placeholder={copy.formTitlePlaceholder}
+                aria-invalid={Boolean(show("title"))}
+              />
+            </label>
+            <label className="app-field">
+              <span>
+                {copy.formCompanyLabel} <em>*</em>
+              </span>
+              <input
+                value={form.company}
+                maxLength={APPLICATION_FIELD_LIMITS.company}
+                onChange={(event) => update("company", event.target.value)}
+                onBlur={blur("title")}
+                placeholder={copy.formCompanyPlaceholder}
+                aria-invalid={Boolean(show("title"))}
+              />
+            </label>
+            {show("title") ? <small className="app-field-error app-form-full">{errors.title}</small> : <small className="app-field-hint app-form-full">{copy.formTitleHint}</small>}
+
+            <label className="app-field">
+              <span>{copy.formLocationLabel}</span>
+              <input
+                value={form.location}
+                maxLength={APPLICATION_FIELD_LIMITS.location}
+                onChange={(event) => update("location", event.target.value)}
+                placeholder={copy.formLocationPlaceholder}
+              />
+            </label>
+            <label className="app-field">
+              <span>{copy.formStatusLabel}</span>
+              <select value={form.status} onChange={(event) => update("status", event.target.value)}>
+                {statusOptions.map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className={`app-field app-form-full ${show("offerUrl") ? "has-error" : ""}`}>
+              <span>{copy.formUrlLabel}</span>
+              <input
+                type="url"
+                inputMode="url"
+                value={form.offerUrl}
+                maxLength={APPLICATION_FIELD_LIMITS.offerUrl}
+                onChange={(event) => update("offerUrl", event.target.value)}
+                onBlur={blur("offerUrl")}
+                placeholder="https://"
+                aria-invalid={Boolean(show("offerUrl"))}
+              />
+              {show("offerUrl") ? <small className="app-field-error">{errors.offerUrl}</small> : null}
+            </label>
+
+            <label className={`app-field ${show("appliedAt") ? "has-error" : ""}`}>
+              <span>{copy.formAppliedLabel}</span>
+              <input
+                type="date"
+                value={form.appliedAt}
+                max={todayInput()}
+                onChange={(event) => update("appliedAt", event.target.value)}
+                onBlur={blur("appliedAt")}
+                aria-invalid={Boolean(show("appliedAt"))}
+              />
+              {show("appliedAt") ? <small className="app-field-error">{errors.appliedAt}</small> : null}
+            </label>
+            <label className={`app-field ${show("nextActionAt") ? "has-error" : ""}`}>
+              <span>{copy.formNextActionLabel}</span>
+              <input
+                type="date"
+                value={form.nextActionAt}
+                min={form.appliedAt || undefined}
+                onChange={(event) => update("nextActionAt", event.target.value)}
+                onBlur={blur("nextActionAt")}
+                aria-invalid={Boolean(show("nextActionAt"))}
+              />
+              {show("nextActionAt") ? <small className="app-field-error">{errors.nextActionAt}</small> : null}
+            </label>
+
+            <label className={`app-field app-form-full ${show("cvId") ? "has-error" : ""}`}>
+              <span>{copy.formCvLabel}</span>
+              <select value={form.cvId} onChange={(event) => update("cvId", event.target.value)}>
+                <option value="">{copy.formCvNone}</option>
+                {(cvHistory || []).map((cv) => (
+                  <option key={cv.id} value={cv.id}>
+                    {cv.fileName} · {new Date(cv.createdAt).toLocaleDateString(locale)}
+                  </option>
+                ))}
+              </select>
+              {show("cvId") ? <small className="app-field-error">{errors.cvId}</small> : null}
+            </label>
+
+            <label className={`app-field app-form-full ${show("notes") ? "has-error" : ""}`}>
+              <span className="app-field-label-row">
+                {copy.formNotesLabel}
+                <small>
+                  {form.notes.length} / {APPLICATION_FIELD_LIMITS.notes}
+                </small>
+              </span>
+              <textarea
+                rows={3}
+                value={form.notes}
+                maxLength={APPLICATION_FIELD_LIMITS.notes}
+                onChange={(event) => update("notes", event.target.value)}
+                placeholder={copy.notesPlaceholder}
+              />
+            </label>
+          </div>
+
+          {duplicate && duplicateAcknowledged && !error ? (
+            <p className="app-form-banner warn" role="status">
+              <UiIcon name="alert" />
+              {copy.formDuplicateWarning}
+            </p>
+          ) : null}
+          {error ? (
+            <p className="app-form-banner error" role="alert">
+              <UiIcon name="alert" />
+              {error}
+            </p>
+          ) : null}
+
+          <div className="modal-actions app-form-actions">
+            <button type="button" className="btn-secondary" onClick={onClose} disabled={saving}>
               {copy.formCancel}
             </button>
             <button type="submit" className="btn-main ready" disabled={saving}>
-              {saving ? copy.formSaving : copy.formSave}
+              {saving ? copy.formSaving : duplicate && duplicateAcknowledged ? copy.formSaveAnyway : copy.formSave}
             </button>
           </div>
         </form>

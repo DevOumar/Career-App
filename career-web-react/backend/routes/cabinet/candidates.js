@@ -92,6 +92,7 @@ export function registerCabinetCandidatesRoutes(app) {
     normalizeSkillList,
     stripNullBytes,
     coerceString,
+    computeContentHash,
     coerceInteger,
     sanitizeAccountType,
     hashPassword,
@@ -441,19 +442,25 @@ app.post("/api/cabinet/candidates", async (req, res) => {
     // vivier) : bloquant sauf si le front confirme explicitement vouloir
     // ajouter quand même (force=true), pour éviter les vivier gonflés par
     // des imports CV répétés.
-    if (!coerceString(req.body?.force) && (email || phone)) {
+    const cvHash = computeContentHash(coerceString(req.body?.sourceText));
+    if (!coerceString(req.body?.force) && (email || phone || cvHash)) {
       const { rows: existingRows } = await db.query(
-        "SELECT id, first_name, last_name, email, phone FROM cabinet_candidates WHERE cabinet_user_id = $1",
+        "SELECT id, first_name, last_name, email, phone, cv_hash FROM cabinet_candidates WHERE cabinet_user_id = $1 AND anonymized_at IS NULL",
         [cabinet.cabinetRootId]
       );
+      let sameCv = false;
       const duplicate = existingRows.find((row) => {
         const sameEmail = email && normalizeCabinetContact(row.email) === normalizeCabinetContact(email);
         const samePhone = phone && normalizeCabinetContact(row.phone) === normalizeCabinetContact(phone);
-        return sameEmail || samePhone;
+        sameCv = Boolean(cvHash && row.cv_hash === cvHash);
+        return sameEmail || samePhone || sameCv;
       });
       if (duplicate) {
         return res.status(409).json({
-          error: "Un candidat avec cet email ou ce téléphone existe déjà dans le vivier.",
+          error: sameCv
+            ? "Ce CV a déjà été importé dans le vivier."
+            : "Un candidat avec cet email ou ce téléphone existe déjà dans le vivier.",
+          duplicateReason: sameCv ? "cv" : "contact",
           duplicate: { id: duplicate.id, firstName: duplicate.first_name, lastName: duplicate.last_name }
         });
       }
@@ -489,8 +496,8 @@ app.post("/api/cabinet/candidates", async (req, res) => {
       ]
     );
     await db.query(
-      "UPDATE cabinet_candidates SET status_updated_at = created_at, placed_at = CASE WHEN status = 'placed' THEN created_at ELSE NULL END WHERE id = $1",
-      [id]
+      "UPDATE cabinet_candidates SET status_updated_at = created_at, placed_at = CASE WHEN status = 'placed' THEN created_at ELSE NULL END, cv_hash = $2 WHERE id = $1",
+      [id, cvHash]
     );
     const consentStatus = CABINET_CONSENT_STATUSES.has(coerceString(req.body?.consentStatus)) ? coerceString(req.body?.consentStatus) : "pending";
     const consentSource = CABINET_CONSENT_SOURCES.has(coerceString(req.body?.consentSource)) ? coerceString(req.body?.consentSource) : "";

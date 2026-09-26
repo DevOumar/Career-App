@@ -256,7 +256,7 @@ app.get("/api/admin/overview", async (req, res) => {
     const { rows: roleCounts } = await db.query(
       "SELECT role_type, COUNT(*)::int AS count FROM users GROUP BY role_type"
     );
-    const { rows: cvCountRows } = await db.query("SELECT COUNT(*)::int AS count FROM cvs");
+    const { rows: cvCountRows } = await db.query("SELECT COUNT(*)::int AS count FROM cvs WHERE deleted_at IS NULL");
     const { rows: matchCountRows } = await db.query("SELECT COUNT(*)::int AS count FROM match_runs");
     const { rows: signupRows } = await db.query(
       "SELECT COUNT(*)::int AS count FROM users WHERE created_at >= $1",

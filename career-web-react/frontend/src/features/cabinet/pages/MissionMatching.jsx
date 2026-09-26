@@ -9,6 +9,7 @@ import { AdminLineIcon } from "../../admin/AdminApp.jsx";
 import { MfaDialog } from "../../account/mfa/MfaUi.jsx";
 import { cabinetToast } from "./cabinetToast.js";
 import { StatusPill, candidateName, candidateStatusLabel } from "./cabinetUi.jsx";
+import { AiDisclaimer } from "../../../components/AiDisclaimer.jsx";
 
 export const scoreTone = (score) => (score >= 75 ? "good" : score >= 50 ? "mid" : "low");
 
@@ -218,6 +219,14 @@ export function AiAnalysisDialog({ analysis, mission, language, onClose }) {
             </ul>
           </section>
         ) : null}
+        <AiDisclaimer
+          language={language}
+          text={
+            language === "en"
+              ? "AI-generated analysis: a decision aid, not a decision. Check it with the candidate before any choice."
+              : "Analyse générée par l'IA : une aide à la décision, pas une décision. Vérifiez-la avec le candidat avant tout choix."
+          }
+        />
       </div>
     </MfaDialog>
   );

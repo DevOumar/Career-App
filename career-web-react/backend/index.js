@@ -365,13 +365,22 @@ app.post("/api/stripe/webhook", express.raw({ type: "application/json" }), async
       }
     }
 
-    const result = await applyStripeWebhookEvent(event, {
-      db,
-      parseJsonField,
-      getPlanById: getEffectivePlanById,
-      applyPlanToUser,
-      generateLicenseCodeForPlan
-    });
+    let result;
+    try {
+      result = await applyStripeWebhookEvent(event, {
+        db,
+        parseJsonField,
+        getPlanById: getEffectivePlanById,
+        applyPlanToUser,
+        generateLicenseCodeForPlan
+      });
+    } catch (applyError) {
+      await releaseStripeEventClaim(event.id);
+      if (event.type === "checkout.session.completed") {
+        await releaseStripeEventClaim(`session:${event.data.object.id}`);
+      }
+      throw applyError;
+    }
     return res.json({ received: true, ...result });
   } catch (error) {
     console.error("Erreur traitement webhook Stripe:", error);
@@ -504,6 +513,135 @@ app.use(async (req, res, next) => {
     return next();
   }
 });
+
+// ---------------------------------------------------------------------------
+// Idempotence des écritures (en-tête Idempotency-Key)
+// ---------------------------------------------------------------------------
+// Le front envoie une clé unique par action utilisateur (enregistrer une
+// candidature, importer un fichier, payer, envoyer une annonce...). Si la
+// même requête arrive deux fois (double clic, retry réseau, onglet
+// rechargé), elle n'est exécutée qu'UNE fois : la seconde reçoit la réponse
+// d'origine (en-tête Idempotent-Replayed: true), sans nouvel effet de bord.
+//  - clé rattachée à l'utilisateur authentifié (jamais partagée entre comptes) ;
+//  - même clé + corps différent -> 422 (usage erroné de la clé) ;
+//  - même clé encore en cours de traitement -> 409 ;
+//  - seules les réponses 2xx sont mémorisées : une erreur libère la clé pour
+//    qu'une nouvelle tentative soit réellement rejouée ;
+//  - les clés expirent après 24 h.
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+const IDEMPOTENCY_STALE_PENDING_MS = 2 * 60 * 1000;
+const IDEMPOTENCY_KEY_PATTERN = /^[A-Za-z0-9:_.-]{8,160}$/;
+
+// Nombre de lignes touchées : pg expose rowCount, PGlite affectedRows.
+function affectedRowCount(result) {
+  return Number(result?.rowCount ?? result?.affectedRows ?? 0);
+}
+
+function hashIdempotentRequest(req) {
+  const body = req.body && typeof req.body === "object" && !Buffer.isBuffer(req.body) ? { ...req.body } : {};
+  // La preuve MFA (step-up) est ajoutée au second envoi d'une même action :
+  // elle ne doit pas rendre la requête "différente".
+  delete body.stepUp;
+  return crypto.createHash("sha256").update(`${req.method} ${req.path}\n${JSON.stringify(body)}`).digest("hex");
+}
+
+app.use(async (req, res, next) => {
+  const rawKey = req.headers["idempotency-key"];
+  if (!rawKey || !["POST", "PUT", "PATCH", "DELETE"].includes(req.method) || !req.sessionUserId) {
+    return next();
+  }
+  const key = String(rawKey).trim();
+  if (!IDEMPOTENCY_KEY_PATTERN.test(key)) {
+    return res.status(400).json({ error: "Clé d'idempotence invalide.", code: "IDEMPOTENCY_KEY_INVALID" });
+  }
+  const scope = req.sessionUserId;
+  const requestHash = hashIdempotentRequest(req);
+  try {
+    let claimed = false;
+    for (let attempt = 0; attempt < 2 && !claimed; attempt += 1) {
+      const inserted = await db.query(
+        `INSERT INTO idempotency_keys (scope, idem_key, method, path, request_hash, state, created_at)
+         VALUES ($1, $2, $3, $4, $5, 'pending', $6) ON CONFLICT (scope, idem_key) DO NOTHING`,
+        [scope, key, req.method, req.path, requestHash, nowIso()]
+      );
+      if (affectedRowCount(inserted) > 0) {
+        claimed = true;
+        break;
+      }
+      const { rows } = await db.query("SELECT * FROM idempotency_keys WHERE scope = $1 AND idem_key = $2", [scope, key]);
+      const existing = rows[0];
+      if (!existing) continue;
+      if (existing.request_hash !== requestHash) {
+        return res.status(422).json({
+          error: "Cette clé d'idempotence a déjà servi pour une autre requête.",
+          code: "IDEMPOTENCY_KEY_REUSED"
+        });
+      }
+      if (existing.state === "done") {
+        res.set("Idempotent-Replayed", "true");
+        return res.status(Number(existing.status_code) || 200).json(parseJsonField(existing.response_json, {}));
+      }
+      const pendingSince = new Date(existing.created_at).getTime();
+      if (Date.now() - pendingSince < IDEMPOTENCY_STALE_PENDING_MS) {
+        return res.status(409).json({
+          error: "Cette action est déjà en cours de traitement. Patientez quelques secondes.",
+          code: "IDEMPOTENCY_IN_PROGRESS"
+        });
+      }
+      // Traitement précédent interrompu (serveur redémarré) : on reprend la main.
+      await db.query("DELETE FROM idempotency_keys WHERE scope = $1 AND idem_key = $2 AND state = 'pending'", [scope, key]);
+    }
+    if (!claimed) {
+      return res.status(409).json({ error: "Cette action est déjà en cours de traitement.", code: "IDEMPOTENCY_IN_PROGRESS" });
+    }
+
+    let capturedBody;
+    const originalJson = res.json.bind(res);
+    res.json = (body) => {
+      capturedBody = body;
+      return originalJson(body);
+    };
+    let settled = false;
+    const settle = async (finished) => {
+      if (settled) return;
+      settled = true;
+      try {
+        if (finished && res.statusCode >= 200 && res.statusCode < 300 && capturedBody !== undefined) {
+          await db.query(
+            "UPDATE idempotency_keys SET state = 'done', status_code = $1, response_json = $2 WHERE scope = $3 AND idem_key = $4",
+            [res.statusCode, JSON.stringify(capturedBody), scope, key]
+          );
+        } else {
+          await db.query("DELETE FROM idempotency_keys WHERE scope = $1 AND idem_key = $2", [scope, key]);
+        }
+      } catch (error) {
+        console.error("Erreur enregistrement idempotence:", error);
+      }
+    };
+    res.on("finish", () => settle(true));
+    res.on("close", () => settle(res.writableFinished));
+    return next();
+  } catch (error) {
+    console.error("Erreur verification idempotence:", error);
+    return res.status(503).json({ error: "Service momentanément indisponible, réessayez.", code: "IDEMPOTENCY_UNAVAILABLE" });
+  }
+});
+
+async function purgeExpiredIdempotencyKeys() {
+  try {
+    await db.query("DELETE FROM idempotency_keys WHERE created_at < $1", [new Date(Date.now() - IDEMPOTENCY_TTL_MS).toISOString()]);
+  } catch (error) {
+    console.error("Erreur purge des clés d'idempotence:", error);
+  }
+}
+
+// Empreinte d'un contenu importé (texte d'un CV) : sert à reconnaître le même
+// fichier réimporté, quel que soit son nom ou les espaces parasites.
+function computeContentHash(text) {
+  const normalized = String(text || "").replace(/\s+/g, " ").trim().toLowerCase();
+  if (!normalized) return "";
+  return crypto.createHash("sha256").update(normalized).digest("hex");
+}
 
 // À appeler en tout début de route avec le userId reçu du client (body ou
 // query) : renvoie false (et a déjà répondu 401/403) si ce userId ne
@@ -1003,6 +1141,21 @@ await db.exec(`
   ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS cv_file_name TEXT NOT NULL DEFAULT '';
   ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS source_text TEXT NOT NULL DEFAULT '';
   ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS parsed_json TEXT NOT NULL DEFAULT '{}';
+  ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS cv_hash TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cvs ADD COLUMN IF NOT EXISTS content_hash TEXT NOT NULL DEFAULT '';
+  ALTER TABLE cvs ADD COLUMN IF NOT EXISTS deleted_at TEXT;
+  CREATE TABLE IF NOT EXISTS idempotency_keys (
+    scope TEXT NOT NULL,
+    idem_key TEXT NOT NULL,
+    method TEXT NOT NULL,
+    path TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    state TEXT NOT NULL,
+    status_code INTEGER,
+    response_json TEXT,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (scope, idem_key)
+  );
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS city TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_recruiter_profiles ADD COLUMN IF NOT EXISTS country TEXT NOT NULL DEFAULT '';
@@ -1673,11 +1826,11 @@ async function getAdminCvRows() {
   try {
     await ensureCvStorageSchema();
     const { rows } = await db.query(
-      "SELECT id, user_id, created_at, file_name, source_text, parsed_json FROM cvs ORDER BY created_at DESC LIMIT 500"
+      "SELECT id, user_id, created_at, file_name, source_text, parsed_json FROM cvs WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500"
     );
     return rows;
   } catch (error) {
-    const { rows } = await db.query("SELECT id, user_id, created_at FROM cvs ORDER BY created_at DESC LIMIT 500");
+    const { rows } = await db.query("SELECT id, user_id, created_at FROM cvs WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 500");
     return rows.map((row) => ({
       ...row,
       file_name: "CV importé",
@@ -4074,7 +4227,7 @@ for (const offer of OFFERS) {
 }
 
 async function getCvCount(userId) {
-  const { rows } = await db.query("SELECT COUNT(*)::int AS total FROM cvs WHERE user_id = $1", [userId]);
+  const { rows } = await db.query("SELECT COUNT(*)::int AS total FROM cvs WHERE user_id = $1 AND deleted_at IS NULL", [userId]);
   return Number(rows[0]?.total || 0);
 }
 
@@ -4086,7 +4239,8 @@ async function getMatchScores(userId) {
 
   return rows
     .map((row) => parseJsonField(row.payload_json, null))
-    .map((payload) => Number(payload?.summary?.globalScore || 0))
+    // Score de référence : celui de l'analyse de compatibilité (matchInsights).
+    .map((payload) => Number(payload?.matchInsights?.score ?? payload?.summary?.globalScore ?? 0))
     .filter((value) => Number.isFinite(value));
 }
 
@@ -4217,10 +4371,23 @@ async function claimStripeEventOnce(eventId) {
       "INSERT INTO processed_stripe_events (id, processed_at) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING",
       [eventId, nowIso()]
     );
-    return result.rowCount > 0;
+    return affectedRowCount(result) > 0;
   } catch (error) {
+    // Échec fermé : dans le doute on n'applique PAS le paiement (risque de
+    // double crédit). L'erreur remonte en 500, Stripe retentera l'envoi.
     console.error("Erreur verification idempotence evenement Stripe:", error);
-    return true;
+    throw error;
+  }
+}
+
+// Libère une réclamation quand le traitement a échoué, pour que le retry
+// Stripe (ou le filet /confirm-checkout-session) puisse l'appliquer.
+async function releaseStripeEventClaim(eventId) {
+  if (!eventId) return;
+  try {
+    await db.query("DELETE FROM processed_stripe_events WHERE id = $1", [eventId]);
+  } catch (error) {
+    console.error("Erreur liberation evenement Stripe:", error);
   }
 }
 
@@ -4605,7 +4772,7 @@ async function buildSchoolMetrics(userId, { restrictToStudentIds = null } = {}) 
   const seatsTotal = codeRows.reduce((sum, row) => sum + Number(row.seats_total || 0), 0);
   const seatsUsed = codeRows.reduce((sum, row) => sum + Number(row.seats_used || 0), 0);
   const { rows: cvRows } = studentIds.length
-    ? await db.query("SELECT user_id, created_at, parsed_json FROM cvs WHERE user_id = ANY($1)", [studentIds])
+    ? await db.query("SELECT user_id, created_at, parsed_json FROM cvs WHERE user_id = ANY($1) AND deleted_at IS NULL", [studentIds])
     : { rows: [] };
   const { rows: matchRows } = studentIds.length
     ? await db.query("SELECT user_id, created_at, payload_json FROM match_runs WHERE user_id = ANY($1)", [studentIds])
@@ -4842,6 +5009,49 @@ async function getCabinetExpiredCandidateIds(cabinetRootId, retentionMonths) {
 }
 
 // Anonymisation automatique (cabinets qui l'ont activée), toutes les 6 h.
+// Corbeille des CV : un CV supprimé par le candidat y reste CV_TRASH_RETENTION_DAYS
+// jours (restaurable), puis il est supprimé définitivement.
+const CV_TRASH_RETENTION_DAYS = 30;
+
+// Suppression définitive de CV (déjà en corbeille) : les candidatures qui y
+// étaient liées sont conservées, sans CV lié.
+async function hardDeleteCvs(userId, ids) {
+  if (!ids.length) return 0;
+  await db.query("UPDATE job_applications SET cv_id = '' WHERE user_id = $1 AND cv_id = ANY($2)", [userId, ids]);
+  const result = await db.query("DELETE FROM cvs WHERE user_id = $1 AND id = ANY($2) AND deleted_at IS NOT NULL", [userId, ids]);
+  return affectedRowCount(result);
+}
+
+async function purgeExpiredTrashedCvs() {
+  try {
+    const limit = new Date(Date.now() - CV_TRASH_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const { rows } = await db.query("SELECT id, user_id FROM cvs WHERE deleted_at IS NOT NULL AND deleted_at < $1 LIMIT 5000", [limit]);
+    const byUser = new Map();
+    for (const row of rows) byUser.set(row.user_id, [...(byUser.get(row.user_id) || []), row.id]);
+    for (const [userId, ids] of byUser) await hardDeleteCvs(userId, ids);
+  } catch (error) {
+    console.error("Erreur purge de la corbeille des CV:", error);
+  }
+}
+
+// Calcule l'empreinte des CV importés avant l'ajout de la déduplication.
+async function backfillContentHashes() {
+  try {
+    const { rows } = await db.query("SELECT id, source_text FROM cvs WHERE content_hash = '' LIMIT 5000");
+    for (const row of rows) {
+      await db.query("UPDATE cvs SET content_hash = $1 WHERE id = $2", [computeContentHash(row.source_text), row.id]);
+    }
+    const { rows: candidateRows } = await db.query(
+      "SELECT id, source_text FROM cabinet_candidates WHERE cv_hash = '' AND source_text <> '' LIMIT 5000"
+    );
+    for (const row of candidateRows) {
+      await db.query("UPDATE cabinet_candidates SET cv_hash = $1 WHERE id = $2", [computeContentHash(row.source_text), row.id]);
+    }
+  } catch (error) {
+    console.error("Erreur calcul des empreintes de CV:", error);
+  }
+}
+
 async function runCabinetRetention() {
   try {
     const { rows } = await db.query("SELECT user_id, retention_months FROM user_recruiter_profiles WHERE auto_anonymize = 1");
@@ -5540,6 +5750,11 @@ app.locals.ctx = {
   generateLicenseCode,
   applyPlanToUser,
   claimStripeEventOnce,
+  releaseStripeEventClaim,
+  computeContentHash,
+  affectedRowCount,
+  CV_TRASH_RETENTION_DAYS,
+  hardDeleteCvs,
   SATISFACTION_COOLDOWN_MS,
   csvCell,
   toCsv,
@@ -5615,6 +5830,11 @@ if (serverStart.status === "existing") {
   setTimeout(() => backfillCabinetClients(), 20_000);
   setTimeout(() => runCabinetRetention(), 120_000);
   setInterval(() => runCabinetRetention(), 6 * 60 * 60 * 1000);
+  setTimeout(() => purgeExpiredIdempotencyKeys(), 30_000);
+  setInterval(() => purgeExpiredIdempotencyKeys(), 60 * 60 * 1000);
+  setTimeout(() => backfillContentHashes(), 25_000);
+  setTimeout(() => purgeExpiredTrashedCvs(), 40_000);
+  setInterval(() => purgeExpiredTrashedCvs(), 6 * 60 * 60 * 1000);
 }
 
 

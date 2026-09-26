@@ -13,7 +13,7 @@ import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { Placeholder } from "../../components/Placeholder.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
-import { fillTemplate, formatDate } from "../../lib/format.js";
+import { fillTemplate, formatDate, formatDateTime } from "../../lib/format.js";
 import { getPlanById } from "../../data/plans.js";
 import {
   submitMatchFeedback,
@@ -21,13 +21,20 @@ import {
   optimizeCvForAts,
   listJobApplications,
   createJobApplication,
-  deleteJobApplication
+  deleteJobApplication,
+  listTrashedCvs,
+  trashCvs,
+  restoreCvs,
+  purgeCvs
 } from "../../lib/inMemoryDb.js";
 import { APPLICATIONS_COPY } from "../applications/applicationsCopy.js";
 import { CV_COPY } from "./cvCopy.js";
 import { ratingLabel, levelTag, recommendationLevelLabel } from "../../App.jsx";
+import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
+import { CvUploadArt, JobPostArt, HistoryHeroArt, ModuleHero } from "../../components/ModuleWorkspace.jsx";
 
 function ImportPage({
+  onGoToModule,
   latestCv,
   offerText,
   setOfferText,
@@ -115,6 +122,88 @@ function ImportPage({
     }));
   }
 
+  // --- Phase 1 : contrôle du fichier avant envoi (le serveur revérifie).
+  const [dragActive, setDragActive] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const CV_MAX_BYTES = 7 * 1024 * 1024;
+
+  function handlePickedFile(file) {
+    if (!file) return;
+    if (!/\.(pdf|docx?|txt|md)$/i.test(file.name || "")) {
+      setUploadError(copy.uploadBadFormat);
+      return;
+    }
+    if (file.size > CV_MAX_BYTES) {
+      setUploadError(copy.uploadTooLarge);
+      return;
+    }
+    if (!file.size) {
+      setUploadError(copy.uploadEmpty);
+      return;
+    }
+    setUploadError("");
+    onFileUpload(file);
+  }
+
+  // --- Phase 2 : complétude réelle du profil extrait.
+  const filled = (value) => (Array.isArray(value) ? value.some((item) => (typeof item === "string" ? item.trim() : item)) : String(value || "").trim());
+  const completenessChecks = cvReview
+    ? [
+        [copy.fieldFirstName, cvReview.firstName],
+        [copy.fieldLastName, cvReview.lastName],
+        ["Email", cvReview.email],
+        [copy.fieldPhone, cvReview.phone],
+        [copy.fieldLocation, cvReview.location],
+        [copy.fieldHeadline, cvReview.headline],
+        [copy.fieldSummary, cvReview.summary],
+        [copy.fieldSkills, cvReview.skills],
+        [copy.fieldExperiences, cvReview.experiences],
+        [copy.fieldEducation, cvReview.educationItems],
+        [copy.fieldLanguages, cvReview.languages]
+      ]
+    : [];
+  const completeness = {
+    pct: completenessChecks.length ? Math.round((completenessChecks.filter(([, value]) => filled(value)).length / completenessChecks.length) * 100) : 0,
+    missing: completenessChecks.filter(([, value]) => !filled(value)).map(([label]) => label)
+  };
+  const countFilled = (list) => (list || []).filter((item) => filled(typeof item === "string" ? item : Object.values(item || {}))).length;
+  const reviewCounts = cvReview
+    ? [
+        { value: countFilled(cvReview.skills), label: copy.countSkills },
+        { value: countFilled(cvReview.experiences), label: copy.countExperiences },
+        { value: countFilled(cvReview.educationItems), label: copy.countEducation },
+        { value: countFilled(cvReview.languages), label: copy.countLanguages }
+      ]
+    : [];
+
+  // --- Phase 3 : saisie et fiche de l'offre.
+  const offerLength = offerText.trim().length;
+  const offerReady = offerLength > 50;
+  const offerProgress = Math.min(100, Math.round((offerLength / 51) * 100));
+
+  async function handlePasteOffer() {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (text) setOfferText(text);
+    } catch (_error) {
+      // Accès au presse-papiers refusé : l'utilisateur colle avec Ctrl+V.
+    }
+  }
+
+  function cleanJobValue(value) {
+    const text = String(value || "").trim();
+    return !text || /^non pr[ée]cis[ée]$|^not specified$/i.test(text) ? "" : text;
+  }
+
+  const offerFacts = jobReview
+    ? [
+        cleanJobValue(jobReview.contract) ? { icon: "file", label: cleanJobValue(jobReview.contract) } : null,
+        cleanJobValue(jobReview.sector) ? { icon: "network", label: cleanJobValue(jobReview.sector) } : null,
+        Number(jobReview.experienceMin) > 0 ? { icon: "chart", label: copy.factExperience.replace("{years}", jobReview.experienceMin) } : null,
+        cleanJobValue(jobReview.education) ? { icon: "profile", label: cleanJobValue(jobReview.education) } : null
+      ].filter(Boolean)
+    : [];
+
   return (
     <section className="import-wizard-page">
       <div className="import-steps">
@@ -140,54 +229,150 @@ function ImportPage({
       </div>
 
       {importStep === "upload" ? (
-        <div className="import-upload-shell">
-          <header>
-            <h2>{copy.uploadTitle}</h2>
-            <p>{copy.uploadText}</p>
-          </header>
+        <div className="iw-layout">
+          <div className="iw-main">
+            <header className="iw-head">
+              <span className="mw-eyebrow">{copy.stepEyebrow.replace("{n}", "1")}</span>
+              <h2>{copy.uploadTitle}</h2>
+              <p>{copy.uploadText}</p>
+            </header>
 
-          <label className={`upload-zone import-dropzone ${latestCv ? "done" : ""}`}>
-            <input
-              type="file"
-              accept=".txt,.md,.pdf,.doc,.docx"
-              onChange={(event) => onFileUpload(event.target.files?.[0])}
-            />
-            {isExtractingCv ? (
-              <div className="extracting-state">
-                <div className="loader-ring" />
-                <strong>{copy.analysingTitle}</strong>
-                <span>{copy.analysingText}</span>
-              </div>
-            ) : (
-              <>
-                <span className="upload-icon">
-                  <UiIcon name="upload" />
+            <label
+              className={`iw-drop ${dragActive ? "is-over" : ""} ${isExtractingCv ? "is-busy" : ""}`}
+              onDragEnter={(event) => {
+                event.preventDefault();
+                if (!isExtractingCv) setDragActive(true);
+              }}
+              onDragOver={(event) => event.preventDefault()}
+              onDragLeave={(event) => {
+                if (!event.currentTarget.contains(event.relatedTarget)) setDragActive(false);
+              }}
+              onDrop={(event) => {
+                event.preventDefault();
+                setDragActive(false);
+                if (!isExtractingCv) handlePickedFile(event.dataTransfer.files?.[0]);
+              }}
+            >
+              <input
+                type="file"
+                accept=".txt,.md,.pdf,.doc,.docx"
+                disabled={isExtractingCv}
+                onChange={(event) => {
+                  handlePickedFile(event.target.files?.[0]);
+                  event.target.value = "";
+                }}
+              />
+              {isExtractingCv ? (
+                <div className="iw-extracting">
+                  <CvUploadArt scanning />
+                  <strong>{copy.analysingTitle}</strong>
+                  <span>{copy.analysingText}</span>
+                  <ol className="iw-extract-steps">
+                    {copy.extractingSteps.map((label) => (
+                      <li key={label}>{label}</li>
+                    ))}
+                  </ol>
+                </div>
+              ) : (
+                <>
+                  <CvUploadArt />
+                  <strong className="iw-drop-title">{dragActive ? copy.dropRelease : copy.dropTitle}</strong>
+                  <span className="iw-drop-sub">
+                    {copy.dropOr} <em>{copy.dropBrowse}</em>
+                  </span>
+                  <span className="iw-formats">
+                    {["PDF", "DOCX", "DOC", "TXT"].map((format) => (
+                      <i key={format}>{format}</i>
+                    ))}
+                    <small>{copy.dropMaxSize}</small>
+                  </span>
+                </>
+              )}
+            </label>
+            {uploadError ? (
+              <p className="iw-error" role="alert">
+                <UiIcon name="alert" />
+                {uploadError}
+              </p>
+            ) : null}
+
+            {latestCv && !isExtractingCv ? (
+              <div className="iw-resume">
+                <span className="iw-resume-icon">
+                  <UiIcon name="file" />
                 </span>
-                <strong>{cvFileName || copy.chooseFile}</strong>
-                <span>{copy.formats}</span>
-              </>
-            )}
-          </label>
+                <div>
+                  <strong>{copy.lastCvLabel}</strong>
+                  <small>
+                    {latestCv.fileName}
+                    {latestCv.createdAt ? ` · ${formatDateTime(latestCv.createdAt, language)}` : ""}
+                  </small>
+                </div>
+                <button type="button" className="btn-secondary" onClick={() => onStepClick("job")}>
+                  {copy.lastCvContinue} <UiIcon name="chevron" />
+                </button>
+              </div>
+            ) : null}
+          </div>
 
+          <aside className="iw-side">
+            <div className="mw-side-card">
+              <div className="mw-side-head">
+                <span>{copy.extractTitle}</span>
+              </div>
+              <ul className="iw-extract-list">
+                {copy.extractItems.map((item) => (
+                  <li key={item.label}>
+                    <span>
+                      <UiIcon name={item.icon} />
+                    </span>
+                    {item.label}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="mw-side-card iw-privacy">
+              <UiIcon name="shield" />
+              <p>{copy.privacyText}</p>
+            </div>
+          </aside>
         </div>
       ) : null}
 
       {importStep === "review" && cvReview ? (
-        <div className="cv-review-shell">
-          <div className="review-head">
-            <div>
+        <div className="cv-review-shell iw-review">
+          <div className="iw-review-head">
+            <header className="iw-head">
+              <span className="mw-eyebrow">{copy.stepEyebrow.replace("{n}", "2")}</span>
               <h2>{copy.reviewTitle}</h2>
               <p>{copy.reviewText}</p>
-            </div>
-            <div className="review-actions">
-              <button className="btn-secondary" onClick={onReimport}>
-                <UiIcon name="upload" />
-                {copy.reimport}
-              </button>
-              <button className="btn-main" onClick={() => onReviewSave(cvReview)}>
-                <UiIcon name="save" />
-                {copy.saveContinue}
-              </button>
+              <div className="iw-counts">
+                {reviewCounts.map((item) => (
+                  <span key={item.label}>
+                    <strong>{item.value}</strong> {item.label}
+                  </span>
+                ))}
+              </div>
+            </header>
+            <div className={`iw-complete ${completeness.pct === 100 ? "is-full" : ""}`}>
+              <div className="iw-complete-ring" style={{ "--pct": `${completeness.pct}%` }}>
+                <strong>{completeness.pct}%</strong>
+              </div>
+              <div>
+                <strong>{copy.completenessTitle}</strong>
+                {completeness.missing.length ? (
+                  <>
+                    <small>{copy.completenessMissing}</small>
+                    <div className="iw-missing">
+                      {completeness.missing.map((label) => (
+                        <span key={label}>{label}</span>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <small>{copy.completenessFull}</small>
+                )}
+              </div>
             </div>
           </div>
 
@@ -368,93 +553,203 @@ function ImportPage({
               </ReviewCard>
             </div>
           </div>
+
+          <div className="iw-sticky no-print">
+            <span>
+              <UiIcon name="edit" />
+              {copy.reviewBarHint}
+            </span>
+            <div className="review-actions">
+              <button className="btn-secondary" onClick={onReimport}>
+                <UiIcon name="upload" />
+                {copy.reimport}
+              </button>
+              <button className="btn-main ready" onClick={() => onReviewSave(cvReview)}>
+                <UiIcon name="save" />
+                {copy.saveContinue}
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
 
       {importStep === "job" ? (
-        <div className="job-target-shell">
+        <div className="job-target-shell iw-job">
           {!jobReview ? (
-            <>
-              <header>
-                <h2>{copy.jobTitle}</h2>
-                <p>{copy.jobText}</p>
-              </header>
-              <div className="card block job-card">
-                <label>
-                  {copy.jobDescription}
+            <div className="iw-layout">
+              <div className="iw-main">
+                <header className="iw-head">
+                  <span className="mw-eyebrow">{copy.stepEyebrow.replace("{n}", "3")}</span>
+                  <h2>{copy.jobTitle}</h2>
+                  <p>{copy.jobText}</p>
+                </header>
+                <div className="card block job-card iw-job-card">
+                  <div className="iw-job-toolbar">
+                    <span>{copy.jobDescription}</span>
+                    <div>
+                      {offerText ? (
+                        <button type="button" className="iw-mini-btn" onClick={() => setOfferText("")}>
+                          <UiIcon name="trash" /> {copy.clearOffer}
+                        </button>
+                      ) : null}
+                      <button type="button" className="iw-mini-btn" onClick={handlePasteOffer}>
+                        <UiIcon name="file" /> {copy.pasteOffer}
+                      </button>
+                    </div>
+                  </div>
                   <textarea
                     value={offerText}
                     onChange={(event) => setOfferText(event.target.value)}
                     placeholder={copy.offerPlaceholder}
-                    rows={12}
+                    rows={13}
                   />
-                </label>
-                <div className="counter-row">
-                  <span>{offerText.trim().length} {copy.chars}</span>
-                  <span>{offerText.trim().length > 50 ? copy.ready : copy.minimum}</span>
+                  <div className="iw-progress" aria-hidden="true">
+                    <i style={{ width: `${offerProgress}%` }} className={offerReady ? "is-ready" : ""} />
+                  </div>
+                  <div className="counter-row">
+                    <span>
+                      {offerLength} {copy.chars}
+                    </span>
+                    <span className={offerReady ? "iw-ready" : ""}>{offerReady ? copy.ready : copy.minimum}</span>
+                  </div>
+                  <button className={`btn-main ${offerReady ? "ready" : ""}`} disabled={!offerReady || isReviewingJob} onClick={onJobReview}>
+                    {isReviewingJob ? (
+                      <>
+                        <span className="btn-spinner" /> {copy.reviewingJob}
+                      </>
+                    ) : (
+                      <>
+                        {copy.reviewJob} <UiIcon name="chevron" className="btn-chevron" />
+                      </>
+                    )}
+                  </button>
                 </div>
-                <button className={`btn-main ${offerText.trim().length > 50 ? "ready" : ""}`} disabled={offerText.trim().length <= 50 || isReviewingJob} onClick={onJobReview}>
-                  {isReviewingJob ? (
-                    <>
-                      <span className="btn-spinner" /> {copy.reviewingJob}
-                    </>
-                  ) : (
-                    <>
-                      {copy.reviewJob} <UiIcon name="chevron" className="btn-chevron" />
-                    </>
-                  )}
-                </button>
               </div>
-            </>
+              <aside className="iw-side">
+                <div className="mw-side-card iw-side-art">
+                  <JobPostArt />
+                </div>
+                <div className="mw-side-card">
+                  <div className="mw-side-head">
+                    <span>{copy.jobTipsTitle}</span>
+                  </div>
+                  <ul className="iw-tips">
+                    {copy.jobTips.map((tip) => (
+                      <li key={tip}>
+                        <UiIcon name="check" />
+                        <span>{tip}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </aside>
+            </div>
           ) : (
             <>
-              <header>
+              <header className="iw-head">
+                <span className="mw-eyebrow">{copy.stepEyebrow.replace("{n}", "3")}</span>
                 <h2>{copy.jobSummaryTitle}</h2>
                 <p>{copy.jobSummaryText}</p>
               </header>
-              <article className="job-summary-card">
-                <div className="job-summary-title">
-                  <span>
-                    <UiIcon name="briefcase" />
-                  </span>
-                  <h3>{jobReview.title}</h3>
-                </div>
-                <div className="job-summary-company">
-                  <UiIcon name="briefcase" />
-                  <strong>{jobReview.company}</strong>
-                </div>
-                <div className="job-description-box">
-                  <strong>Description</strong>
-                  <p>{jobReview.description}</p>
-                </div>
-                <div className="job-skill-groups">
+              <article className="iw-offer">
+                <div className="iw-offer-head">
+                  <span className="iw-offer-logo">{(jobReview.company || jobReview.title || "?").trim().charAt(0).toUpperCase()}</span>
                   <div>
-                    <h4>{copy.technicalSkills}</h4>
-                    <div className="job-chip-row">
-                      {jobReview.skills?.length ? (
-                        jobReview.skills.map((skill) => <span key={skill}>{skill}</span>)
-                      ) : (
-                        <span className="muted">{copy.noSkillsDetected}</span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <h4>{copy.softSkills}</h4>
-                    <div className="job-chip-row">
-                      {jobReview.softSkills?.length ? (
-                        jobReview.softSkills.map((skill) => <span key={skill}>{skill}</span>)
-                      ) : (
-                        <span className="muted">{copy.noSkillsDetected}</span>
-                      )}
-                    </div>
+                    <h3>{jobReview.title}</h3>
+                    <p>{[jobReview.company, cleanJobValue(jobReview.location)].filter(Boolean).join(" · ")}</p>
                   </div>
                 </div>
-                <div className="job-summary-actions">
-                  <button className="btn-secondary" onClick={onEditJob}>{copy.backToEdit}</button>
-                  <button className={`btn-main ${canAnalyse ? "ready" : ""}`} disabled={!canAnalyse} onClick={onAnalyse}>
-                    {isAnalysing ? copy.analysing : copy.analyseJob} <UiIcon name="chevron" className="btn-chevron" />
+                {offerFacts.length ? (
+                  <div className="iw-facts">
+                    {offerFacts.map((fact) => (
+                      <span key={fact.label}>
+                        <UiIcon name={fact.icon} />
+                        {fact.label}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="iw-offer-grid">
+                  <div className="iw-offer-col">
+                    {jobReview.description ? (
+                      <section>
+                        <h4>{copy.offerDescription}</h4>
+                        <p>{jobReview.description}</p>
+                      </section>
+                    ) : null}
+                    {jobReview.missions?.length ? (
+                      <section>
+                        <h4>{copy.offerMissions}</h4>
+                        <ul className="iw-missions">
+                          {jobReview.missions.map((mission) => (
+                            <li key={mission}>
+                              <UiIcon name="check" />
+                              <span>{mission.replace(/^[-•+]\s*/, "")}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </section>
+                    ) : null}
+                  </div>
+                  <div className="iw-offer-col">
+                    <section>
+                      <h4>
+                        {copy.technicalSkills} <em>{jobReview.skills?.length || 0}</em>
+                      </h4>
+                      <div className="mr-chips">
+                        {jobReview.skills?.length ? (
+                          jobReview.skills.map((skill) => (
+                            <span key={skill} className="mr-chip iw-chip">
+                              {skill}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="muted">{copy.noSkillsDetected}</span>
+                        )}
+                      </div>
+                    </section>
+                    <section>
+                      <h4>
+                        {copy.softSkills} <em>{jobReview.softSkills?.length || 0}</em>
+                      </h4>
+                      <div className="mr-chips">
+                        {jobReview.softSkills?.length ? (
+                          jobReview.softSkills.map((skill) => (
+                            <span key={skill} className="mr-chip iw-chip soft">
+                              {skill}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="muted">{copy.noSkillsDetected}</span>
+                        )}
+                      </div>
+                    </section>
+                  </div>
+                </div>
+                <div className="iw-offer-actions">
+                  <button className="btn-secondary" onClick={onEditJob}>
+                    <UiIcon name="edit" /> {copy.backToEdit}
+                  </button>
+                  <button className={`btn-main ${canAnalyse ? "ready" : ""}`} disabled={!canAnalyse || isAnalysing} onClick={onAnalyse}>
+                    {isAnalysing ? (
+                      <>
+                        <span className="btn-spinner" /> {copy.analysing}
+                      </>
+                    ) : (
+                      <>
+                        {copy.analyseJob} <UiIcon name="chevron" className="btn-chevron" />
+                      </>
+                    )}
                   </button>
                 </div>
+                <AiDisclaimer
+                  language={language}
+                  text={
+                    language === "en"
+                      ? "Job details extracted by AI: check them against the original posting."
+                      : "Informations extraites par l'IA : vérifiez-les au regard de l'annonce d'origine."
+                  }
+                />
               </article>
             </>
           )}
@@ -480,6 +775,7 @@ function ImportPage({
           onApplyOptimization={onApplyOptimization}
           onSaveCvReview={onSaveCvReview}
           onConsumeToken={onConsumeToken}
+          onGoToModule={onGoToModule}
         />
       ) : null}
     </section>
@@ -542,7 +838,8 @@ function MatchResultsStep({
   tokensBalance,
   onApplyOptimization,
   onSaveCvReview,
-  onConsumeToken
+  onConsumeToken,
+  onGoToModule
 }) {
   const [feedback, setFeedback] = useState(null);
   const [feedbackSaving, setFeedbackSaving] = useState(false);
@@ -552,6 +849,7 @@ function MatchResultsStep({
   const [trackerStatus, setTrackerStatus] = useState("idle");
   const [trackerApplicationId, setTrackerApplicationId] = useState(null);
   const trackerLockRef = useRef(false);
+  const atsCardRef = useRef(null);
   const cvCopy = CV_COPY[language]?.cv || CV_COPY.fr.cv;
   const applicationsCopy = APPLICATIONS_COPY[language] || APPLICATIONS_COPY.fr;
   const [atsOptimization, setAtsOptimization] = useState(null);
@@ -810,85 +1108,237 @@ function MatchResultsStep({
   const scoreTier =
     matchInsights.score >= 80 ? "excellent" : matchInsights.score >= 65 ? "good" : matchInsights.score >= 50 ? "average" : "weak";
 
+  // Compétences demandées par l'offre réellement présentes dans le CV (liste
+  // de compétences ou texte du CV) : calcul exact, aucune estimation.
+  const normalizeSkill = (value) =>
+    String(value || "")
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9+#.]+/g, " ")
+      .trim();
+  const cvSkillSet = new Set((cvReview?.skills || []).map(normalizeSkill).filter(Boolean));
+  const cvTextNormalized = ` ${normalizeSkill(cvTextSample)} `;
+  const offerSkills = [...new Set((jobReview?.skills || []).map((skill) => String(skill || "").trim()).filter(Boolean))];
+  const matchedSkills = offerSkills.filter((skill) => {
+    const key = normalizeSkill(skill);
+    return key && (cvSkillSet.has(key) || cvTextNormalized.includes(` ${key} `));
+  });
+  const matchedKeys = new Set(matchedSkills.map(normalizeSkill));
+  const toStrengthen = missingKeywords.filter((keyword) => !matchedKeys.has(normalizeSkill(keyword)));
+  const coveragePct = offerSkills.length ? Math.round((matchedSkills.length / offerSkills.length) * 100) : null;
+  const strengths = matchInsights.strengths || [];
+  const location = jobReview?.location && jobReview.location !== "Non précisé" ? jobReview.location : "";
+  const gaugeRadius = 70;
+  const gaugeLength = 2 * Math.PI * gaugeRadius;
+  const gaugeOffset = gaugeLength * (1 - Math.max(0, Math.min(100, matchInsights.score)) / 100);
+
+  function scrollToAts() {
+    atsCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  const nextSteps = [
+    { page: "lettre", icon: "mail", tone: "orange", title: copy.nextLetterTitle, text: copy.nextLetterText },
+    { page: "entretiens", icon: "chat", tone: "violet", title: copy.nextInterviewTitle, text: copy.nextInterviewText },
+    { page: "negociation", icon: "scale", tone: "green", title: copy.nextNegotiationTitle, text: copy.nextNegotiationText }
+  ];
+
   return (
     <div className="match-results-shell" id="match-print-area">
-      <div className="match-top-grid">
-        <article className="card match-score-card">
-          <h3>
-            <UiIcon name="chart" /> {copy.matchScoreLabel}
-          </h3>
-          <div className={`score-ring match-score-ring-lg tier-${scoreTier}`} style={{ "--pct": `${matchInsights.score}%` }}>
-            <strong>{matchInsights.score}%</strong>
+      <section className={`mr-hero tier-${scoreTier}`}>
+        <div className="mr-gauge" role="img" aria-label={`${copy.matchScoreLabel} : ${matchInsights.score}/100`}>
+          <svg viewBox="0 0 170 170" aria-hidden="true">
+            <circle cx="85" cy="85" r={gaugeRadius} className="mr-gauge-track" />
+            <circle
+              cx="85"
+              cy="85"
+              r={gaugeRadius}
+              className="mr-gauge-value"
+              strokeDasharray={gaugeLength}
+              strokeDashoffset={gaugeOffset}
+              style={{ "--gauge-length": gaugeLength }}
+            />
+          </svg>
+          <div className="mr-gauge-label">
+            <strong>{matchInsights.score}</strong>
+            <span>/100</span>
           </div>
-          <span className={`match-verdict-pill tier-${scoreTier}`}>{verdictLabel}</span>
-          {trackerStatus === "done" ? (
-            <button
-              type="button"
-              className="btn-secondary match-tracker-btn match-tracker-btn-remove no-print"
-              disabled={trackerStatus === "removing"}
-              onClick={handleRemoveFromTracker}
-            >
-              <UiIcon name="trash" />
-              {trackerStatus === "removing" ? applicationsCopy.formSaving : applicationsCopy.removeFromTrackerBtn}
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn-secondary match-tracker-btn no-print"
-              disabled={trackerStatus === "saving"}
-              onClick={handleAddToTracker}
-            >
+        </div>
+
+        <div className="mr-hero-body">
+          <span className="mw-eyebrow">{copy.matchHeroEyebrow}</span>
+          <h2>
+            <span className={`mr-verdict tier-${scoreTier}`}>{verdictLabel}</span>
+          </h2>
+          {title || company ? (
+            <p className="mr-hero-role">
               <UiIcon name="briefcase" />
-              {trackerStatus === "saving" ? applicationsCopy.formSaving : applicationsCopy.addToTrackerBtn}
-            </button>
+              <span>
+                <strong>{title}</strong>
+                {[company, location].filter(Boolean).length ? ` · ${[company, location].filter(Boolean).join(" · ")}` : ""}
+              </span>
+            </p>
+          ) : null}
+          <p className="mr-hero-summary">{copy[`matchTierText_${scoreTier}`]}</p>
+          <div className="mr-hero-actions no-print">
+            {trackerStatus === "done" || trackerStatus === "removing" ? (
+              <button
+                type="button"
+                className="btn-secondary match-tracker-btn match-tracker-btn-remove"
+                disabled={trackerStatus === "removing"}
+                onClick={handleRemoveFromTracker}
+              >
+                <UiIcon name="trash" />
+                {trackerStatus === "removing" ? applicationsCopy.formSaving : applicationsCopy.removeFromTrackerBtn}
+              </button>
+            ) : (
+              <button type="button" className="btn-main ready" disabled={trackerStatus === "saving"} onClick={handleAddToTracker}>
+                <UiIcon name="briefcase" />
+                {trackerStatus === "saving" ? applicationsCopy.formSaving : applicationsCopy.addToTrackerBtn}
+              </button>
+            )}
+            {toStrengthen.length && hasOfferContext ? (
+              <button type="button" className="btn-secondary" onClick={scrollToAts}>
+                <UiIcon name="edit" /> {copy.matchOptimizeCta}
+              </button>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mr-stats">
+          {coveragePct !== null ? (
+            <div className="mr-stat mr-stat-coverage">
+              <span className="mr-stat-label">{copy.matchCoverageLabel}</span>
+              <strong>
+                {matchedSkills.length}
+                <small>/{offerSkills.length}</small>
+              </strong>
+              <div className="mr-bar" aria-hidden="true">
+                <i style={{ width: `${coveragePct}%` }} />
+              </div>
+              <small>{copy.matchCoverageHint}</small>
+            </div>
+          ) : null}
+          <div className="mr-stat-row">
+            <div className="mr-stat mini ok">
+              <strong>{strengths.length}</strong>
+              <span>{copy.matchStrengthsCount}</span>
+            </div>
+            <div className="mr-stat mini warn">
+              <strong>{toStrengthen.length}</strong>
+              <span>{copy.matchToStrengthenCount}</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div className="mr-grid">
+        <article className="card mr-card">
+          <h3 className="mr-card-title ok">
+            <span>
+              <UiIcon name="thumbUp" />
+            </span>
+            {copy.matchStrengths}
+          </h3>
+          {strengths.length ? (
+            <ul className="mr-strengths">
+              {strengths.map((point, index) => (
+                <li key={`${point}-${index}`}>
+                  <UiIcon name="check" />
+                  <span>{point}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="muted">{copy.matchNoStrengths}</p>
           )}
         </article>
 
-        <article className="card match-results-card">
-          <h3>
-            <UiIcon name="chart" /> {copy.matchResultsTitle}
+        <article className="card mr-card">
+          <h3 className="mr-card-title">
+            <span>
+              <UiIcon name="chart" />
+            </span>
+            {copy.matchSkillsTitle}
           </h3>
-          <p className="muted">{copy.matchResultsSubtitle}</p>
-          <div className="match-grid">
-            <div className="match-subblock match-subblock-success">
-              <h4 className="success-heading">
-                <UiIcon name="shield" /> {copy.matchStrengths}
-              </h4>
-              <ul className="match-strength-list">
-                {(matchInsights.strengths || []).map((point, index) => (
-                  <li key={`${point}-${index}`}>{point}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="match-subblock match-subblock-danger">
-              <h4 className="danger-heading">
-                <UiIcon name="alert" /> {copy.matchMissingKeywords}
-              </h4>
-              {missingKeywords.length ? (
-                <div className="job-chip-row missing-keyword-row">
-                  {missingKeywords.map((keyword) => (
-                    <span key={keyword} className="missing-keyword-chip">
-                      {keyword}
+          {offerSkills.length ? (
+            <div className="mr-skill-group">
+              <span className="mr-skill-label ok">
+                <i /> {copy.matchSkillsPresent} ({matchedSkills.length})
+              </span>
+              {matchedSkills.length ? (
+                <div className="mr-chips">
+                  {matchedSkills.map((skill) => (
+                    <span key={skill} className="mr-chip ok">
+                      <UiIcon name="check" />
+                      {skill}
                     </span>
                   ))}
                 </div>
               ) : (
-                <p className="muted">{copy.matchNoMissingKeywords}</p>
+                <p className="muted mr-empty-line">{copy.matchSkillsNonePresent}</p>
               )}
             </div>
+          ) : null}
+          <div className="mr-skill-group">
+            <span className="mr-skill-label warn">
+              <i /> {copy.matchToStrengthen} ({toStrengthen.length})
+            </span>
+            {toStrengthen.length ? (
+              <>
+                <div className="mr-chips">
+                  {toStrengthen.map((keyword) => (
+                    <span key={keyword} className="mr-chip warn">
+                      {keyword}
+                    </span>
+                  ))}
+                </div>
+                <p className="mr-skill-hint">
+                  <UiIcon name="alert" />
+                  {copy.matchToStrengthenHint}
+                </p>
+              </>
+            ) : (
+              <p className="muted mr-empty-line">{copy.matchNoMissingKeywords}</p>
+            )}
           </div>
         </article>
       </div>
 
-      <article className="card block cultural-fit-card">
-        <h3>
-          <UiIcon name="chat" /> {copy.matchCulturalFit}
-        </h3>
-        <div className="cultural-fit-box">
-          <p>{matchInsights.culturalFit}</p>
-        </div>
-      </article>
+      {matchInsights.culturalFit ? (
+        <article className="card mr-fit">
+          <span className="mr-fit-icon">
+            <UiIcon name="profile" />
+          </span>
+          <div>
+            <h3>{copy.matchCulturalFit}</h3>
+            <p>{matchInsights.culturalFit}</p>
+          </div>
+        </article>
+      ) : null}
+
+      {onGoToModule ? (
+        <section className="mr-next no-print">
+          <div className="mr-next-head">
+            <h3>{copy.matchNextTitle}</h3>
+            <p>{copy.matchNextText}</p>
+          </div>
+          <div className="mr-next-grid">
+            {nextSteps.map((step) => (
+              <button key={step.page} type="button" className={`mr-next-card tone-${step.tone}`} onClick={() => onGoToModule(step.page)}>
+                <span className="mr-next-icon">
+                  <UiIcon name={step.icon} />
+                </span>
+                <strong>{step.title}</strong>
+                <small>{step.text}</small>
+                <span className="mr-next-go">
+                  {copy.matchNextGo} <UiIcon name="chevron" />
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <article className="card block match-block">
         <div className="match-block-head">
@@ -927,9 +1377,10 @@ function MatchResultsStep({
             </li>
           ))}
         </ol>
+        <AiDisclaimer language={language} />
       </article>
 
-      <article className="card block ats-optimize-card no-print">
+      <article className="card block ats-optimize-card no-print" ref={atsCardRef}>
         <h3>
           <UiIcon name="spark" /> {cvCopy.atsOptimizeTitle}
         </h3>
@@ -1018,6 +1469,7 @@ function MatchResultsStep({
               )}
             </button>
             {atsApplied ? <p className="ats-applied-hint">{cvCopy.atsApplied}</p> : null}
+            <AiDisclaimer language={language} />
           </div>
         ) : null}
       </article>
@@ -1653,87 +2105,344 @@ function OffersPage({ matchData, premium, language }) {
   );
 }
 
-function CvHistoryPage({ cvHistory, latestMatch, language }) {
+function CvHistoryPage({ cvHistory, matchRuns = [], language, userId, onCvsChanged }) {
+  const t = (fr, en) => (language === "en" ? en : fr);
+  // Score affiché sur un CV : celui de la dernière analyse faite avec CE CV
+  // (aucun score si le CV n'a jamais été analysé).
+  const runsByCv = {};
+  for (const run of matchRuns) {
+    if (!run.cvId || typeof run.score !== "number") continue;
+    (runsByCv[run.cvId] = runsByCv[run.cvId] || []).push(run);
+  }
   const [expandedIds, setExpandedIds] = useState({});
+  const [tab, setTab] = useState("history");
+  const [trash, setTrash] = useState([]);
+  const [retentionDays, setRetentionDays] = useState(30);
+  const [selected, setSelected] = useState(() => new Set());
+  const [busy, setBusy] = useState(false);
 
-  const emptyTitle = language === "en" ? "No CV generated yet" : "Aucun CV généré pour le moment";
-  const emptyText =
-    language === "en"
-      ? "Your history will appear here each time you import and optimize a CV."
-      : "Votre historique apparaîtra ici à chaque fois que vous importerez et optimiserez un CV.";
+  async function loadTrash() {
+    if (!userId) return;
+    try {
+      const data = await listTrashedCvs(userId);
+      setTrash(data.items || []);
+      if (data.retentionDays) setRetentionDays(data.retentionDays);
+    } catch (_error) {
+      setTrash([]);
+    }
+  }
+
+  useEffect(() => {
+    loadTrash();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, cvHistory.length]);
+
+  useEffect(() => {
+    setSelected(new Set());
+  }, [tab]);
+
+  const list = tab === "history" ? cvHistory : trash;
+  const allSelected = list.length > 0 && list.every((cv) => selected.has(cv.id));
+
+  function toggleSelected(id) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAll() {
+    setSelected(allSelected ? new Set() : new Set(list.map((cv) => cv.id)));
+  }
 
   function toggleExpanded(cvId) {
     setExpandedIds((prev) => ({ ...prev, [cvId]: !prev[cvId] }));
   }
 
-  if (!cvHistory.length) {
+  function toast(icon, title) {
+    Swal.fire({
+      toast: true,
+      position: "top-end",
+      icon,
+      title,
+      showConfirmButton: false,
+      timer: 3200,
+      timerProgressBar: true,
+      customClass: { popup: "career-toast", title: "career-toast-title" }
+    });
+  }
+
+  const countLabel = (count) => (count > 1 ? t(`${count} CV`, `${count} CVs`) : t("1 CV", "1 CV"));
+
+  async function runAction(ids, action) {
+    if (!ids.length || busy) return;
+    const confirmations = {
+      trash: {
+        icon: "warning",
+        title: t(`Placer ${countLabel(ids.length)} dans la corbeille ?`, `Move ${countLabel(ids.length)} to the trash?`),
+        text: t(
+          `Vous pourrez ${ids.length > 1 ? "les" : "le"} restaurer pendant ${retentionDays} jours. Passé ce délai, la suppression est définitive.`,
+          `You can restore ${ids.length > 1 ? "them" : "it"} for ${retentionDays} days. After that, deletion is permanent.`
+        ),
+        confirm: t("Mettre à la corbeille", "Move to trash")
+      },
+      purge: {
+        icon: "error",
+        title: t(`Supprimer définitivement ${countLabel(ids.length)} ?`, `Permanently delete ${countLabel(ids.length)}?`),
+        text: t(
+          "Cette action est irréversible. Les candidatures liées sont conservées, sans CV associé.",
+          "This cannot be undone. Linked applications are kept, without an attached CV."
+        ),
+        confirm: t("Supprimer définitivement", "Delete permanently")
+      }
+    };
+    const confirmation = confirmations[action];
+    if (confirmation) {
+      const result = await Swal.fire({
+        icon: confirmation.icon,
+        title: confirmation.title,
+        text: confirmation.text,
+        showCancelButton: true,
+        confirmButtonText: confirmation.confirm,
+        cancelButtonText: t("Annuler", "Cancel"),
+        confirmButtonColor: action === "purge" ? "#a8071a" : "#b83309",
+        reverseButtons: true,
+        focusCancel: action === "purge"
+      });
+      if (!result.isConfirmed) return;
+    }
+    setBusy(true);
+    try {
+      if (action === "trash") {
+        const result = await trashCvs(userId, ids);
+        toast("success", t(`${countLabel(result.moved ?? ids.length)} placé(s) dans la corbeille.`, `${countLabel(result.moved ?? ids.length)} moved to trash.`));
+      } else if (action === "restore") {
+        const result = await restoreCvs(userId, ids);
+        toast("success", t(`${countLabel(result.restored ?? ids.length)} restauré(s).`, `${countLabel(result.restored ?? ids.length)} restored.`));
+      } else if (action === "purge") {
+        const result = await purgeCvs(userId, { ids });
+        toast("success", t(`${countLabel(result.deleted ?? ids.length)} supprimé(s) définitivement.`, `${countLabel(result.deleted ?? ids.length)} permanently deleted.`));
+      }
+      setSelected(new Set());
+      await Promise.all([onCvsChanged?.(), loadTrash()]);
+    } catch (error) {
+      toast("error", getFriendlyErrorMessage(error, language));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function emptyTrash() {
+    if (!trash.length || busy) return;
+    const result = await Swal.fire({
+      icon: "error",
+      title: t("Vider la corbeille ?", "Empty the trash?"),
+      text: t(
+        `${countLabel(trash.length)} ${trash.length > 1 ? "seront supprimés" : "sera supprimé"} définitivement. Cette action est irréversible.`,
+        `${countLabel(trash.length)} will be permanently deleted. This cannot be undone.`
+      ),
+      showCancelButton: true,
+      confirmButtonText: t("Vider la corbeille", "Empty trash"),
+      cancelButtonText: t("Annuler", "Cancel"),
+      confirmButtonColor: "#a8071a",
+      reverseButtons: true,
+      focusCancel: true
+    });
+    if (!result.isConfirmed) return;
+    setBusy(true);
+    try {
+      const response = await purgeCvs(userId, { all: true });
+      toast("success", t(`Corbeille vidée (${countLabel(response.deleted ?? 0)}).`, `Trash emptied (${countLabel(response.deleted ?? 0)}).`));
+      setSelected(new Set());
+      await Promise.all([onCvsChanged?.(), loadTrash()]);
+    } catch (error) {
+      toast("error", getFriendlyErrorMessage(error, language));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function daysLeft(purgeAt) {
+    return Math.max(0, Math.ceil((new Date(purgeAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
+  }
+
+  if (!cvHistory.length && !trash.length) {
     return (
       <section className="history-empty">
         <div className="history-empty-icon">
           <UiIcon name="history" />
         </div>
-        <h2>{emptyTitle}</h2>
-        <p>{emptyText}</p>
+        <h2>{t("Aucun CV importé pour le moment", "No CV imported yet")}</h2>
+        <p>
+          {t(
+            "Votre historique apparaîtra ici à chaque fois que vous importerez et optimiserez un CV.",
+            "Your history will appear here each time you import and optimize a CV."
+          )}
+        </p>
       </section>
     );
   }
 
+  const selectedIds = [...selected].filter((id) => list.some((cv) => cv.id === id));
+
   return (
     <section className="cv-history-page">
-      <div className="card block history-head">
-        <div className="feature-page-header">
-          <span className="feature-page-header-icon">
-            <UiIcon name="history" />
-          </span>
-          <div>
-            <h2>{language === "en" ? "CV history" : "Historique CV"}</h2>
-            <p className="muted">
-              {language === "en"
-                ? "All imported CVs are kept here with their extracted data."
-                : "Tous les CV importés sont conservés ici avec leurs données extraites."}
-            </p>
-          </div>
-        </div>
-        <div className="history-count-badge">
-          <strong>{cvHistory.length}</strong>
-          <span>{cvHistory.length > 1 ? (language === "en" ? "CVs" : "CV importés") : (language === "en" ? "CV" : "CV importé")}</span>
-        </div>
+      <ModuleHero
+        eyebrow={t("Vos CV", "Your CVs")}
+        title={t("Historique CV", "CV history")}
+        subtitle={t(
+          "Tous vos CV importés, avec leurs données extraites et le score de leur dernière analyse.",
+          "All your imported CVs, with their extracted data and the score of their latest analysis."
+        )}
+        art={<HistoryHeroArt />}
+        chips={[
+          { icon: "file", label: cvHistory.length > 1 ? t(`${cvHistory.length} CV importés`, `${cvHistory.length} CVs imported`) : t(`${cvHistory.length} CV importé`, `${cvHistory.length} CV imported`) },
+          cvHistory[0]?.createdAt ? { icon: "history", label: t(`Dernier import : ${formatDateTime(cvHistory[0].createdAt, language)}`, `Last import: ${formatDateTime(cvHistory[0].createdAt, language)}`) } : null,
+          { icon: "trash", label: t(`${trash.length} dans la corbeille`, `${trash.length} in the trash`) }
+        ]}
+      />
+
+      <div className="history-tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={tab === "history"} className={tab === "history" ? "is-active" : ""} onClick={() => setTab("history")}>
+          <UiIcon name="history" />
+          {t("Historique", "History")}
+          <span>{cvHistory.length}</span>
+        </button>
+        <button type="button" role="tab" aria-selected={tab === "trash"} className={tab === "trash" ? "is-active" : ""} onClick={() => setTab("trash")}>
+          <UiIcon name="trash" />
+          {t("Corbeille", "Trash")}
+          <span>{trash.length}</span>
+        </button>
       </div>
 
+      {list.length ? (
+        <div className="history-toolbar">
+          <label className="history-check">
+            <input type="checkbox" checked={allSelected} onChange={toggleAll} disabled={busy} />
+            <span>{selectedIds.length ? t(`${selectedIds.length} sélectionné(s)`, `${selectedIds.length} selected`) : t("Tout sélectionner", "Select all")}</span>
+          </label>
+          <div className="history-toolbar-actions">
+            {tab === "history" ? (
+              <button type="button" className="history-action danger" disabled={!selectedIds.length || busy} onClick={() => runAction(selectedIds, "trash")}>
+                <UiIcon name="trash" />
+                {t("Mettre à la corbeille", "Move to trash")}
+              </button>
+            ) : (
+              <>
+                <button type="button" className="history-action" disabled={!selectedIds.length || busy} onClick={() => runAction(selectedIds, "restore")}>
+                  <UiIcon name="history" />
+                  {t("Restaurer", "Restore")}
+                </button>
+                <button type="button" className="history-action danger" disabled={!selectedIds.length || busy} onClick={() => runAction(selectedIds, "purge")}>
+                  <UiIcon name="trash" />
+                  {t("Supprimer définitivement", "Delete permanently")}
+                </button>
+                <button type="button" className="history-action danger-solid" disabled={busy} onClick={emptyTrash}>
+                  {t("Vider la corbeille", "Empty trash")}
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      ) : null}
+
+      {tab === "trash" && trash.length ? (
+        <p className="history-trash-note">
+          <UiIcon name="alert" />
+          {t(
+            `Les CV restent ${retentionDays} jours dans la corbeille, puis sont supprimés définitivement. Ils ne comptent plus dans vos statistiques.`,
+            `CVs stay in the trash for ${retentionDays} days, then are permanently deleted. They no longer count in your statistics.`
+          )}
+        </p>
+      ) : null}
+
+      {!list.length ? (
+        <div className="history-tab-empty">
+          <UiIcon name={tab === "trash" ? "trash" : "history"} />
+          <strong>{tab === "trash" ? t("La corbeille est vide", "The trash is empty") : t("Aucun CV dans l'historique", "No CV in your history")}</strong>
+          <span>
+            {tab === "trash"
+              ? t("Les CV supprimés apparaîtront ici avant leur suppression définitive.", "Deleted CVs will appear here before permanent deletion.")
+              : t("Vos CV supprimés sont dans la corbeille : vous pouvez les restaurer.", "Your deleted CVs are in the trash: you can restore them.")}
+          </span>
+        </div>
+      ) : null}
+
       <div className="history-list">
-        {cvHistory.map((cv) => {
+        {list.map((cv) => {
           const skills = cv.parsed?.skills || [];
-          const score = latestMatch?.summary?.globalScore ?? null;
+          const cvRuns = runsByCv[cv.id] || [];
+          const score = tab === "history" && cvRuns.length ? cvRuns[0].score : null;
           const scoreTier = score === null ? null : score >= 80 ? "excellent" : score >= 65 ? "good" : score >= 50 ? "average" : "weak";
           const isExpanded = Boolean(expandedIds[cv.id]);
           const collapsedCount = 10;
           const visibleSkills = isExpanded ? skills : skills.slice(0, collapsedCount);
           const hiddenCount = skills.length - visibleSkills.length;
+          const isSelected = selected.has(cv.id);
+          const remaining = cv.purgeAt ? daysLeft(cv.purgeAt) : null;
 
           return (
-            <article className="history-card" key={cv.id}>
+            <article className={`history-card ${isSelected ? "is-selected" : ""} ${tab === "trash" ? "is-trashed" : ""}`} key={cv.id}>
               <div className="history-card-top">
                 <div className="history-card-main">
+                  <input
+                    type="checkbox"
+                    className="history-card-check"
+                    checked={isSelected}
+                    onChange={() => toggleSelected(cv.id)}
+                    disabled={busy}
+                    aria-label={t(`Sélectionner ${cv.fileName}`, `Select ${cv.fileName}`)}
+                  />
                   <span className="history-card-icon">
-                    <UiIcon name="history" />
+                    <UiIcon name={tab === "trash" ? "trash" : "history"} />
                   </span>
                   <div>
                     <h3>{cv.fileName}</h3>
-                    <p>{formatDate(cv.createdAt)}</p>
+                    {tab === "trash" ? (
+                      <p>
+                        {t("Supprimé le", "Deleted on")} {formatDateTime(cv.deletedAt, language)} ·{" "}
+                        <span className={remaining <= 3 ? "history-purge-soon" : ""}>
+                          {remaining === 0
+                            ? t("suppression définitive imminente", "permanent deletion imminent")
+                            : t(`supprimé définitivement dans ${remaining} jour${remaining > 1 ? "s" : ""}`, `permanently deleted in ${remaining} day${remaining > 1 ? "s" : ""}`)}
+                        </span>
+                      </p>
+                    ) : (
+                      <p>{formatDateTime(cv.createdAt, language)}</p>
+                    )}
                   </div>
                 </div>
-                {score !== null ? (
-                  <div className={`history-card-score tier-${scoreTier}`}>
-                    <strong>{score}</strong>
-                    <span>/100</span>
-                  </div>
-                ) : null}
+                <div className="history-card-side">
+                  {score !== null ? (
+                    <div className={`history-card-score tier-${scoreTier}`}>
+                      <strong>{score}</strong>
+                      <span>/100</span>
+                    </div>
+                  ) : null}
+                  {tab === "history" ? (
+                    <button type="button" className="history-card-action" title={t("Mettre à la corbeille", "Move to trash")} onClick={() => runAction([cv.id], "trash")} disabled={busy}>
+                      <UiIcon name="trash" />
+                    </button>
+                  ) : (
+                    <>
+                      <button type="button" className="history-action" onClick={() => runAction([cv.id], "restore")} disabled={busy}>
+                        <UiIcon name="history" />
+                        {t("Restaurer", "Restore")}
+                      </button>
+                      <button type="button" className="history-card-action" title={t("Supprimer définitivement", "Delete permanently")} onClick={() => runAction([cv.id], "purge")} disabled={busy}>
+                        <UiIcon name="trash" />
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
 
               <div className="history-card-stats">
                 <span className="history-card-stat">
                   <UiIcon name="chart" />
-                  {skills.length} {language === "en" ? "skills detected" : "compétences détectées"}
+                  {skills.length} {t("compétences détectées", "skills detected")}
                 </span>
               </div>
 
@@ -1741,17 +2450,11 @@ function CvHistoryPage({ cvHistory, latestMatch, language }) {
                 {visibleSkills.map((skill) => (
                   <span key={`${cv.id}-${skill}`}>{skill}</span>
                 ))}
-                {!skills.length ? <span>{language === "en" ? "No skill detected" : "Aucune compétence détectée"}</span> : null}
+                {!skills.length ? <span>{t("Aucune compétence détectée", "No skill detected")}</span> : null}
               </div>
               {skills.length > collapsedCount ? (
                 <button type="button" className="history-skill-toggle" onClick={() => toggleExpanded(cv.id)}>
-                  {isExpanded
-                    ? language === "en"
-                      ? "Show less"
-                      : "Voir moins"
-                    : language === "en"
-                    ? `Show all (+${hiddenCount})`
-                    : `Voir tout (+${hiddenCount})`}
+                  {isExpanded ? t("Voir moins", "Show less") : t(`Voir tout (+${hiddenCount})`, `Show all (+${hiddenCount})`)}
                   <UiIcon name="chevron" className={`history-skill-toggle-icon ${isExpanded ? "open" : ""}`} />
                 </button>
               ) : null}
