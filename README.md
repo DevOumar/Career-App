@@ -1,47 +1,141 @@
 # Career CV
 
-Career CV est une application de gestion de carrière et de recrutement : import et analyse de CV, matching CV/offre, optimisation ATS par IA, lettres de motivation, préparation d'entretiens, suivi de candidatures, et un espace admin/école dédié.
+Career CV est une plateforme web de gestion de carriere, de candidature et de recrutement. Elle combine import/analyse de CV, matching CV/offre, outils IA pour candidater, entrainement entretien, test technique, suivi de candidatures, paiements, licences B2B, et espaces dedies candidat, administrateur, ecole et cabinet.
 
-Le projet est une architecture **frontend/backend séparée** : une interface React (Vite) et une API Node/Express, toutes deux dans `career-web-react/`, avec une base PostgreSQL (Supabase en production, PGlite embarqué en repli local).
+Production actuelle :
 
-## Structure
+- Frontend Vercel : `https://www.careercv.fr`
+- Ancienne URL Vercel encore disponible : `https://career-cv-henna.vercel.app`
+- API Render : `https://career-app-api-mlk9.onrender.com`
+
+## Fonctionnalites
+
+### Espace candidat
+
+- Import de CV et analyse IA.
+- Matching CV/offre avec score global, forces, ecarts, mots-cles et recommandations.
+- Historique des CV et analyses.
+- Suivi des candidatures.
+- Lettre de motivation IA.
+- Simulation d'entretien IA : RH, technique/metier, direction/vision.
+- Test technique integre : generation d'exercice, editeur de code, indices, exemples, correction IA et historique.
+- Negociation salariale IA.
+- Email Scout pour retrouver des emails professionnels.
+- Tarifs, paiement Stripe, historique de facturation et solde de jetons.
+- Profil, securite de compte, MFA/TOTP, cles de securite/passkeys, appareils actifs.
+
+### Espace administrateur plateforme
+
+- Tableau de bord de pilotage.
+- Gestion des comptes utilisateurs et affiliations.
+- Gestion des CV, analyses et matching.
+- Monitoring IA : couts, usages, echantillons, qualite.
+- Finance, plans, prix Stripe, codes licences.
+- Gestion des ecoles et cabinets.
+- Annonces, notifications, satisfaction, activite et audit.
+- Exports CSV/XLSX et filtres avances.
+
+### Espace ecole
+
+- Tableau de bord ecole.
+- Gestion des etudiants, promotions, evenements et communications.
+- Licences, invitations, facturation et rapports.
+- Statistiques d'usage et insights.
+- Parametres et notifications.
+
+### Espace cabinet / recruteur
+
+- Tableau de bord cabinet.
+- Gestion candidats, missions, clients, recruteurs et entretiens.
+- Matching candidats/missions.
+- Pipeline de recrutement, timeline candidat, emails et activite.
+- Licences, facturation, rapports, RGPD et parametres.
+- Page publique cabinet.
+
+## Architecture
+
+Le projet est une application monorepo dans `career-web-react/` :
 
 ```text
 .
-`-- career-web-react/          # Toute l'application
-    |-- frontend/              # Interface React (Vite)
+|-- README.md
+|-- DEPLOYMENT.md
+|-- render.yaml
+`-- career-web-react/
+    |-- frontend/
     |   |-- index.html
-    |   |-- public/            # Assets statiques servis tels quels (logo, favicon)
+    |   |-- public/
     |   `-- src/
-    |       |-- App.jsx        # Coquille de l'app (session, nav, routage entre modules)
-    |       |-- main.jsx       # Point d'entrée React
+    |       |-- App.jsx
+    |       |-- main.jsx
     |       |-- styles.css
-    |       |-- components/    # Composants UI partagés (icônes, cartes KPI...)
-    |       |-- features/      # Un dossier par module métier (CV, entretiens, admin, école...)
-    |       |   `-- admin|school/pages/  # Une page par fichier pour les 2 plus gros modules
-    |       |-- data/          # Données statiques partagées (offres, plans, compétences)
-    |       `-- lib/           # Client API + logique de matching partagée
-    |-- backend/                # API Express
-    |   |-- index.js           # Point d'entrée : config, base de données, helpers, middlewares
-    |   |-- routes/            # Un fichier (ou sous-dossier) par domaine de routes
-    |   |   `-- admin|school/  # Sous-découpage par sous-domaine pour les 2 plus gros
+    |       |-- components/
+    |       |-- data/
+    |       |-- lib/
+    |       `-- features/
+    |           |-- account/
+    |           |-- admin/
+    |           |-- applications/
+    |           |-- cabinet/
+    |           |-- coding/
+    |           |-- coverLetter/
+    |           |-- cv/
+    |           |-- emailScout/
+    |           |-- home/
+    |           |-- interviews/
+    |           |-- landing/
+    |           |-- legal/
+    |           |-- negotiation/
+    |           |-- pricing/
+    |           |-- profile/
+    |           `-- school/
+    |-- backend/
+    |   |-- index.js
+    |   |-- routes/
+    |   |   |-- admin/
+    |   |   |-- cabinet/
+    |   |   |-- school/
+    |   |   |-- auth.js
+    |   |   |-- billing.js
+    |   |   |-- coding.js
+    |   |   |-- coverLetter.js
+    |   |   |-- cv.js
+    |   |   |-- emailFinder.js
+    |   |   |-- interview.js
+    |   |   |-- matching.js
+    |   |   |-- mfa.js
+    |   |   |-- negotiation.js
+    |   |   |-- premium.js
+    |   |   `-- profile.js
+    |   |-- database/
     |   |-- stripeService.js
-    |   |-- salaryDataService.js
-    |   `-- database/schema.sql
-    |-- vite.config.js         # root: frontend/, envDir: .. (lit le .env à la racine), sortie: ../dist
-    |-- package.json           # Un seul package.json pour tout le projet
-    `-- dist/                  # Build de production (généré, non versionné)
+    |   `-- salaryDataService.js
+    |-- package.json
+    |-- vite.config.js
+    `-- dist/
 ```
 
-Le frontend et le backend partagent un seul `package.json`/`node_modules` (le backend importe directement quelques modules du frontend comme `frontend/src/data/plans.js` ou `frontend/src/lib/matchingService.js`, pour réutiliser la même logique de matching côté serveur et côté client sans la dupliquer).
+Le frontend React/Vite et l'API Node/Express partagent le meme `package.json`. Certains modules frontend partagent aussi de la logique avec le backend, notamment les plans et le matching, pour eviter les divergences entre client et serveur.
 
-Voir [career-web-react/ARCHITECTURE.md](career-web-react/ARCHITECTURE.md) pour le détail : convention `features/<module>/` et `backend/routes/<domaine>.js`, comment trouver/ajouter le code d'un module métier, les pièges déjà rencontrés lors des découpages précédents, et l'état de la migration.
+## Stack technique
 
-## Prérequis
+- React + Vite.
+- Node.js + Express.
+- PostgreSQL via Supabase en production.
+- PGlite/PostgreSQL embarque en repli local.
+- Stripe pour paiements et abonnements.
+- SMTP pour emails transactionnels.
+- Fournisseur IA configurable via variables d'environnement.
+- Auth email/mot de passe, Google OAuth, OTP, MFA/TOTP, passkeys.
+- Frontend de production sur Vercel.
+- Backend de production sur Render.
 
-- Node.js 18 ou plus récent.
+## Prerequis
+
+- Node.js 18 ou plus recent.
 - npm.
-- Une base PostgreSQL (Supabase recommandé) — sinon l'API bascule automatiquement sur PGlite en local, sans installation nécessaire.
+- Une base PostgreSQL/Supabase pour la production.
+- Comptes/API keys selon les modules actives : IA, Stripe, Google OAuth, SMTP.
 
 ## Installation
 
@@ -50,16 +144,16 @@ cd career-web-react
 npm install
 ```
 
-Copiez `.env.example` vers `.env` et renseignez vos clés (base de données, IA, Stripe, email...).
+Creer ensuite un fichier `.env` dans `career-web-react/` ou configurer les variables directement dans Vercel/Render.
 
-## Lancer en développement
+## Developpement local
 
 ```bash
 cd career-web-react
 npm run dev
 ```
 
-Services lancés :
+Services locaux :
 
 - Frontend : `http://127.0.0.1:5174`
 - API : `http://127.0.0.1:8787`
@@ -68,24 +162,87 @@ Services lancés :
 
 Depuis `career-web-react/` :
 
-- `npm run dev` : lance l'API et le frontend en parallèle.
-- `npm run dev:api` : lance seulement l'API Express (`backend/index.js`).
-- `npm run dev:client` : lance seulement Vite (`frontend/`).
-- `npm run build` : génère le build frontend dans `dist/`.
-- `npm run preview` : sert le build localement (`http://127.0.0.1:4174`).
+- `npm run dev` : lance API + frontend en parallele.
+- `npm run dev:api` : lance seulement l'API Express.
+- `npm run dev:client` : lance seulement Vite.
+- `npm run build` : genere le build frontend dans `dist/`.
+- `npm run preview` : sert le build frontend localement.
+- `npm start` : lance l'API en mode production (`backend/index.js`).
 
-## Données et fichiers sensibles
+## Variables d'environnement importantes
 
-Ne sont jamais versionnés :
+### Frontend Vercel
 
-- `node_modules/`, `dist/`, `.vite/`
+- `VITE_API_URL` : URL API publique, par exemple `https://career-app-api-mlk9.onrender.com/api`.
+- `VITE_GOOGLE_CLIENT_ID` : client ID Google OAuth.
+
+### Backend Render
+
+- `NODE_ENV=production`
+- `PORT` : fourni par Render.
+- `DATABASE_URL` : URL PostgreSQL/Supabase.
+- `APP_URL=https://www.careercv.fr`
+- `CORS_ORIGINS=https://www.careercv.fr,https://careercv.fr,https://career-cv-henna.vercel.app`
+- `GOOGLE_CLIENT_ID`
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_SECURE`, `MAIL_FROM`
+- Variables Stripe : cles API, webhook secret, price IDs.
+- Variables IA : provider, modele, cle API, timeouts.
+
+## Deploiement
+
+### Frontend
+
+Le frontend est deploye sur Vercel. Le domaine principal est :
+
+```text
+https://www.careercv.fr
+```
+
+Le domaine apex `careercv.fr` redirige en `308` vers `www.careercv.fr`.
+
+### Backend
+
+L'API est deployee sur Render :
+
+```text
+https://career-app-api-mlk9.onrender.com
+```
+
+Apres modification des variables Render, redeployer le service pour que l'API prenne les nouvelles valeurs.
+
+## Securite
+
+- Les tokens de session ne sont plus exposes dans l'URL applicative.
+- Les routes authentifiees utilisent le token stocke cote navigateur et envoye a l'API.
+- Les actions sensibles peuvent demander une verification MFA/step-up.
+- Les sessions actives peuvent etre consultees et revokees depuis le compte.
+- Les secrets ne doivent jamais etre versionnes.
+
+## Donnees sensibles ignorees
+
+Ne pas versionner :
+
+- `node_modules/`
+- `dist/`
+- `.vite/`
 - fichiers `.env`
-- logs, caches
-- bases locales PGlite/PostgreSQL de repli : `backend/postgres-data*`, `backend/pgdata*`, `backend/postgres-runtime`
-- fichiers de secrets : certificats, clés privées, keystores, dumps de base de données
+- logs et caches
+- bases locales : `backend/postgres-data*`, `backend/pgdata*`, `backend/postgres-runtime`
+- certificats, cles privees, keystores, dumps de base
 
 ## Workflow Git
 
-Branches : `feature_oumar` → `develop` → `main` (fusion dans cet ordre). `orchestrateur` est maintenue synchronisée avec `main`.
+Branches habituelles :
 
-Avant chaque commit, contrôlez toujours `git status` pour confirmer qu'aucun fichier sensible ou généré n'est ajouté.
+```text
+feature_oumar -> develop -> main
+```
+
+`main` alimente la production. Avant chaque commit, verifier :
+
+```bash
+git status --short
+npm run build
+```
+
+Ne committer que les fichiers lies a la correction ou a la fonctionnalite en cours.
