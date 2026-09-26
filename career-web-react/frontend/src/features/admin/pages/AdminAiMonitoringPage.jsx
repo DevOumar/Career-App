@@ -104,7 +104,7 @@ export default function AdminAiMonitoringPage({ user, language }) {
         moduleMatching: "Job matching",
         moduleCoverLetter: "Cover letters",
         moduleNegotiation: "Salary negotiation",
-        moduleInterview: "Interview simulator",
+        moduleInterview: "Interviews & coding test",
         moduleEmailScout: "Email Scout",
         moduleOther: "Other (admin tools)"
       }
@@ -128,7 +128,7 @@ export default function AdminAiMonitoringPage({ user, language }) {
         moduleMatching: "Matching offres",
         moduleCoverLetter: "Lettres de motivation",
         moduleNegotiation: "Négociation salariale",
-        moduleInterview: "Simulateur d'entretiens",
+        moduleInterview: "Entretiens & test technique",
         moduleEmailScout: "Email Scout",
         moduleOther: "Autres (outils admin)"
       };

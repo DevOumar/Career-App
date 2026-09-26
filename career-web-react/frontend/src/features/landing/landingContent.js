@@ -64,7 +64,7 @@ export const LANDING_CONTENT = {
             { icon: "target", title: "Matching CV ↔ offre", text: "Score de compatibilité calculé à partir des exigences réelles de l'offre, avec les compétences manquantes." },
             { icon: "sparkle", title: "Optimisation ATS", text: "Repérage des mots-clés absents et suggestions de réécriture pour passer les filtres automatiques." },
             { icon: "pen", title: "Lettres de motivation IA", text: "Une lettre rédigée à partir du profil réel et de l'offre visée, modifiable avant export." },
-            { icon: "mic", title: "Simulateur d'entretien", text: "Entretien en chat ou en appel vocal avec un recruteur IA, puis bilan détaillé en Markdown." },
+            { icon: "mic", title: "Simulateur d'entretien", text: "Entretien en chat ou en appel vocal avec un recruteur IA, test technique de code corrigé par l'IA, puis bilan détaillé." },
             { icon: "scale", title: "Négociation salariale", text: "Entraînement face à un recruteur IA qui teste vos arguments, avec conseils concrets." },
             { icon: "kanban", title: "Suivi des candidatures", text: "Tableau de suivi par statut : à postuler, postulé, entretien, offre." },
             { icon: "mail", title: "Email Scout", text: "Recherche de l'email professionnel probable d'un recruteur, avec vérification du domaine." }
@@ -293,7 +293,7 @@ export const LANDING_CONTENT = {
             { icon: "target", title: "CV ↔ job matching", text: "Compatibility score computed from the job's real requirements, with missing skills." },
             { icon: "sparkle", title: "ATS optimization", text: "Missing keywords spotted and rewrite suggestions to pass automated filters." },
             { icon: "pen", title: "AI cover letters", text: "A letter written from your real profile and the target job, editable before export." },
-            { icon: "mic", title: "Interview simulator", text: "Chat or voice interview with an AI recruiter, followed by a detailed Markdown debrief." },
+            { icon: "mic", title: "Interview simulator", text: "Chat or voice interview with an AI recruiter, an AI-reviewed coding test, then a detailed debrief." },
             { icon: "scale", title: "Salary negotiation", text: "Practice against an AI recruiter who tests your arguments, with concrete coaching." },
             { icon: "kanban", title: "Application tracker", text: "Board by status: to apply, applied, interview, offer." },
             { icon: "mail", title: "Email Scout", text: "Find a recruiter's likely professional email, with domain verification." }

@@ -5143,6 +5143,7 @@ function aiModuleFromPath(path = "") {
   if (path.startsWith("/api/cabinet/candidates/extract")) return "cabinet_cv";
   if (/^\/api\/cabinet\/missions\/[^/]+\/matches/.test(path)) return "cabinet_matching";
   if (path.startsWith("/api/interview")) return "interview";
+  if (path.startsWith("/api/coding")) return "coding_test";
   if (path.startsWith("/api/negotiation")) return "negotiation";
   if (path.startsWith("/api/coverletter") || path.startsWith("/api/cover-letter")) return "cover_letter";
   if (path.startsWith("/api/email-finder") || path.startsWith("/api/emailfinder")) return "email_scout";
