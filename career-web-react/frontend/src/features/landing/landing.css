@@ -621,36 +621,71 @@
 /* ---------- Faits produit ---------- */
 
 .lp-facts {
-  border-top: 1px solid var(--lp-line);
-  border-bottom: 1px solid var(--lp-line);
-  background: var(--lp-surface);
+  position: relative;
+  z-index: 1;
+  margin-top: -1.5rem;
+  padding: 0 0 1rem;
 }
 
 .lp-facts-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1rem;
 }
 
 .lp-fact {
-  padding: 1.5rem 1.25rem;
-  border-left: 1px solid var(--lp-line);
+  display: flex;
+  align-items: flex-start;
+  gap: 0.9rem;
+  padding: 1.25rem 1.3rem;
+  border: 1px solid var(--lp-line);
+  border-radius: 18px;
+  background: var(--lp-surface);
+  box-shadow: 0 10px 30px rgba(28, 25, 23, 0.06);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.lp-fact:first-child {
-  border-left: 0;
+.lp-fact:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, #b83309 30%, var(--lp-line));
+  box-shadow: 0 16px 36px rgba(28, 25, 23, 0.09);
 }
 
-.lp-fact strong {
+.lp-fact-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #fbe9e1;
+  color: #b83309;
+}
+
+.lp-fact-icon .lp-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.lp-fact-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.lp-fact-text strong {
   display: block;
-  font-size: clamp(1.1rem, 2vw, 1.4rem);
+  font-size: clamp(1.05rem, 1.6vw, 1.25rem);
+  line-height: 1.2;
   color: var(--lp-ink);
 }
 
-.lp-fact span {
+.lp-fact-text span {
   display: block;
   margin-top: 0.3rem;
   color: var(--lp-ink-3);
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   line-height: 1.45;
 }
 
@@ -1466,14 +1501,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .lp-fact:nth-child(3) {
-    border-left: 0;
-  }
-
-  .lp-fact:nth-child(n + 3) {
-    border-top: 1px solid var(--lp-line);
-  }
-
   .lp-trust-grid {
     grid-template-columns: 1fr;
   }
@@ -1527,8 +1554,12 @@
     padding: 0.5rem 0.6rem;
   }
 
+  .lp-facts {
+    margin-top: 0;
+  }
+
   .lp-fact {
-    padding: 1.1rem 0.9rem;
+    padding: 1rem;
   }
 
   .lp-mock {
@@ -1554,5 +1585,11 @@
   .lp *::after {
     transition: none !important;
     scroll-behavior: auto !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .lp-facts-grid {
+    grid-template-columns: 1fr;
   }
 }

@@ -41,10 +41,10 @@ export const LANDING_CONTENT = {
       mockMissingChips: ["dbt", "A/B testing"]
     },
     facts: [
-      { value: "3", label: "espaces dédiés : candidat, école, cabinet" },
-      { value: "PDF · DOCX", label: "import de CV avec extraction par IA" },
-      { value: "Chat & voix", label: "simulateur d'entretien avec bilan détaillé" },
-      { value: "TOTP · Passkeys", label: "double authentification et clés de sécurité" }
+      { icon: "users", value: "3", label: "espaces dédiés : candidat, école, cabinet" },
+      { icon: "doc", value: "PDF · DOCX", label: "import de CV avec extraction par IA" },
+      { icon: "mic", value: "Chat & voix", label: "simulateur d'entretien avec bilan détaillé" },
+      { icon: "shield", value: "TOTP · Passkeys", label: "double authentification et clés de sécurité" }
     ],
     spaces: {
       eyebrow: "Trois espaces, une même plateforme",
@@ -272,10 +272,10 @@ export const LANDING_CONTENT = {
       mockMissingChips: ["dbt", "A/B testing"]
     },
     facts: [
-      { value: "3", label: "dedicated spaces: candidate, school, firm" },
-      { value: "PDF · DOCX", label: "CV import with AI extraction" },
-      { value: "Chat & voice", label: "interview simulator with detailed debrief" },
-      { value: "TOTP · Passkeys", label: "two-factor authentication and security keys" }
+      { icon: "users", value: "3", label: "dedicated spaces: candidate, school, firm" },
+      { icon: "doc", value: "PDF · DOCX", label: "CV import with AI extraction" },
+      { icon: "mic", value: "Chat & voice", label: "interview simulator with detailed debrief" },
+      { icon: "shield", value: "TOTP · Passkeys", label: "two-factor authentication and security keys" }
     ],
     spaces: {
       eyebrow: "Three spaces, one platform",

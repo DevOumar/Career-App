@@ -307,8 +307,13 @@ function LandingPage({
           <div className="lp-container lp-facts-grid">
             {t.facts.map((fact) => (
               <div className="lp-fact" key={fact.label}>
-                <strong>{fact.value}</strong>
-                <span>{fact.label}</span>
+                <span className="lp-fact-icon">
+                  <LpIcon name={fact.icon} />
+                </span>
+                <span className="lp-fact-text">
+                  <strong>{fact.value}</strong>
+                  <span>{fact.label}</span>
+                </span>
               </div>
             ))}
           </div>
