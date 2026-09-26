@@ -191,16 +191,12 @@ const VALID_APP_PAGE_IDS = new Set([
 // il était.
 function readInitialActivePage() {
   if (typeof window === "undefined") return "home";
-  const match = window.location.hash.match(/^#\/app\/[^/]+\/([a-z-]+)/i);
+  const hashPath = (window.location.hash || "").split("?")[0];
+  const directMatch = hashPath.match(/^#\/app\/([a-z-]+)$/i);
+  const legacyMatch = hashPath.match(/^#\/app\/[^/]+\/([a-z-]+)$/i);
+  const match = directMatch || legacyMatch;
   const pageId = match?.[1];
   return pageId && VALID_APP_PAGE_IDS.has(pageId) ? pageId : "home";
-}
-
-function createOpaqueRouteKey(length = 48) {
-  const alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes, (byte) => alphabet[byte % alphabet.length]).join("");
 }
 
 function rememberLastAuthMethod(method) {
@@ -217,15 +213,6 @@ function getLastAuthMethod() {
   } catch (_error) {
     return "";
   }
-}
-
-function getOpaqueRouteKey() {
-  const storageKey = "career_app_route_key";
-  const existing = localStorage.getItem(storageKey);
-  if (/^[a-zA-Z0-9]{40,80}$/.test(existing || "")) return existing;
-  const next = createOpaqueRouteKey();
-  localStorage.setItem(storageKey, next);
-  return next;
 }
 
 const GOOGLE_CLIENT_ID = String(import.meta.env?.VITE_GOOGLE_CLIENT_ID || "").trim();
@@ -1305,8 +1292,7 @@ export default function App() {
       }
       return;
     }
-    const routeKey = getOpaqueRouteKey();
-    const nextHash = `#/app/${routeKey}/${activePage}`;
+    const nextHash = `#/app/${activePage}`;
     if (window.location.hash !== nextHash) {
       window.history.replaceState(null, "", nextHash);
     }
