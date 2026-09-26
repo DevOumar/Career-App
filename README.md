@@ -212,23 +212,10 @@ Apres modification des variables Render, redeployer le service pour que l'API pr
 
 ## Securite
 
-- Les tokens de session ne sont plus exposes dans l'URL applicative.
-- Les routes authentifiees utilisent le token stocke cote navigateur et envoye a l'API.
-- Les actions sensibles peuvent demander une verification MFA/step-up.
-- Les sessions actives peuvent etre consultees et revokees depuis le compte.
-- Les secrets ne doivent jamais etre versionnes.
-
-## Donnees sensibles ignorees
-
-Ne pas versionner :
-
-- `node_modules/`
-- `dist/`
-- `.vite/`
-- fichiers `.env`
-- logs et caches
-- bases locales : `backend/postgres-data*`, `backend/pgdata*`, `backend/postgres-runtime`
-- certificats, cles privees, keystores, dumps de base
+- Authentification email/mot de passe et Google OAuth.
+- Verification par code OTP selon les parcours de connexion et d'inscription.
+- MFA/TOTP, cles de securite et gestion des appareils actifs.
+- Controle des roles pour les espaces candidat, administrateur, ecole et cabinet.
 
 ## Workflow Git
 
