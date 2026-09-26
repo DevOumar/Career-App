@@ -736,6 +736,43 @@ export async function sendInterviewMessage({ userId, text, history = [], type_en
   return { message: data.message, history: data.history || history };
 }
 
+// Méthodes pour l'entraînement au code (Coding Practice)
+export async function generateCodingChallenge({ userId, language, level, topic, customTopic }) {
+  const data = await request("/coding/generate", {
+    method: "POST",
+    body: { userId, language, level, topic, customTopic }
+  });
+  return data.challenge;
+}
+
+export async function reviewCodingSolution({ userId, language, challenge, code }) {
+  const data = await request("/coding/review", {
+    method: "POST",
+    body: { userId, language, challenge, code }
+  });
+  return data.review;
+}
+
+export async function listCodingSessions(userId) {
+  if (!userId) return [];
+  const data = await request(`/coding/sessions?userId=${encodeURIComponent(userId)}`);
+  return data.items || [];
+}
+
+export async function saveCodingSession({ userId, session }) {
+  const data = await request("/coding/sessions", {
+    method: "POST",
+    body: { userId, session }
+  });
+  return data;
+}
+
+export async function deleteCodingSession({ userId, sessionId }) {
+  return request(`/coding/sessions/${encodeURIComponent(sessionId)}?userId=${encodeURIComponent(userId)}`, {
+    method: "DELETE"
+  });
+}
+
 export async function listCoverLetters(userId) {
   if (!userId) return [];
   const data = await request(`/coverletter/conversations?userId=${encodeURIComponent(userId)}`);

@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 import { UiIcon } from "./components/UiIcon.jsx";
@@ -23,6 +23,7 @@ import HomePage from "./features/home/HomePage.jsx";
 import ProfilePage from "./features/profile/ProfilePage.jsx";
 import CoverLetterPage from "./features/coverLetter/CoverLetterPage.jsx";
 import EmailFinderPage from "./features/emailScout/EmailFinderPage.jsx";
+import { CodingPage } from "./features/coding/CodingPage.jsx";
 import {
   CURRENCY_OPTIONS,
   getCurrencyOption,
@@ -160,6 +161,7 @@ const NAV_ITEMS = [
   { id: "import", label: { fr: "Importer CV", en: "Import CV" }, always: true, icon: "upload" },
   { id: "candidatures", label: { fr: "Candidatures", en: "Applications" }, always: true, icon: "briefcase" },
   { id: "entretiens", label: { fr: "Entretiens", en: "Interviews" }, icon: "chat" },
+  { id: "coding", label: { fr: "Coding", en: "Coding" }, icon: "code" },
   { id: "lettre", label: { fr: "Lettre IA", en: "AI Letter" }, icon: "mail" },
   { id: "negociation", label: { fr: "Négociation", en: "Negotiation" }, icon: "scale" },
   { id: "email-finder", label: { fr: "Email Scout", en: "Email Scout" }, icon: "network" },
@@ -175,6 +177,7 @@ const VALID_APP_PAGE_IDS = new Set([
   "offres",
   "candidatures",
   "entretiens",
+  "coding",
   "lettre",
   "negociation",
   "email-finder",
@@ -2666,6 +2669,12 @@ export default function App() {
             avatarDataUrl={user?.avatarDataUrl}
           />
         ) : null}
+        {activePage === "coding" ? (
+          <CodingPage
+            language={language}
+            user={user}
+          />
+        ) : null}
         {activePage === "lettre" ? (
           <CoverLetterPage
             language={language}
@@ -2749,6 +2758,7 @@ export default function App() {
         onHomeClick={() => goTo("home")}
         onImportClick={() => goTo("import")}
         onInterviewsClick={() => goTo("entretiens")}
+        onCodingClick={() => goTo("coding")}
         onLetterClick={() => goTo("lettre")}
         onNegotiationClick={() => goTo("negociation")}
         onEmailScoutClick={() => goTo("email-finder")}
@@ -2994,6 +3004,7 @@ export function ConnectedFooter({
   onHomeClick,
   onImportClick,
   onInterviewsClick,
+  onCodingClick,
   onLetterClick,
   onNegotiationClick,
   onEmailScoutClick,
