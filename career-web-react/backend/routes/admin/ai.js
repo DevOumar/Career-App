@@ -257,6 +257,7 @@ export function registerAdminAiRoutes(app) {
     cabinet_matching: "matching",
     job_extraction: "matching",
     interview: "interview",
+    coding_test: "interview",
     cover_letter: "coverLetter",
     negotiation: "negotiation",
     email_scout: "emailScout"
