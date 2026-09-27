@@ -68,9 +68,21 @@ export function AccountDrawer({
   // rester cohérent entre inscription et modification ultérieure.
   const [careerForm, setCareerForm] = useState({
     targetRole: user.profile?.targetRole || "",
-    sector: user.profile?.sector || ""
+    sector: user.profile?.sector || "",
+    experienceYears: String(user.profile?.experienceYears ?? ""),
+    education: user.profile?.education || ""
   });
   const otherLabel = language === "en" ? "Other" : "Autre";
+  // Mêmes niveaux que le questionnaire d'accueil ; une formation libre venue
+  // du CV (ex. « Master Informatique ») reste proposée telle quelle.
+  const educationLevels = ["Bac", "Bac+2", "Bac+3", "Bac+5", "Doctorat"];
+  const educationOptions =
+    careerForm.education && !educationLevels.includes(careerForm.education)
+      ? [careerForm.education, ...educationLevels]
+      : educationLevels;
+  const experienceValue = careerForm.experienceYears === "" ? null : Number(careerForm.experienceYears);
+  const experienceInvalid =
+    experienceValue !== null && (!Number.isInteger(experienceValue) || experienceValue < 0 || experienceValue > 50);
   const [roleIsOther, setRoleIsOther] = useState(
     Boolean(careerForm.targetRole) && !roleOptions.includes(careerForm.targetRole)
   );
@@ -111,6 +123,12 @@ export function AccountDrawer({
     });
     setProfileAvatarPreview(getAvatarSource(user));
     setProfileAvatarFile(null);
+    setCareerForm({
+      targetRole: user.profile?.targetRole || "",
+      sector: user.profile?.sector || "",
+      experienceYears: String(user.profile?.experienceYears ?? ""),
+      education: user.profile?.education || ""
+    });
   }, [user]);
 
   async function submitProfile(event) {
@@ -122,6 +140,10 @@ export function AccountDrawer({
         setLocalError(usernameError);
         return;
       }
+    }
+    if (experienceInvalid) {
+      setLocalError(language === "en" ? "Experience must be a whole number between 0 and 50." : "L'expérience doit être un nombre entier entre 0 et 50 ans.");
+      return;
     }
     setSavingProfile(true);
     try {
@@ -136,8 +158,15 @@ export function AccountDrawer({
         lastName: profileForm.lastName,
         username: profileForm.username
       });
-      if (onSaveProfile && (careerForm.targetRole !== (user.profile?.targetRole || "") || careerForm.sector !== (user.profile?.sector || ""))) {
-        await onSaveProfile({ targetRole: careerForm.targetRole, sector: careerForm.sector });
+      const careerPatch = {};
+      if (careerForm.targetRole !== (user.profile?.targetRole || "")) careerPatch.targetRole = careerForm.targetRole;
+      if (careerForm.sector !== (user.profile?.sector || "")) careerPatch.sector = careerForm.sector;
+      if (careerForm.education !== (user.profile?.education || "")) careerPatch.education = careerForm.education;
+      if (experienceValue !== null && experienceValue !== Number(user.profile?.experienceYears ?? -1)) {
+        careerPatch.experienceYears = experienceValue;
+      }
+      if (onSaveProfile && Object.keys(careerPatch).length) {
+        await onSaveProfile(careerPatch);
       }
       setEditingProfile(false);
       setEditingUsername(false);
@@ -383,7 +412,32 @@ export function AccountDrawer({
                   <span>{copy.profile}</span>
                   <div className="account-profile-mini">
                     <AvatarCircle user={user} />
-                    <strong>{user.firstName} {user.lastName}</strong>
+                    <div className="account-profile-identity">
+                      <strong>{user.firstName} {user.lastName}</strong>
+                      {user.roleType === "candidate" || user.roleType === "student" ? (
+                        <div className="account-profile-facts">
+                          {[
+                            { label: language === "en" ? "Target role" : "Poste visé", value: user.profile?.targetRole },
+                            { label: language === "en" ? "Sector" : "Secteur", value: user.profile?.sector },
+                            {
+                              label: language === "en" ? "Experience" : "Expérience",
+                              value:
+                                user.profile?.experienceYears === undefined || user.profile?.experienceYears === null || user.profile?.experienceYears === ""
+                                  ? ""
+                                  : Number(user.profile.experienceYears) === 0
+                                    ? language === "en" ? "Student or first job" : "Étudiant ou premier emploi"
+                                    : `${user.profile.experienceYears} ${language === "en" ? "yr" : "an"}${Number(user.profile.experienceYears) > 1 ? "s" : ""}`
+                            },
+                            { label: language === "en" ? "Education" : "Formation", value: user.profile?.education }
+                          ].map((fact) => (
+                            <span key={fact.label} className={`account-fact ${fact.value ? "" : "is-empty"}`}>
+                              <small>{fact.label}</small>
+                              {fact.value || (language === "en" ? "Not set" : "Non renseigné")}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
                   </div>
                   <button type="button" className="account-link" onClick={() => setEditingProfile((prev) => !prev)}>
                     {copy.updateProfile}
@@ -476,6 +530,40 @@ export function AccountDrawer({
                               onChange={(event) => setCareerForm((prev) => ({ ...prev, sector: event.target.value }))}
                             />
                           ) : null}
+                        </label>
+                      </div>
+                      ) : null}
+                      {user.roleType === "candidate" || user.roleType === "student" ? (
+                      <div className="account-inline-fields two">
+                        <label>
+                          {language === "en" ? "Years of experience" : "Années d'expérience"}
+                          <input
+                            type="number"
+                            inputMode="numeric"
+                            min={0}
+                            max={50}
+                            step={1}
+                            value={careerForm.experienceYears}
+                            placeholder="0"
+                            aria-invalid={experienceInvalid}
+                            className={experienceInvalid ? "invalid" : ""}
+                            onChange={(event) => {
+                              setLocalError("");
+                              setCareerForm((prev) => ({ ...prev, experienceYears: event.target.value.replace(/[^\d]/g, "").slice(0, 2) }));
+                            }}
+                          />
+                        </label>
+                        <label>
+                          {language === "en" ? "Education level" : "Niveau d'études"}
+                          <select
+                            value={careerForm.education}
+                            onChange={(event) => setCareerForm((prev) => ({ ...prev, education: event.target.value }))}
+                          >
+                            <option value="">{language === "en" ? "Select..." : "Choisir..."}</option>
+                            {educationOptions.map((item) => (
+                              <option key={item} value={item}>{item}</option>
+                            ))}
+                          </select>
                         </label>
                       </div>
                       ) : null}
