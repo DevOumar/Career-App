@@ -53,8 +53,8 @@ export const PLANS = [
     highlighted: false,
     badge: null,
     features: {
-      fr: ["30 jetons d'analyse (6x plus qu'Essentiel)", "Simulateur d'entretiens (1 jeton par séance de 10 questions)", "Test technique de code (30 exercices par jour)", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
-      en: ["30 analysis tokens (6x more than Essentiel)", "Interview simulator (1 token per 10-question session)", "Coding test (30 exercises per day)", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
+      fr: ["30 jetons d'analyse (6x plus qu'Essentiel)", "Simulateur d'entretiens (2 jetons par séance de 10 questions)", "Test technique de code (30 exercices par jour)", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
+      en: ["30 analysis tokens (6x more than Essentiel)", "Interview simulator (2 tokens per 10-question session)", "Coding test (30 exercises per day)", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
     }
   },
   {
@@ -83,7 +83,7 @@ export const PLANS = [
     features: {
       fr: [
         "130 jetons d'analyse (4x plus qu'Élan)",
-        "Simulateur d'entretiens (1 jeton par séance de 10 questions)",
+        "Simulateur d'entretiens (2 jetons par séance de 10 questions)",
         "Test technique de code (30 exercices par jour)",
         "Lettre de motivation IA",
         "Simulateur de négociation salariale",
@@ -93,7 +93,7 @@ export const PLANS = [
       ],
       en: [
         "130 analysis tokens (4x more than Élan)",
-        "Interview simulator (1 token per 10-question session)",
+        "Interview simulator (2 tokens per 10-question session)",
         "Coding test (30 exercises per day)",
         "AI cover letter",
         "Salary negotiation simulator",

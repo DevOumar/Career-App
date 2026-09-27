@@ -637,6 +637,8 @@ app.use(async (req, res, next) => {
 // remis à zéro à minuit, heure de Paris.
 const INTERVIEW_DAILY_LIMIT = 5;
 const INTERVIEW_MAX_ANSWERS = 10;
+// Coût d'un entretien pour les comptes individuels (Élan, Trajectoire Pro).
+const INTERVIEW_TOKEN_COST = 2;
 const CODING_DAILY_LIMIT = 30;
 const QUOTA_TIME_ZONE = "Europe/Paris";
 
@@ -5923,6 +5925,7 @@ app.locals.ctx = {
   releaseStripeEventClaim,
   INTERVIEW_DAILY_LIMIT,
   INTERVIEW_MAX_ANSWERS,
+  INTERVIEW_TOKEN_COST,
   CODING_DAILY_LIMIT,
   consumeDailyQuota,
   releaseDailyQuota,

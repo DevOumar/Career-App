@@ -81,6 +81,7 @@ export function registerInterviewRoutes(app) {
     parseJsonField,
     INTERVIEW_DAILY_LIMIT,
     INTERVIEW_MAX_ANSWERS,
+    INTERVIEW_TOKEN_COST,
     CODING_DAILY_LIMIT,
     consumeDailyQuota,
     releaseDailyQuota,
@@ -204,7 +205,7 @@ export function registerInterviewRoutes(app) {
       res.json({
         interview: { used: await getDailyQuotaUsage(userId, "interview_session"), limit: INTERVIEW_DAILY_LIMIT, maxAnswers: INTERVIEW_MAX_ANSWERS },
         coding: { used: await getDailyQuotaUsage(userId, "coding_generate"), limit: CODING_DAILY_LIMIT },
-        tokens: { unlimited: credits >= 999, credits },
+        tokens: { unlimited: credits >= 999, credits, interviewCost: INTERVIEW_TOKEN_COST },
         resetAt: nextQuotaReset()
       });
     } catch (error) {
@@ -219,17 +220,17 @@ export function registerInterviewRoutes(app) {
       if (!(await requireInterviewAccess(req, res, userId))) return;
       const { type_entretien = "RH", domaine = "générique", offre = "" } = req.body || {};
 
-      // 5 séances par jour, puis 1 jeton par séance (sauf accès illimité
+      // 5 séances par jour, puis 2 jetons par séance (sauf accès illimité
       // école / cabinet). Rien n'est consommé si l'IA ne répond pas.
       if (!(await consumeDailyQuota(userId, "interview_session", INTERVIEW_DAILY_LIMIT))) {
         return sendDailyQuotaReached(res, { limit: INTERVIEW_DAILY_LIMIT, what: "entretiens" });
       }
-      const debit = await adjustUserTokens(userId, -1);
+      const debit = await adjustUserTokens(userId, -INTERVIEW_TOKEN_COST);
       if (!debit.ok) {
         await releaseDailyQuota(userId, "interview_session");
         return res.status(402).json({
           code: "NO_TOKENS",
-          error: "Il vous faut 1 jeton pour démarrer un entretien. Rechargez vos jetons depuis la page Tarifs."
+          error: `Il vous faut ${INTERVIEW_TOKEN_COST} jetons pour démarrer un entretien. Rechargez vos jetons depuis la page Tarifs.`
         });
       }
       const refundStart = async () => {

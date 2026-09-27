@@ -967,7 +967,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
                     </span>
                     <span>
                       <UiIcon name="pricetag" />
-                      {quotas.tokens.unlimited ? "Inclus dans votre licence : aucun jeton" : <>Coût : <strong>1 jeton</strong> par entretien ({quotas.tokens.credits} disponible{quotas.tokens.credits > 1 ? "s" : ""})</>}
+                      {quotas.tokens.unlimited ? "Inclus dans votre licence : aucun jeton" : <>Coût : <strong>{quotas.tokens.interviewCost || 2} jetons</strong> par entretien ({quotas.tokens.credits} disponible{quotas.tokens.credits > 1 ? "s" : ""})</>}
                     </span>
                   </div>
                 ) : null}
