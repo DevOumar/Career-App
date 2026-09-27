@@ -29,9 +29,11 @@ import {
 } from "../../lib/inMemoryDb.js";
 import { APPLICATIONS_COPY } from "../applications/applicationsCopy.js";
 import { CV_COPY } from "./cvCopy.js";
-import { ratingLabel, levelTag, recommendationLevelLabel } from "../../App.jsx";
+import { ratingLabel, levelTag, recommendationLevelLabel, THEME_PRESETS } from "../../App.jsx";
 import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
 import { CvUploadArt, JobPostArt, HistoryHeroArt, ModuleHero } from "../../components/ModuleWorkspace.jsx";
+import { loadPdfFitter, slugifyForFilename, downloadBlob } from "../../lib/pdfDownload.js";
+import { themeColorsFromPresetId } from "../../lib/themeColors.js";
 
 function ImportPage({
   onGoToModule,
@@ -845,6 +847,11 @@ function MatchResultsStep({
   const [feedbackSaving, setFeedbackSaving] = useState(false);
   const [networkingState, setNetworkingState] = useState("idle");
   const [previewOpen, setPreviewOpen] = useState(false);
+  // Modèle et couleur remontés ici : le téléchargement PDF en a besoin.
+  const [template, setTemplate] = useState("classic");
+  const [cvColor, setCvColor] = useState("orange");
+  const [pdfGenerating, setPdfGenerating] = useState(false);
+  const [cvPrintOverflow, setCvPrintOverflow] = useState(false);
   const [shareStatus, setShareStatus] = useState("idle");
   const [trackerStatus, setTrackerStatus] = useState("idle");
   const [trackerApplicationId, setTrackerApplicationId] = useState(null);
@@ -1080,29 +1087,34 @@ function MatchResultsStep({
     }
   }
 
-  function handleDownloadPdf() {
+  // Vrai fichier PDF (react-pdf) garanti sur une page A4 quand c'est
+  // possible, dans le modèle et la couleur choisis dans l'aperçu.
+  async function handleDownloadPdf() {
     if (isFreePlan) {
       onGoToTarifs();
       return;
     }
-    if (!cvReview) {
-      window.print();
+    if (!cvReview || pdfGenerating) {
+      if (!cvReview) fireTrackerToast("error", copy.matchCvPreviewEmpty);
       return;
     }
-    // Le bouton doit imprimer uniquement le CV, pas toute la page de
-    // résultats (score, recommandations, réseautage...). On force l'aperçu
-    // CV à s'ouvrir si besoin, on masque le reste via une classe le temps de
-    // l'impression, puis on restaure l'état initial.
-    const wasPreviewOpen = previewOpen;
-    if (!wasPreviewOpen) setPreviewOpen(true);
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        document.body.classList.add("print-cv-only");
-        window.print();
-        document.body.classList.remove("print-cv-only");
-        if (!wasPreviewOpen) setPreviewOpen(false);
-      });
-    });
+    setPdfGenerating(true);
+    setCvPrintOverflow(false);
+    try {
+      const fitToOnePage = await loadPdfFitter(template);
+      // Photo uniquement pour « Colonne latérale », seul modèle qui l'affiche
+      // déjà à l'écran.
+      const showPhotoInPdf = template === "sidebar" && Boolean(avatarDataUrl);
+      const theme = { colors: themeColorsFromPresetId(cvColor), hasPhoto: showPhotoInPdf };
+      const fit = await fitToOnePage(cvReview, theme, showPhotoInPdf ? avatarDataUrl : undefined);
+      const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
+      downloadBlob(fit.blob, `CV-${slugifyForFilename(fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`);
+      setCvPrintOverflow(Boolean(fit.overflow));
+    } catch (err) {
+      fireTrackerToast("error", getFriendlyErrorMessage(err, language));
+    } finally {
+      setPdfGenerating(false);
+    }
   }
 
   const scoreTier =
@@ -1501,7 +1513,17 @@ function MatchResultsStep({
       </article>
 
       {previewOpen ? (
-        <CvPreviewCard cvReview={cvReview} copy={copy} language={language} avatarDataUrl={avatarDataUrl} onClose={() => setPreviewOpen(false)} />
+        <CvPreviewCard
+          cvReview={cvReview}
+          copy={copy}
+          language={language}
+          avatarDataUrl={avatarDataUrl}
+          template={template}
+          onTemplateChange={setTemplate}
+          cvColor={cvColor}
+          onColorChange={setCvColor}
+          onClose={() => setPreviewOpen(false)}
+        />
       ) : null}
 
       <div className="match-action-bar no-print">
@@ -1517,10 +1539,12 @@ function MatchResultsStep({
           <button type="button" className="btn-secondary" onClick={handleShare}>
             <UiIcon name="share" /> {shareStatus === "copied" ? copy.matchShareCopied : copy.matchShare}
           </button>
-          <button type="button" className="btn-main ready" onClick={handleDownloadPdf}>
-            <UiIcon name="download" /> {copy.matchDownloadPdf}
+          <button type="button" className="btn-main ready" onClick={handleDownloadPdf} disabled={pdfGenerating}>
+            {pdfGenerating ? <span className="btn-spinner" /> : <UiIcon name="download" />}{" "}
+            {pdfGenerating ? copy.matchDownloadPdfGenerating : copy.matchDownloadPdf}
           </button>
         </div>
+        {cvPrintOverflow ? <p className="muted match-cv-overflow">{copy.matchCvOverflowNotice}</p> : null}
       </div>
     </div>
   );
@@ -1547,8 +1571,9 @@ function CvEntryDescription({ text }) {
   );
 }
 
-function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, onClose }) {
-  const [template, setTemplate] = useState("classic");
+const CV_PREVIEW_TEMPLATES = ["classic", "sidebar", "linear"];
+
+function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTemplateChange, cvColor, onColorChange, onClose }) {
 
   if (!cvReview) {
     return (
@@ -1567,27 +1592,182 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, onClose }) {
         <h3>
           <UiIcon name="profile" /> {copy.matchCvPreviewTitle}
         </h3>
-        <div className="cv-template-switch">
-          <button type="button" className={template === "classic" ? "active" : ""} onClick={() => setTemplate("classic")}>
-            {copy.cvTemplateClassic}
-          </button>
-          <button type="button" className={template === "sidebar" ? "active" : ""} onClick={() => setTemplate("sidebar")}>
-            {copy.cvTemplateSidebar}
-          </button>
+        <div className="cv-preview-controls">
+          <div className="cv-template-switch">
+            {CV_PREVIEW_TEMPLATES.map((id) => (
+              <button key={id} type="button" className={template === id ? "active" : ""} onClick={() => onTemplateChange(id)}>
+                {id === "classic" ? copy.cvTemplateClassic : id === "sidebar" ? copy.cvTemplateSidebar : "Linear"}
+              </button>
+            ))}
+          </div>
+          <div className="cv-color-switch" role="group" aria-label={language === "en" ? "CV colour" : "Couleur du CV"}>
+            {THEME_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`cv-color-swatch ${cvColor === preset.id ? "active" : ""}`}
+                style={{ "--swatch-color": preset.vars["--primary"] }}
+                title={preset.label?.[language] || preset.label?.fr}
+                aria-label={preset.label?.[language] || preset.label?.fr}
+                aria-pressed={cvColor === preset.id}
+                onClick={() => onColorChange(preset.id)}
+              />
+            ))}
+          </div>
         </div>
         <button type="button" className="cv-preview-close" onClick={onClose}>
           {copy.matchHidePreview}
         </button>
       </div>
 
-      {template === "sidebar" ? (
-        <CvDocumentSidebar cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
-      ) : (
-        <CvDocumentClassic cvReview={cvReview} copy={copy} />
-      )}
+      <div
+        style={{
+          "--primary": themeColorsFromPresetId(cvColor).primary,
+          "--primary-ink": themeColorsFromPresetId(cvColor).primaryInk,
+          "--bg-accent": themeColorsFromPresetId(cvColor).bgAccent
+        }}
+      >
+        {template === "sidebar" ? (
+          <CvDocumentSidebar cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
+        ) : template === "linear" ? (
+          <CvDocumentLinear cvReview={cvReview} copy={copy} />
+        ) : (
+          <CvDocumentClassic cvReview={cvReview} copy={copy} />
+        )}
+      </div>
     </article>
   );
 }
+
+// Modèle « Linear » (aperçu écran de CvDocumentLinearPdf.jsx) : même
+// gauche, bloc centré, colonne vide à droite pour garder le centrage),
+// nom en 2 graisses, titres de section teintés sans bordure/fond (déjà le
+// comportement par défaut de `.cv-document-section h4`, partagé avec
+// Classic/Sidebar — pas de nouvelle classe nécessaire pour ça), entrées en
+// tableau 2 lignes (réutilise .cv-document-entry/-entry-head/-entry-org,
+// identiques à Classic), compétences en 2 colonnes texte brut (nouvelles
+// classes .cv-linear-skill-*, pas de chips ici contrairement à Classic).
+function CvDocumentLinear({ cvReview, copy }) {
+  const contactItems = [cvReview.email, cvReview.phone, cvReview.location].filter(Boolean);
+  const skillRows = [
+    // Libellés courts identiques à ceux codés en dur dans la version PDF
+    // (CvDocumentLinearPdf.jsx, SkillRow) — pas de traduction dédiée là-bas
+    // non plus, on reste fidèle plutôt que de réutiliser les libellés plus
+    // longs cvPreviewTechnicalSkills/cvPreviewSoftSkills (qui passaient sur
+    // 2 lignes dans la colonne étroite du libellé).
+    { label: "Technique", value: (cvReview.skills || []).filter(Boolean).join(", ") },
+    { label: "Savoir-être", value: (cvReview.softSkills || []).filter(Boolean).join(", ") },
+    { label: copy.cvPreviewLanguages, value: (cvReview.languages || []).filter(Boolean).join(", ") }
+  ].filter((row) => row.value);
+
+  return (
+    <div className="cv-document cv-document-linear" id="cv-preview-document">
+      <header className="cv-linear-header">
+        <div className="cv-linear-header-side" />
+        <div className="cv-linear-header-center">
+          <div className="cv-linear-name">
+            {cvReview.firstName ? <span className="cv-linear-name-first">{cvReview.firstName}</span> : null}
+            {cvReview.lastName ? <span className="cv-linear-name-last">{cvReview.lastName}</span> : null}
+          </div>
+          {cvReview.headline ? <p className="cv-linear-headline">{cvReview.headline}</p> : null}
+          {contactItems.length || cvReview.linkedinUrl ? (
+            <div className="cv-linear-contact">
+              {contactItems.map((item, index) => (
+                <span key={item}>
+                  {index > 0 ? "· " : ""}
+                  {item}
+                </span>
+              ))}
+              {cvReview.linkedinUrl ? (
+                <a href={cvReview.linkedinUrl} target="_blank" rel="noreferrer">
+                  {contactItems.length ? "· LinkedIn" : "LinkedIn"}
+                </a>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+        <div className="cv-linear-header-side" />
+      </header>
+
+      {cvReview.summary ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewSummary}</h4>
+          <p>{cvReview.summary}</p>
+        </section>
+      ) : null}
+
+      {(cvReview.experiences || []).length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewExperience}</h4>
+          {cvReview.experiences.slice(0, 6).map((experience, index) => (
+            <div className="cv-document-entry" key={`${experience.company}-${index}`}>
+              <div className="cv-document-entry-head">
+                <strong>{experience.role}</strong>
+                {experience.dates ? <span>{experience.dates}</span> : null}
+              </div>
+              {experience.company ? <p className="cv-document-entry-org">{experience.company}</p> : null}
+              <CvEntryDescription text={experience.description} />
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {(cvReview.educationItems || []).length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewEducation}</h4>
+          {cvReview.educationItems.slice(0, 4).map((item, index) => (
+            <div className="cv-document-entry" key={`${item.school}-${index}`}>
+              <div className="cv-document-entry-head">
+                <strong>{item.school}</strong>
+                {item.dates ? <span>{item.dates}</span> : null}
+              </div>
+              {item.degree ? <p className="cv-document-entry-org">{item.degree}</p> : null}
+              <CvEntryDescription text={item.description} />
+            </div>
+          ))}
+        </section>
+      ) : null}
+
+      {skillRows.length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewSkillsTitle}</h4>
+          <div className="cv-linear-skills">
+            {skillRows.map((row) => (
+              <div className="cv-linear-skill-row" key={row.label}>
+                <span className="cv-linear-skill-label">{row.label}</span>
+                <span className="cv-linear-skill-value">{row.value}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {(cvReview.certifications || []).length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewCertifications}</h4>
+          {cvReview.certifications
+            .filter((item) => item?.name || item?.issuer)
+            .map((item, index) => (
+              <div className="cv-document-entry" key={`${item.name}-${index}`}>
+                <div className="cv-document-entry-head">
+                  <strong>{item.name}</strong>
+                </div>
+                {item.issuer ? <p className="cv-document-entry-org">{item.issuer}</p> : null}
+              </div>
+            ))}
+        </section>
+      ) : null}
+
+      {(cvReview.interests || []).length ? (
+        <section className="cv-document-section">
+          <h4>{copy.cvPreviewInterests}</h4>
+          <p>{cvReview.interests.filter(Boolean).join(", ")}</p>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 
 function CvDocumentClassic({ cvReview, copy }) {
   const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");

@@ -7,6 +7,8 @@ import { UiIcon } from "../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
 import { generateCoverLetter, listCoverLetters, saveCoverLetter, updateCoverLetter, deleteCoverLetter } from "../../lib/inMemoryDb.js";
 import { loadPdfFitter, slugifyForFilename, downloadBlob } from "../../lib/pdfDownload.js";
+import { themeColorsFromPresetId } from "../../lib/themeColors.js";
+import { THEME_PRESETS } from "../../App.jsx";
 import { COVER_LETTER_COPY } from "./coverLetterCopy.js";
 import { ModuleHero, ModuleHistorySidebar, ModuleTargetCard, ModuleTipsCard, LetterHeroArt, LetterTemplateThumb } from "../../components/ModuleWorkspace.jsx";
 import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
@@ -23,6 +25,14 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
   const copy = COVER_LETTER_COPY[language] || COVER_LETTER_COPY.fr;
   const [tone, setTone] = useState("formal");
   const [template, setTemplate] = useState("classic");
+  // Couleur de la lettre (id THEME_PRESETS) : aperçu écran et PDF.
+  const [letterColor, setLetterColor] = useState("orange");
+  const letterColorPreset = themeColorsFromPresetId(letterColor);
+  const letterColorVars = {
+    "--primary": letterColorPreset.primary,
+    "--primary-ink": letterColorPreset.primaryInk,
+    "--bg-accent": letterColorPreset.bgAccent
+  };
   const [letter, setLetter] = useState("");
   const [subject, setSubject] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
@@ -71,7 +81,7 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
 
   async function persistConversation(nextLetter, nextSubject) {
     if (!userId) return;
-    const payload = { letter: nextLetter, subject: nextSubject, tone, template, offer };
+    const payload = { letter: nextLetter, subject: nextSubject, tone, template, color: letterColor, offer };
     try {
       if (conversationId) {
         await updateCoverLetter({ userId, conversationId, payload });
@@ -104,6 +114,7 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
     setSubject(conv.subject || "");
     if (conv.tone) setTone(conv.tone);
     if (conv.template) setTemplate(conv.template);
+    setLetterColor(conv.color || "orange");
     setIsEditing(false);
     setError("");
   }
@@ -166,7 +177,7 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
     setError("");
     try {
       const fitToOnePage = await loadPdfFitter("letter");
-      const fit = await fitToOnePage({ subject, letter, template });
+      const fit = await fitToOnePage({ subject, letter, template }, { colors: letterColorPreset });
       const baseName = offer?.company || offer?.title || [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ");
       downloadBlob(fit.blob, `Lettre-${slugifyForFilename(baseName)}-${new Date().toISOString().slice(0, 10)}.pdf`);
     } catch (err) {
@@ -303,13 +314,35 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
               </button>
             ))}
           </div>
+
+          <div className="mw-step-head">
+            <span className="mw-step-num">3</span>
+            <div>
+              <h3>{copy.colorLabel}</h3>
+              <p>{copy.colorHint}</p>
+            </div>
+          </div>
+          <div className="cv-color-switch mw-color-switch" role="group" aria-label={copy.colorLabel}>
+            {THEME_PRESETS.map((preset) => (
+              <button
+                key={preset.id}
+                type="button"
+                className={`cv-color-swatch ${letterColor === preset.id ? "active" : ""}`}
+                style={{ "--swatch-color": preset.vars["--primary"] }}
+                title={preset.label[language] || preset.label.fr}
+                aria-label={preset.label[language] || preset.label.fr}
+                aria-pressed={letterColor === preset.id}
+                onClick={() => setLetterColor(preset.id)}
+              />
+            ))}
+          </div>
         </div>
 
         {error ? <p className="field-error">{error}</p> : null}
 
         {!letter ? (
           <div className="mw-card mw-generate">
-            <div className={`mw-paper template-${template}`} aria-hidden="true">
+            <div className={`mw-paper template-${template}`} style={letterColorVars} aria-hidden="true">
               <span className="mw-paper-line is-title" />
               <span className="mw-paper-line" />
               <span className="mw-paper-line is-short" />
@@ -373,11 +406,12 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
             {isEditing ? (
               <textarea
                 className={`letter-document letter-document-edit template-${template}`}
+                style={letterColorVars}
                 value={draftLetter}
                 onChange={(event) => setDraftLetter(event.target.value)}
               />
             ) : (
-              <div className={`letter-document template-${template}`} id="cover-letter-document">
+              <div className={`letter-document template-${template}`} style={letterColorVars} id="cover-letter-document">
                 {subject ? <p className="letter-subject">{subject}</p> : null}
                 {letter.split("\n\n").map((paragraph, index) => (
                   <p key={`para-${index}`}>{paragraph}</p>

@@ -3784,7 +3784,8 @@ input[aria-invalid="true"] {
 .cv-document-sidebar {
   display: grid;
   grid-template-columns: 220px 1fr;
-  align-items: start;
+  /* stretch : le fond de la colonne latérale descend jusqu'en bas du CV. */
+  align-items: stretch;
   gap: 0;
   padding: 0;
   overflow: hidden;
@@ -21753,4 +21754,194 @@ div.cf-logo {
   .cf-cta {
     transition: none;
   }
+}
+
+
+/* ===================== CV : modèle Linear et couleur (branche Arezki) ===================== */
+.cv-preview-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.7rem 1rem;
+}
+.cv-template-switch {
+  flex-wrap: wrap;
+}
+.cv-color-switch {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.cv-color-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--swatch-color);
+  box-shadow: 0 0 0 1px var(--line);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.cv-color-swatch:hover {
+  transform: scale(1.1);
+}
+.cv-color-swatch.active {
+  box-shadow: 0 0 0 2px var(--text);
+}
+.match-cv-overflow {
+  flex-basis: 100%;
+  margin: 0.4rem 0 0;
+  font-size: 0.82rem;
+}
+@media (max-width: 760px) {
+  .cv-preview-toolbar {
+    flex-wrap: wrap;
+  }
+}
+
+/* CV — modèle "Linear" (aperçu écran de CvDocumentLinearPdf.jsx) —
+   .cv-document-section/h4, .cv-document-entry*, .cv-document-skill-chip*
+   déjà déclarés plus haut sont réutilisés tels quels (section/entrée
+   structurellement identiques à Classic) ; seuls l'en-tête 3 zones et la
+   grille de compétences 2 colonnes texte brut sont propres à ce modèle. */
+
+.cv-linear-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.3rem;
+}
+
+.cv-linear-header-side {
+  flex: 0 0 4.5rem;
+  display: flex;
+  justify-content: center;
+}
+
+.cv-linear-avatar {
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.cv-linear-header-center {
+  flex: 1;
+  text-align: center;
+}
+
+.cv-linear-name {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.cv-linear-name-first {
+  font-size: 1.5rem;
+  font-weight: 300;
+  color: var(--text);
+}
+
+.cv-linear-name-last {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--primary);
+}
+
+.cv-linear-headline {
+  margin: 0.3rem 0 0;
+  color: var(--primary);
+  font-weight: 800;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.cv-linear-contact {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  font-size: 0.78rem;
+  color: var(--text-3);
+}
+
+.cv-linear-contact a {
+  color: var(--text-3);
+  text-decoration: none;
+}
+
+.cv-linear-skills {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.cv-linear-skill-row {
+  display: flex;
+  gap: 0.9rem;
+  align-items: baseline;
+}
+
+.cv-linear-skill-label {
+  flex: 0 0 8rem;
+  font-weight: 800;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.cv-linear-skill-value {
+  flex: 1;
+  font-size: 0.84rem;
+  color: var(--text-2);
+  line-height: 1.55;
+}
+
+@media (max-width: 720px) {
+  .cv-linear-header {
+    flex-direction: column;
+  }
+
+  .cv-linear-header-side {
+    flex: 0 0 auto;
+  }
+
+  .cv-linear-header-side:last-child {
+    display: none;
+  }
+
+  .cv-linear-skill-row {
+    flex-direction: column;
+    gap: 0.15rem;
+  }
+
+  .cv-linear-skill-label {
+    flex: 0 0 auto;
+  }
+}
+
+/* Trait fin neutre sous les titres de section — scopé à .cv-document-linear
+   uniquement (le sélecteur .cv-document-section h4 de base, partagé avec
+   Classic/Sidebar, reste sans bordure). Couleur de bordure neutre
+   existante (var(--line)), pas la couleur d'accent : sépare les grandes
+   parties du CV sans dupliquer la teinte déjà portée par le texte du
+   titre. */
+.cv-document-linear .cv-document-section h4 {
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.mw-color-switch {
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  margin: 0.2rem 0 0.4rem;
+}
+.mw-color-switch .cv-color-swatch {
+  width: 28px;
+  height: 28px;
 }

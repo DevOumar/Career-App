@@ -1,10 +1,13 @@
-// Utilitaires de téléchargement PDF (lettre de motivation).
+// Utilitaires de téléchargement PDF (CV et lettre de motivation).
 //
 // @react-pdf/renderer, les polices et le moteur d'auto-fit pèsent plusieurs
 // Mo une fois bundlés : import() dynamique pour que ce poids reste dans un
 // chunk séparé, chargé seulement au clic sur « Télécharger », jamais au
 // chargement initial de l'app.
 const PDF_FITTERS = {
+  classic: () => import("../pdf/CvDocumentClassicPdf.jsx").then((mod) => mod.fitCvDocumentClassicPdfToOnePage),
+  sidebar: () => import("../pdf/CvDocumentSidebarPdf.jsx").then((mod) => mod.fitCvDocumentSidebarPdfToOnePage),
+  linear: () => import("../pdf/CvDocumentLinearPdf.jsx").then((mod) => mod.fitCvDocumentLinearPdfToOnePage),
   letter: () => import("../pdf/CoverLetterPdf.jsx").then((mod) => mod.fitCoverLetterPdfToOnePage)
 };
 
