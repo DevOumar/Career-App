@@ -2460,13 +2460,6 @@ export default function App() {
             userId={user?.id}
             candidate={user ? buildCandidatePayload() : null}
             offer={jobReview || extractOfferSummary(offerText)}
-            tokensBalance={tokensBalance}
-            onGoToTarifs={() => goTo("tarifs")}
-            onConsumeToken={async () => {
-              const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
-              setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
-              setPremium(tokenUpdate.premium);
-            }}
           />
         ) : null}
         {activePage === "negociation" ? (

@@ -4,23 +4,17 @@
 export function registerSkillsTestRoutes(app) {
   const {
     requireMatchingSession,
-    aiActionRateLimiter,
     coerceString,
     db,
     crypto,
     nowIso,
     parseJsonField,
     getUserRowById,
-    AI_PROVIDER,
     SKILLS_TEST_QCM_MAX,
-    SKILLS_TEST_OPEN_MAX,
     SKILLS_TEST_MAX_RAW_SCORE,
     buildLocalSkillsTestQuestions,
-    generateSkillsTestQuestionsWithAi,
     gradeQcmAnswer,
-    buildLocalOpenAnswerScore,
     buildLocalSynthesis,
-    gradeSkillsTestOpenAnswersWithAi,
     computeSkillsTestFinalScore
   } = app.locals.ctx;
 
@@ -36,7 +30,7 @@ export function registerSkillsTestRoutes(app) {
     );
   }
 
-  app.post("/api/skills-test/generate", aiActionRateLimiter, async (req, res) => {
+  app.post("/api/skills-test/generate", async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
       if (!requireMatchingSession(req, res, userId)) return;
@@ -51,18 +45,10 @@ export function registerSkillsTestRoutes(app) {
       const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
       const language = req.body?.language === "en" ? "en" : "fr";
 
-      let questionsResult = null;
-      let provider = "local";
-      try {
-        questionsResult = await generateSkillsTestQuestionsWithAi(offer, language);
-        if (questionsResult) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
-      } catch (aiError) {
-        questionsResult = null;
-        console.warn(`Generation IA du test de competences indisponible: ${aiError.message}`);
-      }
-
-      const result = questionsResult || buildLocalSkillsTestQuestions(offer, language);
-      const questions = result.questions;
+      // Plus d'IA dans ce module : 8 QCM generes localement, toujours
+      // pertinents par rapport a l'offre (parametres par ses skills/titre),
+      // jamais de derive de domaine possible.
+      const { questions } = buildLocalSkillsTestQuestions(offer, language);
 
       // Persistance immediate (avec réponseCorrecte, jamais renvoyée au
       // client) : /grade ira relire cette ligne par id, pas ce que le
@@ -72,7 +58,7 @@ export function registerSkillsTestRoutes(app) {
       // Le prefixe "Test de competences" est deja le titre de la page :
       // l'historique n'affiche que le titre de l'offre, sans le repeter.
       const title = coerceString(req.body?.title) || coerceString(offer?.title) || "Test de compétences";
-      const payload = { offer, language, status: "pending", questions, provider, createdAt };
+      const payload = { offer, language, status: "pending", questions, createdAt };
 
       await db.query(
         `INSERT INTO skills_tests (id, user_id, title, created_at, updated_at, payload_json)
@@ -80,13 +66,13 @@ export function registerSkillsTestRoutes(app) {
         [id, userId, title, createdAt, createdAt, JSON.stringify(payload)]
       );
 
-      return res.status(201).json({ id, questions: stripCorrectAnswers(questions), provider });
+      return res.status(201).json({ id, questions: stripCorrectAnswers(questions) });
     } catch (error) {
       return res.status(400).json({ error: error.message || "Generation du test impossible." });
     }
   });
 
-  app.post("/api/skills-test/grade", aiActionRateLimiter, async (req, res) => {
+  app.post("/api/skills-test/grade", async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
       if (!requireMatchingSession(req, res, userId)) return;
@@ -109,40 +95,15 @@ export function registerSkillsTestRoutes(app) {
       const questions = Array.isArray(stored.questions) ? stored.questions : [];
       const language = stored.language === "en" ? "en" : "fr";
 
-      const qcmQuestions = questions.filter((question) => question?.type === "qcm");
-      const openQuestions = questions.filter((question) => question?.type === "ouverte");
-
-      const qcmResults = qcmQuestions.map((question) => ({
+      const results = questions.map((question) => ({
         id: question.id,
         type: "qcm",
         score: gradeQcmAnswer(question, answers?.[question.id]),
         maxScore: SKILLS_TEST_QCM_MAX
       }));
 
-      let gradingResult = null;
-      let provider = "local";
-      try {
-        gradingResult = await gradeSkillsTestOpenAnswersWithAi(qcmQuestions, qcmResults, openQuestions, answers, language);
-        if (gradingResult) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
-      } catch (aiError) {
-        gradingResult = null;
-        console.warn(`Notation IA du test de competences indisponible: ${aiError.message}`);
-      }
-      if (!gradingResult) {
-        const localScores = openQuestions.map((question) => ({
-          id: question.id,
-          score: buildLocalOpenAnswerScore(question, answers?.[question.id]),
-          feedback: ""
-        }));
-        const rawTotal = qcmResults.reduce((sum, item) => sum + item.score, 0) + localScores.reduce((sum, item) => sum + item.score, 0);
-        const provisionalFinalScore = Math.round((rawTotal / SKILLS_TEST_MAX_RAW_SCORE) * 100);
-        gradingResult = { scores: localScores, synthesis: buildLocalSynthesis(provisionalFinalScore, language) };
-      }
-
-      const openResults = gradingResult.scores.map((item) => ({ ...item, type: "ouverte", maxScore: SKILLS_TEST_OPEN_MAX }));
-      const results = [...qcmResults, ...openResults];
       const finalScore = computeSkillsTestFinalScore(results);
-      const synthesis = gradingResult.synthesis;
+      const synthesis = buildLocalSynthesis(finalScore, language);
 
       const updatedAt = nowIso();
       const updatedPayload = { ...stored, status: "graded", answers, results, finalScore, synthesis, gradedAt: updatedAt };
@@ -152,7 +113,7 @@ export function registerSkillsTestRoutes(app) {
         testId
       ]);
 
-      return res.json({ id: testId, results, finalScore, synthesis, maxRawScore: SKILLS_TEST_MAX_RAW_SCORE, provider });
+      return res.json({ id: testId, results, finalScore, synthesis, maxRawScore: SKILLS_TEST_MAX_RAW_SCORE });
     } catch (error) {
       return res.status(400).json({ error: error.message || "Notation du test impossible." });
     }

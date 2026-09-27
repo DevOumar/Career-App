@@ -2553,72 +2553,29 @@ async function generateApplicationEmailWithAi(candidate, offer, recipientName, t
 }
 
 // ---------------------------------------------------------------------------
-// Test de competences (Etape 1, backend uniquement — pas de frontend
-// branche) : questionnaire genere a partir d'une offre deja analysee
-// (offer.skills/offer.missions, deja extraits par JOB_EXTRACTION_SCHEMA),
-// 5 QCM auto-notes + 3 questions ouvertes notees par IA, note finale sur
-// 100. Meme moule que extractJobWithAi (generation, schema+prompt+retry
-// json_schema->json_object+repli local) et analyzeMatchWithAi/
-// MATCH_ANALYSIS_SCHEMA (notation par score IA borne apres coup).
+// Test de competences : questionnaire genere localement (sans IA), a partir
+// d'une offre deja analysee (offer.skills/offer.missions, deja extraits par
+// JOB_EXTRACTION_SCHEMA) — 8 QCM auto-notees, note finale sur 10. Simplifie
+// depuis une version avec generation/notation/synthese par IA (schema JSON,
+// prompt, retry, questions ouvertes) : retrait total de l'IA pour ce module,
+// uniquement le repli local deterministe qui existait deja, desormais
+// utilise systematiquement (plus jamais de tentative d'appel IA ici).
 // ---------------------------------------------------------------------------
 
-const SKILLS_TEST_QCM_COUNT = 5;
-const SKILLS_TEST_OPEN_COUNT = 3;
-const SKILLS_TEST_QCM_MAX = 4;
-const SKILLS_TEST_OPEN_MAX = 4;
-const SKILLS_TEST_MAX_RAW_SCORE = SKILLS_TEST_QCM_COUNT * SKILLS_TEST_QCM_MAX + SKILLS_TEST_OPEN_COUNT * SKILLS_TEST_OPEN_MAX; // 32
+const SKILLS_TEST_QCM_COUNT = 8;
+const SKILLS_TEST_QCM_MAX = 1;
+const SKILLS_TEST_MAX_RAW_SCORE = SKILLS_TEST_QCM_COUNT * SKILLS_TEST_QCM_MAX; // 8
 
-const SKILLS_TEST_QUESTIONS_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    questions: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          id: { type: "string" },
-          type: { type: "string", enum: ["qcm", "ouverte"] },
-          "énoncé": { type: "string" },
-          choix: { type: "array", items: { type: "string" } },
-          "réponseCorrecte": { type: "integer" }
-        },
-        required: ["id", "type", "énoncé"]
-      }
-    }
-  },
-  required: ["questions"]
-};
-
-const SKILLS_TEST_GRADING_SCHEMA = {
-  type: "object",
-  additionalProperties: false,
-  properties: {
-    scores: {
-      type: "array",
-      items: {
-        type: "object",
-        additionalProperties: false,
-        properties: {
-          id: { type: "string" },
-          score: { type: "number" },
-          feedback: { type: "string" }
-        },
-        required: ["id", "score"]
-      }
-    },
-    synthesis: { type: "string" }
-  },
-  required: ["scores", "synthesis"]
-};
-
-// Repli deterministe (sans IA) : questions generiques de bonnes pratiques
-// professionnelles, parametrees par une competence/mission deja extraite de
-// l'offre — jamais un vrai quiz de connaissance sur la competence elle-meme
-// (impossible a garantir correct sans base de connaissance par domaine).
-// La bonne reponse ne depend donc pas du contenu technique precis de la
-// competence citee, seul l'enonce est parametre par elle.
+// Questions generiques de bonnes pratiques professionnelles, parametrees par
+// une competence/le titre de l'offre — jamais un vrai quiz de connaissance
+// sur la competence elle-meme (impossible a garantir correct sans base de
+// connaissance par domaine, et il n'y a plus d'IA pour verifier). La bonne
+// reponse ne depend donc jamais du contenu technique precis de la competence
+// citee, seul l'enonce est parametre par elle : reste pertinent pour
+// n'importe quel domaine (vente, artisanat, informatique, sante, etc.) sans
+// jamais deriver vers un domaine different de celui de l'offre. 8 templates
+// (un par question) pour eviter toute repetition meme quand l'offre a moins
+// de 8 competences distinctes.
 const SKILLS_TEST_LOCAL_QCM_TEMPLATES_FR = [
   {
     build: (skill) => ({
@@ -2678,6 +2635,42 @@ const SKILLS_TEST_LOCAL_QCM_TEMPLATES_FR = [
         "Se limiter strictement à ce qui a déjà fonctionné par le passé"
       ],
       "réponseCorrecte": 1
+    })
+  },
+  {
+    build: (skill) => ({
+      "énoncé": `Vous recevez un retour critique sur un travail lié à ${skill}. Quelle réaction est la plus professionnelle ?`,
+      choix: [
+        "L'écouter, poser des questions pour bien comprendre, puis ajuster si c'est pertinent",
+        "Le rejeter immédiatement sans y réfléchir",
+        "Se justifier sans chercher à comprendre le point de vue de l'autre",
+        "L'ignorer si la personne n'est pas supérieure hiérarchique"
+      ],
+      "réponseCorrecte": 0
+    })
+  },
+  {
+    build: (skill) => ({
+      "énoncé": `Vous devez gérer plusieurs tâches liées à ${skill} en même temps, avec des priorités différentes. Que faites-vous en premier ?`,
+      choix: [
+        "Commencer par la tâche la plus simple pour avancer vite",
+        "Clarifier les vraies priorités avec les parties prenantes avant de commencer",
+        "Faire les tâches dans l'ordre où elles sont arrivées",
+        "Attendre des instructions précises avant d'agir"
+      ],
+      "réponseCorrecte": 1
+    })
+  },
+  {
+    build: (skill) => ({
+      "énoncé": `Vous terminez une tâche complexe impliquant ${skill}. Quelle pratique favorise le mieux le travail d'équipe par la suite ?`,
+      choix: [
+        "Documenter clairement ce qui a été fait et pourquoi, pour que d'autres puissent reprendre",
+        "Garder les détails en tête, ce sera plus rapide en cas de besoin",
+        "Passer immédiatement à la tâche suivante sans transition",
+        "Laisser chacun redécouvrir la méthode par lui-même"
+      ],
+      "réponseCorrecte": 0
     })
   }
 ];
@@ -2742,52 +2735,53 @@ const SKILLS_TEST_LOCAL_QCM_TEMPLATES_EN = [
       ],
       "réponseCorrecte": 1
     })
+  },
+  {
+    build: (skill) => ({
+      "énoncé": `You receive critical feedback on work related to ${skill}. What is the most professional reaction?`,
+      choix: [
+        "Listen, ask questions to fully understand, then adjust if relevant",
+        "Reject it immediately without thinking it through",
+        "Justify yourself without trying to understand the other person's point of view",
+        "Ignore it if the person is not your manager"
+      ],
+      "réponseCorrecte": 0
+    })
+  },
+  {
+    build: (skill) => ({
+      "énoncé": `You must handle several tasks related to ${skill} at the same time, with different priorities. What do you do first?`,
+      choix: [
+        "Start with the simplest task to make quick progress",
+        "Clarify the real priorities with stakeholders before starting",
+        "Do the tasks in the order they arrived",
+        "Wait for precise instructions before acting"
+      ],
+      "réponseCorrecte": 1
+    })
+  },
+  {
+    build: (skill) => ({
+      "énoncé": `You finish a complex task involving ${skill}. Which practice best supports teamwork afterward?`,
+      choix: [
+        "Clearly document what was done and why, so others can pick it up",
+        "Keep the details in mind, it will be faster if needed",
+        "Move on immediately to the next task with no handoff",
+        "Let everyone rediscover the method on their own"
+      ],
+      "réponseCorrecte": 0
+    })
   }
 ];
 
-const SKILLS_TEST_LOCAL_OPEN_TEMPLATES_FR = [
-  {
-    build: (mission) =>
-      `Décrivez une situation concrète, tirée de votre expérience, où vous avez dû assurer une mission proche de : "${mission}". Quelles actions avez-vous menées et quel résultat avez-vous obtenu ?`
-  },
-  {
-    build: (mission) =>
-      `Quelles difficultés anticipez-vous sur une mission telle que "${mission}", et comment comptez-vous les anticiper ou les résoudre ?`
-  },
-  {
-    build: (mission) =>
-      `Racontez un exemple où vous avez dû apprendre rapidement pour mener à bien une mission comparable à "${mission}". Qu'avez-vous mis en place ?`
-  }
-];
-
-const SKILLS_TEST_LOCAL_OPEN_TEMPLATES_EN = [
-  {
-    build: (mission) =>
-      `Describe a concrete situation from your experience where you handled a responsibility similar to: "${mission}". What actions did you take and what was the outcome?`
-  },
-  {
-    build: (mission) => `What difficulties do you anticipate on a mission such as "${mission}", and how would you plan to address them?`
-  },
-  {
-    build: (mission) =>
-      `Share an example where you had to learn quickly to carry out a mission comparable to "${mission}". What did you put in place?`
-  }
-];
-
-// Repli deterministe complet : toujours exactement 5 QCM + 3 ouvertes,
-// jamais d'appel reseau. Utilise a la fois comme repli total (IA
-// indisponible) et comme source de "bouche-trou" dans
-// sanitizeAiSkillsTestQuestions quand l'IA ne renvoie pas assez de
-// questions valides d'un type donne.
+// Toujours exactement 8 QCM, jamais d'appel reseau. Seul generateur de
+// questions du module (plus de tentative IA en amont).
 function buildLocalSkillsTestQuestions(offer, language) {
   const skills = normalizeAiList(offer?.skills, 20);
-  const missions = normalizeAiList(offer?.missions, 10);
   const skillFallback = coerceString(offer?.title) || (language === "en" ? "this role" : "ce poste");
   const pickSkill = (index) => (skills.length ? skills[index % skills.length] : skillFallback);
-  const pickMission = (index) => (missions.length ? missions[index % missions.length] : skillFallback);
 
   const qcmTemplates = language === "en" ? SKILLS_TEST_LOCAL_QCM_TEMPLATES_EN : SKILLS_TEST_LOCAL_QCM_TEMPLATES_FR;
-  const openTemplates = language === "en" ? SKILLS_TEST_LOCAL_OPEN_TEMPLATES_EN : SKILLS_TEST_LOCAL_OPEN_TEMPLATES_FR;
 
   const questions = [];
   for (let index = 0; index < SKILLS_TEST_QCM_COUNT; index += 1) {
@@ -2795,307 +2789,46 @@ function buildLocalSkillsTestQuestions(offer, language) {
     const built = template.build(pickSkill(index));
     questions.push({ id: `q${index + 1}`, type: "qcm", ...built });
   }
-  for (let index = 0; index < SKILLS_TEST_OPEN_COUNT; index += 1) {
-    const template = openTemplates[index % openTemplates.length];
-    questions.push({
-      id: `q${SKILLS_TEST_QCM_COUNT + index + 1}`,
-      type: "ouverte",
-      "énoncé": template.build(pickMission(index))
-    });
-  }
   return { questions };
 }
 
-// Revalide (jamais ne fait confiance telle quelle) la sortie IA : chaque QCM
-// doit avoir exactement 4 choix non vides et un index de bonne réponse
-// valide (0-3), chaque question ouverte doit avoir un énoncé non vide.
-// Toute question invalide est écartée ; s'il manque des questions d'un type
-// après filtrage, on complète avec le repli local (buildLocalSkillsTestQuestions)
-// pour garantir 5 QCM + 3 ouvertes à chaque appel, quoi que renvoie l'IA.
-function sanitizeAiSkillsTestQuestions(raw, { offer, language }) {
-  const parsed = raw && typeof raw === "object" ? raw : {};
-  const fallback = buildLocalSkillsTestQuestions(offer, language);
-  const rawQuestions = Array.isArray(parsed.questions) ? parsed.questions : [];
-
-  const validQcm = rawQuestions
-    .filter((q) => {
-      if (!q || typeof q !== "object" || q.type !== "qcm") return false;
-      if (!coerceString(q["énoncé"])) return false;
-      if (!Array.isArray(q.choix) || q.choix.length !== 4 || q.choix.some((choice) => !coerceString(choice))) return false;
-      if (!Number.isInteger(q["réponseCorrecte"]) || q["réponseCorrecte"] < 0 || q["réponseCorrecte"] > 3) return false;
-      return true;
-    })
-    .slice(0, SKILLS_TEST_QCM_COUNT);
-
-  const validOpen = rawQuestions
-    .filter((q) => q && typeof q === "object" && q.type === "ouverte" && coerceString(q["énoncé"]))
-    .slice(0, SKILLS_TEST_OPEN_COUNT);
-
-  const fallbackQcm = fallback.questions.filter((q) => q.type === "qcm");
-  const fallbackOpen = fallback.questions.filter((q) => q.type === "ouverte");
-
-  while (validQcm.length < SKILLS_TEST_QCM_COUNT) {
-    validQcm.push(fallbackQcm[validQcm.length]);
-  }
-  while (validOpen.length < SKILLS_TEST_OPEN_COUNT) {
-    validOpen.push(fallbackOpen[validOpen.length]);
-  }
-
-  const questions = [
-    ...validQcm.map((q, index) => ({
-      id: `q${index + 1}`,
-      type: "qcm",
-      "énoncé": coerceString(q["énoncé"]),
-      choix: q.choix.map((choice) => coerceString(choice)),
-      "réponseCorrecte": q["réponseCorrecte"]
-    })),
-    ...validOpen.map((q, index) => ({
-      id: `q${SKILLS_TEST_QCM_COUNT + index + 1}`,
-      type: "ouverte",
-      "énoncé": coerceString(q["énoncé"])
-    }))
-  ];
-
-  return { questions };
-}
-
-async function generateSkillsTestQuestionsWithAi(offer, language) {
-  const config = aiExtractionConfig();
-  if (!config?.apiKey) return null;
-
-  const title = coerceString(offer?.title);
-  const skills = normalizeAiList(offer?.skills, 20);
-  const missions = normalizeAiList(offer?.missions, 10);
-  const langLabel = language === "en" ? "in English" : "en francais";
-
-  const messages = [
-    {
-      role: "system",
-      content:
-        "Tu es un expert recrutement technique qui concoit des tests de competences courts pour evaluer un candidat par rapport a une offre precise. Tu reponds uniquement en JSON, avec exactement 8 questions : 5 QCM (type \"qcm\", exactement 4 choix, une seule bonne reponse objectivement verifiable indiquee par son index 0-3) et 3 questions ouvertes (type \"ouverte\", sans choix ni reponseCorrecte, demandant un exemple concret ou une mise en situation). Les QCM ne doivent jamais etre des questions d'opinion : la bonne reponse doit etre factuellement correcte. Les questions doivent porter precisement sur les competences et missions fournies, jamais rester generiques."
-    },
-    {
-      role: "user",
-      content:
-        `Concois un test de competences ${langLabel} pour le poste "${title || "non precise"}". ` +
-        `Competences a evaluer: ${skills.join(", ") || "non precisees"}. ` +
-        `Missions du poste: ${missions.join(" ; ") || "non precisees"}. ` +
-        "Genere exactement 5 questions QCM (id q1 a q5) testant des connaissances concretes et verifiables sur ces competences, et exactement 3 questions ouvertes (id q6 a q8) demandant une mise en situation ou un exemple concret tire de l'experience du candidat, en lien avec les missions du poste."
-    }
-  ];
-
-  async function callAi(responseFormat) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-    try {
-      const response = await fetch(config.url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          "Content-Type": "application/json"
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: config.model,
-          temperature: 0.2,
-          messages,
-          response_format: responseFormat
-        })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error?.message || "Generation IA du test de competences indisponible.");
-      }
-      return JSON.parse(data.choices?.[0]?.message?.content || "{}");
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  try {
-    return sanitizeAiSkillsTestQuestions(
-      await callAi({
-        type: "json_schema",
-        json_schema: { name: "skills_test_questions", strict: false, schema: SKILLS_TEST_QUESTIONS_SCHEMA }
-      }),
-      { offer, language }
-    );
-  } catch (_schemaError) {
-    return sanitizeAiSkillsTestQuestions(await callAi({ type: "json_object" }), { offer, language });
-  }
-}
-
-// Note QCM : comparaison directe cote serveur, jamais envoyee a l'IA (une
-// bonne reponse fixee a la generation n'a pas besoin d'etre jugee).
+// Note QCM : comparaison directe cote serveur, jamais envoyee a l'IA (il n'y
+// a plus d'IA dans ce module). 1 point si correct, 0 sinon.
 function gradeQcmAnswer(question, selectedIndex) {
   const correct = Number.isInteger(question?.["réponseCorrecte"]) ? question["réponseCorrecte"] : -1;
   const selected = Number.isInteger(selectedIndex) ? selectedIndex : -1;
   return selected >= 0 && selected === correct ? SKILLS_TEST_QCM_MAX : 0;
 }
 
-// Repli deterministe pour une reponse ouverte (IA de notation indisponible) :
-// heuristique sur la longueur et le recouvrement lexical avec l'enonce, pas
-// une vraie evaluation semantique — volontairement plus severe qu'indulgente
-// (une reponse vide ou trop courte pour etre substantielle vaut 0 ou 1).
-function buildLocalOpenAnswerScore(question, answerText) {
-  const answer = coerceString(answerText);
-  if (!answer) return 0;
-  const normalizedAnswer = normalizeText(answer);
-  const words = normalizedAnswer.split(/\s+/).filter(Boolean);
-  if (words.length < 8) return 1;
-  const statementWords = normalizeText(question?.["énoncé"] || "")
-    .split(/\s+/)
-    .filter((word) => word.length > 4);
-  const overlap = statementWords.some((word) => normalizedAnswer.includes(word));
-  if (words.length >= 25 && overlap) return 4;
-  if (words.length >= 15 || overlap) return 3;
-  return 2;
-}
-
-// Repli deterministe pour la synthese finale (IA indisponible, ou champ
-// synthesis absent/invalide dans sa reponse) : texte generique par palier,
-// sans les details personnalises (points faibles reels) que seule l'IA peut
-// identifier a partir des reponses effectives.
+// Message par palier (plus de synthese personnalisee par IA) : seuils
+// proportionnels a l'ancienne echelle /100 (75 -> 7.5, 45 -> 4.5).
 function buildLocalSynthesis(finalScore, language) {
   if (language === "en") {
-    if (finalScore >= 75) {
+    if (finalScore >= 7.5) {
       return "Great result: your answers show a solid command of the skills tested for this role. You're in a strong position to apply.";
     }
-    if (finalScore >= 45) {
+    if (finalScore >= 4.5) {
       return "Decent result overall, but a few areas still need work before you're fully ready — review the questions you missed and try again.";
     }
     return "This result points to real gaps on several of the skills tested here. Take time to strengthen these areas before applying for this role.";
   }
-  if (finalScore >= 75) {
+  if (finalScore >= 7.5) {
     return "Très bon résultat : vos réponses montrent une bonne maîtrise des compétences testées pour ce poste. Vous êtes en bonne position pour postuler.";
   }
-  if (finalScore >= 45) {
+  if (finalScore >= 4.5) {
     return "Résultat correct dans l'ensemble, mais certains points restent à travailler avant d'être pleinement prêt(e) — revoyez les questions manquées et retentez le test.";
   }
   return "Ce résultat révèle de vraies lacunes sur plusieurs compétences testées ici. Prenez le temps de les retravailler avant de postuler à ce poste.";
 }
 
-// Revalide chaque score IA (borne 0-4) exactement comme sanitizeAiMatchAnalysis
-// borne son score 0-100 : si l'IA n'a pas note une question donnee ou a
-// renvoye une valeur non numerique, repli sur la note heuristique locale pour
-// cette question precise (pas d'echec global du test pour une seule entree
-// manquante). qcmResults est necessaire ici uniquement pour estimer la note
-// globale provisoire (QCM + scores valides ci-dessous) qui determine le
-// palier de synthese en cas de repli local — l'IA, elle, estime cette note
-// elle-meme dans le meme appel (cf. gradeSkillsTestOpenAnswersWithAi).
-function sanitizeAiSkillsTestGrading(raw, { qcmResults, openQuestions, answers, language }) {
-  const parsed = raw && typeof raw === "object" ? raw : {};
-  const aiScores = new Map(
-    (Array.isArray(parsed.scores) ? parsed.scores : [])
-      .filter((item) => item && typeof item === "object" && coerceString(item.id))
-      .map((item) => [coerceString(item.id), item])
-  );
-
-  const scores = openQuestions.map((question) => {
-    const aiEntry = aiScores.get(question.id);
-    const answerText = coerceString(answers?.[question.id]);
-    const fallbackScore = buildLocalOpenAnswerScore(question, answerText);
-    const rawScore = Number(aiEntry?.score);
-    const score = Number.isFinite(rawScore) ? Math.max(0, Math.min(SKILLS_TEST_OPEN_MAX, Math.round(rawScore))) : fallbackScore;
-    return {
-      id: question.id,
-      score,
-      feedback: coerceString(aiEntry?.feedback)
-    };
-  });
-
-  const rawTotal = qcmResults.reduce((sum, item) => sum + item.score, 0) + scores.reduce((sum, item) => sum + item.score, 0);
-  const provisionalFinalScore = Math.round((rawTotal / SKILLS_TEST_MAX_RAW_SCORE) * 100);
-  const synthesis = coerceString(parsed.synthesis) || buildLocalSynthesis(provisionalFinalScore, language);
-
-  return { scores, synthesis };
-}
-
-async function gradeSkillsTestOpenAnswersWithAi(qcmQuestions, qcmResults, openQuestions, answers, language) {
-  const config = aiExtractionConfig();
-  if (!config?.apiKey) return null;
-
-  const langLabel = language === "en" ? "in English" : "en francais";
-  const items = openQuestions.map((question) => ({
-    id: question.id,
-    "énoncé": question["énoncé"],
-    réponse: coerceString(answers?.[question.id])
-  }));
-  // Chaque QCM est deja corrige cote serveur (voir gradeQcmAnswer) : on ne
-  // transmet que enonce + correct/incorrect a l'IA, jamais la bonne reponse
-  // elle-meme, pour qu'elle sache quelles competences sont fragiles sans
-  // avoir a re-corriger quoi que ce soit.
-  const qcmSummary = qcmQuestions.map((question, index) => ({
-    "énoncé": question["énoncé"],
-    correct: qcmResults[index]?.score === SKILLS_TEST_QCM_MAX
-  }));
-
-  const messages = [
-    {
-      role: "system",
-      content:
-        "Tu es un evaluateur recrutement rigoureux. Tu notes des reponses ouvertes a un test de competences, sur une echelle de 0 a 4 par reponse (0 = hors sujet ou absente, 1 = tres insuffisante, 2 = partielle, 3 = bonne, 4 = excellente et precise). Sois exigeant : une reponse vague, generique ou trop courte pour etre evaluee ne merite pas plus de 1 ou 2. " +
-        "Tu rediges aussi un champ synthesis (1 a 2 phrases, dans la langue demandee) qui resume la performance du candidat, en te basant precisement sur les competences ratees (QCM incorrects fournis) et les reponses ouvertes que tu notes mal. Ne mentionne jamais le score chiffre ni un pourcentage dans synthesis (il est deja affiche ailleurs a l'ecran) : synthesis est un verdict qualitatif, pas un recapitulatif de note. Calcule mentalement une estimation de la note globale (chaque QCM correct vaut 4 points sur 32 au total, chaque reponse ouverte que tu notes vaut jusqu'a 4 points sur 32 au total, ramene le tout sur 100) et adapte STRICTEMENT le ton de synthesis a ce palier : " +
-        "si elle est >= 75, sois franchement positif et affirmatif des la premiere phrase (ex: \"Vous maitrisez tres bien les competences cles de ce poste\"), confirme explicitement que le candidat est pret a postuler, et mentionne au plus un point mineur a consolider s'il y en a un reellement ; " +
-        "si elle est entre 45 et 74, ton neutre et factuel, nomme 1 a 2 points concrets a retravailler sans jugement de valeur ; " +
-        "si elle est < 45, ton incitatif et bienveillant sans etre decourageant, nomme precisement les sujets/competences a approfondir avant de postuler. Reponds uniquement en JSON."
-    },
-    {
-      role: "user",
-      content:
-        `Note chacune des reponses suivantes ${langLabel}, sur 4, avec un court retour justifiant la note, puis redige la synthese finale.\n\n` +
-        `QCM deja corriges (competences testees) :\n${JSON.stringify(qcmSummary).slice(0, 8000)}\n\n` +
-        `Reponses ouvertes a noter :\n${JSON.stringify(items).slice(0, 20000)}`
-    }
-  ];
-
-  async function callAi(responseFormat) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
-    try {
-      const response = await fetch(config.url, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${config.apiKey}`,
-          "Content-Type": "application/json"
-        },
-        signal: controller.signal,
-        body: JSON.stringify({
-          model: config.model,
-          temperature: 0.1,
-          messages,
-          response_format: responseFormat
-        })
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(data.error?.message || "Notation IA du test de competences indisponible.");
-      }
-      return JSON.parse(data.choices?.[0]?.message?.content || "{}");
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-
-  try {
-    return sanitizeAiSkillsTestGrading(
-      await callAi({
-        type: "json_schema",
-        json_schema: { name: "skills_test_grading", strict: false, schema: SKILLS_TEST_GRADING_SCHEMA }
-      }),
-      { qcmResults, openQuestions, answers, language }
-    );
-  } catch (_schemaError) {
-    return sanitizeAiSkillsTestGrading(await callAi({ type: "json_object" }), { qcmResults, openQuestions, answers, language });
-  }
-}
-
-// Note finale /100 : somme brute des 8 scores (max 32 : 5*4 QCM + 3*4
-// ouvertes) ramenee sur 100. Pure fonction, aucun appel IA.
+// Note finale /10, arrondie a 1 decimale : (total de points / 8) * 10,
+// arrondi au dixieme le plus proche (8/8 -> 10.0, 5/8 -> 6.3). Pure fonction,
+// aucun appel IA.
 function computeSkillsTestFinalScore(results) {
   const rawTotal = results.reduce((sum, item) => sum + (Number.isFinite(item?.score) ? item.score : 0), 0);
-  return Math.round((rawTotal / SKILLS_TEST_MAX_RAW_SCORE) * 100);
+  return Math.round((rawTotal / SKILLS_TEST_MAX_RAW_SCORE) * 10 * 10) / 10;
 }
+
 
 const CV_ATS_OPTIMIZATION_SCHEMA = {
   type: "object",
@@ -5807,20 +5540,11 @@ app.locals.ctx = {
   sanitizeAiApplicationEmail,
   generateApplicationEmailWithAi,
   SKILLS_TEST_QCM_COUNT,
-  SKILLS_TEST_OPEN_COUNT,
   SKILLS_TEST_QCM_MAX,
-  SKILLS_TEST_OPEN_MAX,
   SKILLS_TEST_MAX_RAW_SCORE,
-  SKILLS_TEST_QUESTIONS_SCHEMA,
-  SKILLS_TEST_GRADING_SCHEMA,
   buildLocalSkillsTestQuestions,
-  sanitizeAiSkillsTestQuestions,
-  generateSkillsTestQuestionsWithAi,
   gradeQcmAnswer,
-  buildLocalOpenAnswerScore,
   buildLocalSynthesis,
-  sanitizeAiSkillsTestGrading,
-  gradeSkillsTestOpenAnswersWithAi,
   computeSkillsTestFinalScore,
   CV_ATS_OPTIMIZATION_SCHEMA,
   sanitizeAiCvOptimization,

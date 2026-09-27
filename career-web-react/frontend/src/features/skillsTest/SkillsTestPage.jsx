@@ -12,13 +12,14 @@ function scoreClass(score, maxScore) {
   return "skills-test-score-bad";
 }
 
+// Seuils /10 (proportionnels a l'ancienne echelle /100 : 75 -> 7.5, 45 -> 4.5).
 function synthesisTierClass(finalScore) {
-  if (finalScore >= 75) return "skills-test-synthesis-good";
-  if (finalScore >= 45) return "skills-test-synthesis-mid";
+  if (finalScore >= 7.5) return "skills-test-synthesis-good";
+  if (finalScore >= 4.5) return "skills-test-synthesis-mid";
   return "skills-test-synthesis-bad";
 }
 
-function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
+function SkillsTestPage({ language, userId, candidate, offer }) {
   const copy = SKILLS_TEST_COPY[language] || SKILLS_TEST_COPY.fr;
   // "start" -> "in-progress" -> "result", jamais de retour arriere hors
   // "Refaire un test" qui repart explicitement de "start".
@@ -36,8 +37,6 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
   const [tests, setTests] = useState([]);
 
   const hasContext = Boolean(candidate && offer && (offer.title || offer.skills?.length));
-  const hasUnlimitedTokens = tokensBalance >= 999;
-  const outOfTokens = !hasUnlimitedTokens && tokensBalance <= 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -54,10 +53,6 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
 
   async function handleGenerate() {
     if (!hasContext || isGenerating) return;
-    if (outOfTokens) {
-      onGoToTarifs();
-      return;
-    }
     setError("");
     setIsGenerating(true);
     try {
@@ -66,9 +61,7 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
       setQuestions(result.questions);
       setCurrentQuestionIndex(0);
       setAnswers({});
-      // Un seul jeton pour tout le cycle (génération + notation) : consommé
-      // ici, jamais lors de handleFinish.
-      await onConsumeToken();
+      // Module gratuit : aucun jeton consomme, ni ici ni a la notation.
       setStage("in-progress");
       // /generate a déjà persisté le test côté serveur (statut "pending") :
       // on recharge la liste plutôt que de deviner le titre côté client.
@@ -91,9 +84,7 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
   function currentAnswerIsGiven() {
     const question = questions[currentQuestionIndex];
     if (!question) return false;
-    const value = answers[question.id];
-    if (question.type === "qcm") return Number.isInteger(value);
-    return typeof value === "string" && value.trim().length > 0;
+    return Number.isInteger(answers[question.id]);
   }
 
   function handleNextQuestion() {
@@ -219,7 +210,7 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
                 <span className="negotiation-history-title">{test.title || copy.untitled}</span>
                 <span className="negotiation-history-badges">
                   <span className="history-badge">
-                    {test.status === "graded" ? `${test.finalScore}/100` : copy.statusPending}
+                    {test.status === "graded" ? `${Number(test.finalScore).toFixed(1)}/10` : copy.statusPending}
                   </span>
                 </span>
               </span>
@@ -259,18 +250,11 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
       {stage === "start" ? (
         <div className="skills-test-start">
           <p className="skills-test-start-description">{copy.startDescription}</p>
-          {outOfTokens ? (
-            <p className="field-hint">
-              {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
-            </p>
-          ) : null}
           <button type="button" className="btn-main ready" onClick={handleGenerate} disabled={isGenerating}>
             {isGenerating ? (
               <>
                 <span className="btn-spinner" /> {copy.generating}
               </>
-            ) : hasUnlimitedTokens ? (
-              copy.generateUnlimited
             ) : (
               copy.generate
             )}
@@ -287,31 +271,21 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
             </div>
           </div>
 
-          <p className="skills-test-question-type">{currentQuestion.type === "qcm" ? copy.qcmType : copy.openType}</p>
           <p className="skills-test-question-statement">{currentQuestion["énoncé"]}</p>
 
-          {currentQuestion.type === "qcm" ? (
-            <div className="skills-test-options">
-              {currentQuestion.choix.map((choice, index) => (
-                <button
-                  key={index}
-                  type="button"
-                  className={`skills-test-option ${answers[currentQuestion.id] === index ? "active" : ""}`}
-                  onClick={() => setAnswerForCurrentQuestion(index)}
-                >
-                  <span className="skills-test-option-bullet" aria-hidden="true" />
-                  {choice}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <textarea
-              className="skills-test-open-answer"
-              value={answers[currentQuestion.id] || ""}
-              placeholder={copy.openAnswerPlaceholder}
-              onChange={(event) => setAnswerForCurrentQuestion(event.target.value)}
-            />
-          )}
+          <div className="skills-test-options">
+            {currentQuestion.choix.map((choice, index) => (
+              <button
+                key={index}
+                type="button"
+                className={`skills-test-option ${answers[currentQuestion.id] === index ? "active" : ""}`}
+                onClick={() => setAnswerForCurrentQuestion(index)}
+              >
+                <span className="skills-test-option-bullet" aria-hidden="true" />
+                {choice}
+              </button>
+            ))}
+          </div>
 
           {isLastQuestion ? (
             <button type="button" className="btn-main ready" onClick={handleFinish} disabled={!currentAnswerIsGiven() || isGrading}>
@@ -335,8 +309,8 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
         <div className="skills-test-result">
           <h3>{copy.resultTitle}</h3>
           <div className="skills-test-result-score">
-            <span className="skills-test-result-score-value">{finalScore}</span>
-            <span className="skills-test-result-score-max">/100</span>
+            <span className="skills-test-result-score-value">{finalScore.toFixed(1)}</span>
+            <span className="skills-test-result-score-max">/10</span>
           </div>
 
           {synthesis ? (
@@ -352,28 +326,19 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
               return (
                 <li key={result.id} className={`skills-test-result-item ${scoreClass(result.score, result.maxScore)}`}>
                   <div className="skills-test-result-item-header">
-                    <span className="skills-test-result-item-type">{result.type === "qcm" ? copy.qcmType : copy.openType}</span>
                     <span className="skills-test-result-item-score">
                       {result.score}/{result.maxScore}
                     </span>
                   </div>
                   {question ? <p className="skills-test-result-item-statement">{question["énoncé"]}</p> : null}
-                  {result.feedback ? (
-                    <p className="skills-test-result-item-feedback">{result.feedback}</p>
-                  ) : null}
                 </li>
               );
             })}
           </ul>
 
-          <button type="button" className="btn-main ready" onClick={handleRetake} disabled={outOfTokens}>
-            {hasUnlimitedTokens ? copy.retakeTestUnlimited : copy.retakeTest}
+          <button type="button" className="btn-main ready" onClick={handleRetake}>
+            {copy.retakeTest}
           </button>
-          {outOfTokens ? (
-            <p className="field-hint">
-              {copy.noTokens} <button type="button" className="link-button" onClick={onGoToTarifs}>{copy.noTokensCta}</button>
-            </p>
-          ) : null}
         </div>
       ) : null}
       </section>

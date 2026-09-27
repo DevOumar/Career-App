@@ -9792,15 +9792,6 @@ input[aria-invalid="true"] {
   transition: width 0.25s ease;
 }
 
-.skills-test-question-type {
-  margin: 0;
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--primary-ink, var(--primary));
-}
-
 .skills-test-question-statement {
   margin: 0;
   font-size: 1.1rem;
@@ -9851,12 +9842,6 @@ input[aria-invalid="true"] {
   border-color: var(--primary);
   background: var(--primary);
   box-shadow: inset 0 0 0 2px #fff;
-}
-
-.skills-test-open-answer {
-  width: 100%;
-  min-height: 160px;
-  resize: vertical;
 }
 
 .skills-test-result {
@@ -9922,7 +9907,7 @@ input[aria-invalid="true"] {
 .skills-test-result-item-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -9932,12 +9917,6 @@ input[aria-invalid="true"] {
 .skills-test-result-item-statement {
   margin: 0.4rem 0 0;
   font-weight: 600;
-}
-
-.skills-test-result-item-feedback {
-  margin: 0.4rem 0 0;
-  color: var(--text-muted, #6f6c74);
-  font-size: 0.9rem;
 }
 
 .skills-test-result-item.skills-test-score-good {
