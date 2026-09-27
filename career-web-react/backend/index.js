@@ -48,6 +48,7 @@ import { registerInterviewRoutes } from "./routes/interview.js";
 import { registerMfaRoutes } from "./routes/mfa.js";
 import { createMfaService, MFA_SCHEMA_SQL } from "./mfa.js";
 import { registerCodingRoutes } from "./routes/coding.js";
+import { sortByRecency } from "../frontend/src/lib/cvChronology.js";
 
 dnsCore.setDefaultResultOrder("ipv4first");
 
@@ -2507,9 +2508,10 @@ function sanitizeAiCvExtraction(raw) {
     skills: normalizeAiList(parsed.skills, 60),
     softSkills: normalizeAiList(parsed.softSkills, 30),
     languages: normalizeAiList(parsed.languages, 20),
-    experiences: normalizeAiCollection(parsed.experiences, ["company", "role", "dates", "location", "description"], 12),
+    // Ordre antichronologique (plus récente en premier), convention des CV.
+    experiences: sortByRecency(normalizeAiCollection(parsed.experiences, ["company", "role", "dates", "location", "description"], 12)),
     education: coerceString(parsed.education),
-    educationItems: normalizeAiCollection(parsed.educationItems, ["school", "degree", "dates", "location", "description"], 8),
+    educationItems: sortByRecency(normalizeAiCollection(parsed.educationItems, ["school", "degree", "dates", "location", "description"], 8)),
     certifications: normalizeAiCollection(parsed.certifications, ["name", "issuer", "date", "url"], 12),
     projects: normalizeAiCollection(parsed.projects, ["name", "role", "technologies", "description", "url"], 10),
     interests: normalizeAiList(parsed.interests, 20),

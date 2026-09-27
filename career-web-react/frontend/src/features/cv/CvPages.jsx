@@ -34,6 +34,7 @@ import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
 import { CvUploadArt, JobPostArt, HistoryHeroArt, ModuleHero } from "../../components/ModuleWorkspace.jsx";
 import { loadPdfFitter, slugifyForFilename, downloadBlob } from "../../lib/pdfDownload.js";
 import { themeColorsFromPresetId } from "../../lib/themeColors.js";
+import { orderCvChronology } from "../../lib/cvChronology.js";
 
 function ImportPage({
   onGoToModule,
@@ -1106,7 +1107,7 @@ function MatchResultsStep({
       // déjà à l'écran.
       const showPhotoInPdf = template === "sidebar" && Boolean(avatarDataUrl);
       const theme = { colors: themeColorsFromPresetId(cvColor), hasPhoto: showPhotoInPdf };
-      const fit = await fitToOnePage(cvReview, theme, showPhotoInPdf ? avatarDataUrl : undefined);
+      const fit = await fitToOnePage(orderCvChronology(cvReview), theme, showPhotoInPdf ? avatarDataUrl : undefined);
       const fullName = [cvReview.firstName, cvReview.lastName].filter(Boolean).join(" ");
       downloadBlob(fit.blob, `CV-${slugifyForFilename(fullName)}-${new Date().toISOString().slice(0, 10)}.pdf`);
       setCvPrintOverflow(Boolean(fit.overflow));
@@ -1586,6 +1587,9 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTe
     );
   }
 
+  // Aperçu dans l'ordre antichronologique, comme le PDF téléchargé.
+  const orderedReview = orderCvChronology(cvReview);
+
   return (
     <article className="card block cv-preview-card">
       <div className="cv-preview-toolbar no-print">
@@ -1628,11 +1632,11 @@ function CvPreviewCard({ cvReview, copy, language, avatarDataUrl, template, onTe
         }}
       >
         {template === "sidebar" ? (
-          <CvDocumentSidebar cvReview={cvReview} copy={copy} avatarDataUrl={avatarDataUrl} />
+          <CvDocumentSidebar cvReview={orderedReview} copy={copy} avatarDataUrl={avatarDataUrl} />
         ) : template === "linear" ? (
-          <CvDocumentLinear cvReview={cvReview} copy={copy} />
+          <CvDocumentLinear cvReview={orderedReview} copy={copy} />
         ) : (
-          <CvDocumentClassic cvReview={cvReview} copy={copy} />
+          <CvDocumentClassic cvReview={orderedReview} copy={copy} />
         )}
       </div>
     </article>
