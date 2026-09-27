@@ -245,7 +245,8 @@ export function registerMatchingRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    currentAiProvider
   } = app.locals.ctx;
 
 app.post("/api/match/analyze", aiActionRateLimiter, async (req, res) => {
@@ -264,7 +265,7 @@ app.post("/api/match/analyze", aiActionRateLimiter, async (req, res) => {
     let provider = "local";
     try {
       analysis = await analyzeMatchWithAi(candidate, offer);
-      if (analysis) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+      if (analysis) provider = currentAiProvider();
     } catch (aiError) {
       analysis = null;
       console.warn(`Analyse IA du matching indisponible: ${aiError.message}`);

@@ -2385,8 +2385,11 @@ function aiExtractionConfig() {
 // en panne à cause du fournisseur. Modèles modifiables sans code :
 // OPENAI_MODEL (qualité : CV, offres, lettres, entretiens...) et
 // OPENAI_MODEL_LIGHT (petites tâches : domaine d'entreprise pour Email Scout).
-const OPENAI_MODEL = String(process.env.OPENAI_MODEL || "gpt-4.1-mini").trim();
-const OPENAI_MODEL_LIGHT = String(process.env.OPENAI_MODEL_LIGHT || "gpt-4.1-nano").trim();
+// Nom de modèle nettoyé : un commentaire collé en fin de ligne dans le .env
+// (« gpt-4.1-nano# ... ») ne doit jamais casser l'appel.
+const cleanModelName = (value, fallback) => String(value || "").split(/[\s#]/)[0].trim() || fallback;
+const OPENAI_MODEL = cleanModelName(process.env.OPENAI_MODEL, "gpt-4.1-mini");
+const OPENAI_MODEL_LIGHT = cleanModelName(process.env.OPENAI_MODEL_LIGHT, "gpt-4.1-nano");
 const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
 const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -2422,11 +2425,19 @@ function aiTemperature(config, value) {
   return /^(gpt-5|o\d)/i.test(String(config?.model || "")) ? {} : { temperature: value };
 }
 
+function currentAiProvider() {
+  return aiRequestContext.getStore()?.aiProvider || (AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER);
+}
+
 async function tryAiConfigs(configs, run) {
   let lastError = new Error("Aucun fournisseur IA configuré.");
   for (const config of configs) {
     try {
-      return await run(config);
+      const result = await run(config);
+      // Fournisseur réellement utilisé pour cette requête (affichage, stats).
+      const store = aiRequestContext.getStore();
+      if (store) store.aiProvider = config.provider;
+      return result;
     } catch (error) {
       lastError = error;
       console.warn(`IA ${config.provider}/${config.model} indisponible (${error.message}), essai du fournisseur suivant.`);
@@ -5886,6 +5897,7 @@ await loadPlatformSettings();
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
   callAiChat,
+  currentAiProvider,
   aiConfigCandidates,
   resolveSubscriptionCredits,
   requireMatchingSession,

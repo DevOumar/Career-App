@@ -245,7 +245,8 @@ export function registerCoverLetterRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    currentAiProvider
   } = app.locals.ctx;
 
 app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
@@ -262,7 +263,7 @@ app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
     let provider = "local";
     try {
       letterResult = await generateCoverLetterWithAi(candidate, offer, tone, language);
-      if (letterResult) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+      if (letterResult) provider = currentAiProvider();
     } catch (aiError) {
       letterResult = null;
       console.warn(`Generation IA de la lettre indisponible: ${aiError.message}`);

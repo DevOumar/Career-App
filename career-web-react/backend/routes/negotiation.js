@@ -246,7 +246,8 @@ export function registerNegotiationRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    currentAiProvider
   } = app.locals.ctx;
 
 app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) => {
@@ -283,7 +284,7 @@ app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) =
         currencyLabel,
         salaryReference
       });
-      if (result) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+      if (result) provider = currentAiProvider();
     } catch (aiError) {
       result = null;
       console.warn(`Reponse IA de negociation indisponible: ${aiError.message}`);

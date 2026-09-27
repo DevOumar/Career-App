@@ -248,7 +248,8 @@ export function registerCvRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    currentAiProvider
   } = app.locals.ctx;
 
 app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
@@ -285,7 +286,7 @@ app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
       if (attempt) await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
       try {
         parsed = await extractCvWithAi(sourceText);
-        if (parsed) extractionProvider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+        if (parsed) extractionProvider = currentAiProvider();
       } catch (aiError) {
         parsed = null;
         console.warn(`Extraction IA indisponible (essai ${attempt + 1}/3): ${aiError.message}`);
@@ -320,7 +321,7 @@ app.post("/api/jobs/extract", aiActionRateLimiter, async (req, res) => {
     let extractionProvider = "local";
     try {
       parsed = await extractJobWithAi(text);
-      if (parsed) extractionProvider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+      if (parsed) extractionProvider = currentAiProvider();
     } catch (aiError) {
       parsed = null;
       console.warn(`Extraction IA du poste indisponible: ${aiError.message}`);
