@@ -1935,6 +1935,46 @@ const JOB_SOFT_SKILLS = [
   "adaptabilité"
 ];
 
+// Filtre les lignes candidates "mission" ecartees a tort par la simple
+// presence du mot "mission" dans la ligne : un en-tete/label pur ("Quelles
+// sont les missions ?", "Vos missions :") n'a aucun contenu utile au-dela du
+// label lui-meme. Une ligne trop longue (un paragraphe entier plutot qu'une
+// puce concise) est tronquee a un mot entier plutot que rejetee, pour
+// garder le contenu utile qu'elle contient malgre tout.
+const MISSION_HEADER_ONLY_PATTERN = /^(quelles?\s+sont\s+(les\s+)?missions?\s*\??|(vos|les|nos)\s+missions?\s*:?|missions?\s*:?)$/i;
+
+function truncateMissionText(text, maxLength = 110) {
+  const trimmed = text.trim();
+  if (trimmed.length <= maxLength) return trimmed;
+  const cut = trimmed.slice(0, maxLength);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${lastSpace > 40 ? cut.slice(0, lastSpace) : cut}…`;
+}
+
+function extractCleanMissionLines(lines, titleLine) {
+  return lines
+    .filter((line) => {
+      // L'intitule du poste ("Développeur Full Stack - Paris.") matche
+      // souvent un des mots-cles ci-dessous par simple sous-chaine
+      // ("Développeur" contient "développ") sans etre une mission : ce
+      // n'est pas une responsabilite, c'est le titre de l'offre.
+      if (titleLine && line === titleLine) return false;
+      const withoutBullet = line.replace(/^[-•+]\s*/, "").trim();
+      if (withoutBullet.length < 10) return false;
+      if (MISSION_HEADER_ONLY_PATTERN.test(withoutBullet)) return false;
+      if (/^[-•+]/.test(line)) return true;
+      // "Vous ..." est le tour de phrase le plus courant pour introduire une
+      // mission dans une offre francaise ("Vous assurez...", "Vous gerez...",
+      // "Vous repondez..."), plus fiable et plus generique qu'une liste de
+      // verbes forcement incomplete (ex: "assurez" ne matchait aucun mot-cle
+      // ci-dessous jusqu'ici).
+      if (/^vous\s+/i.test(withoutBullet)) return true;
+      return /\b(vous serez|mission|responsabilit|contribu|particip|développ|developp|analy)/i.test(withoutBullet);
+    })
+    .map((line) => truncateMissionText(line.replace(/^[-•+]\s*/, "")))
+    .slice(0, 8);
+}
+
 function extractLocalJobSummary(text) {
   const raw = cleanExtractedText(text);
   const normalized = normalizeText(raw);
@@ -1968,7 +2008,7 @@ function extractLocalJobSummary(text) {
     skills: uniqueByNormalized(skills).slice(0, 14),
     softSkills: uniqueByNormalized(softSkills).slice(0, 10),
     description,
-    missions: lines.filter((line) => /^[-•+]/.test(line) || /\b(vous serez|mission|responsabilit|contribu|particip|développ|developp|analy)/i.test(line)).slice(0, 8),
+    missions: extractCleanMissionLines(lines, titleLine),
     // Repli sans IA : simple regex email sur le texte brut, aucune
     // déduction pour le nom (contactName reste null — impossible à
     // distinguer fiablement d'un autre nom propre présent dans l'offre
@@ -2628,7 +2668,7 @@ const SKILLS_TEST_LOCAL_QCM_TEMPLATES_FR = [
   },
   {
     build: (skill) => ({
-      "énoncé": `Pour progresser durablement en ${skill}, quelle habitude est la plus efficace sur la durée ?`,
+      "énoncé": `Pour progresser durablement sur ${skill}, quelle habitude est la plus efficace sur la durée ?`,
       choix: [
         "Ne jamais remettre en question ses méthodes",
         "Solliciter régulièrement des retours et ajuster sa pratique en conséquence",
@@ -2727,7 +2767,7 @@ const SKILLS_TEST_LOCAL_QCM_TEMPLATES_EN = [
   },
   {
     build: (skill) => ({
-      "énoncé": `To improve durably at ${skill}, which habit is most effective over time?`,
+      "énoncé": `To improve durably in ${skill}, which habit is most effective over time?`,
       choix: [
         "Never question your methods",
         "Regularly seek feedback and adjust your practice accordingly",
@@ -2793,7 +2833,19 @@ function buildLocalSkillsTestQuestions(offer, language) {
   // premier (les templates attendent plutot un nom court), les missions
   // ne completent que si le pool est encore trop court.
   const topics = uniqueByNormalized([...skills, ...missions]);
-  const pickTopic = (index) => (topics.length ? topics[index % topics.length] : skillFallback);
+  // Les templates ci-dessus inserent le topic apres des connecteurs concus
+  // pour un groupe nominal court ("impliquant Python", "lie a la gestion de
+  // projet"). Une mission est une phrase complete conjuguee ("vous assurez
+  // le suivi...") : la coller telle quelle apres ces connecteurs produit une
+  // grammaire cassee (voire une double ponctuation si la mission finit deja
+  // par un point). On l'isole donc entre guillemets, ce qui reste correct
+  // quel que soit le connecteur qui precede.
+  const formatTopic = (topic) => {
+    const isSentenceLike = topic.length > 40 || /[.!?]$/.test(topic.trim());
+    if (!isSentenceLike) return topic;
+    return language === "en" ? `this responsibility: "${topic}"` : `la mission suivante : « ${topic} »`;
+  };
+  const pickTopic = (index) => formatTopic(topics.length ? topics[index % topics.length] : skillFallback);
 
   const qcmTemplates = language === "en" ? SKILLS_TEST_LOCAL_QCM_TEMPLATES_EN : SKILLS_TEST_LOCAL_QCM_TEMPLATES_FR;
 
