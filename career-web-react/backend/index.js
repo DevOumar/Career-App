@@ -1763,25 +1763,58 @@ function getMailTransporter() {
 }
 
 function buildAnnouncementEmail({ subject, message, firstName }) {
-  const greeting = firstName ? `Bonjour ${firstName},` : "Bonjour,";
+  const safeSubject = escapeHtml(subject || "Message Career CV");
+  const safeName = escapeHtml(firstName || "Bonjour");
   const paragraphs = String(message || "")
     .split(/\n{2,}/)
-    .map((p) => `<p style="margin:0 0 14px;line-height:1.6;color:#1f2634;">${p.replace(/\n/g, "<br/>")}</p>`)
+    .map((paragraph) => `<p style="margin:0 0 14px;line-height:1.65;color:#5f5651;font-size:15px;">${escapeHtml(paragraph).replace(/\n/g, "<br/>")}</p>`)
     .join("");
 
-  const html = `
-    <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
-      <h2 style="color:#2f5bff;margin:0 0 18px;">Career CV</h2>
-      <p style="margin:0 0 14px;color:#1f2634;">${greeting}</p>
-      ${paragraphs}
-      <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">L'équipe Career CV</p>
-    </div>`;
+  const html = `<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>${safeSubject}</title>
+  </head>
+  <body style="margin:0;background:#f6f2ec;font-family:Arial,Helvetica,sans-serif;color:#171317;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f2ec;padding:34px 12px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:590px;background:#ffffff;border:1px solid #eadfd3;border-radius:24px;overflow:hidden;box-shadow:0 18px 45px rgba(92,26,6,0.10);">
+            <tr>
+              <td style="padding:28px 30px 22px;background:linear-gradient(135deg,#5c1a06 0%,#b83309 100%);">
+                <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:#ffffff;color:#b83309;text-align:center;line-height:42px;font-size:22px;font-weight:900;vertical-align:middle;">CV</div>
+                <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#ffffff;vertical-align:middle;">Career CV</span>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 30px 12px;">
+                <p style="margin:0 0 8px;color:#7b6d63;font-size:14px;">Bonjour ${safeName},</p>
+                <h1 style="margin:0;font-size:26px;line-height:1.25;color:#171317;">${safeSubject}</h1>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:8px 30px 30px;">
+                ${paragraphs}
+                <p style="margin:24px 0 0;color:#7b6d63;font-size:13px;">L'equipe Career CV</p>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:18px 30px;background:#fbf8f4;border-top:1px solid #eadfd3;color:#7b6d63;font-size:12px;line-height:1.5;">
+                &copy; ${new Date().getFullYear()} Career CV. Email automatique envoye par noreply@careercv.fr.
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
 
-  const text = `${greeting}\n\n${message}\n\nL'équipe Career CV`;
-
+  const text = `Bonjour ${firstName || ""}`.trim() + `\n\n${message}\n\nL'equipe Career CV`;
   return { subject, html, text };
 }
-
 async function resolveAnnouncementAudience(audience) {
   if (audience && !ACCOUNT_TYPES.has(audience)) {
     const error = new Error("Audience inconnue.");
