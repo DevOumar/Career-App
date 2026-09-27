@@ -1,6 +1,6 @@
 export const SKILLS_TEST_COPY = {
   fr: {
-    title: "Test de compétences",
+    title: "Quiz sur l'offre",
     subtitle: "Un questionnaire généré à partir de l'offre analysée : 8 questions à choix multiples, notées automatiquement.",
     empty: "Importez un CV et analysez une offre pour débloquer ce module.",
     startDescription: "8 questions à choix multiples, pour environ 5 minutes. Vous obtenez une note finale sur 10 à la fin.",
@@ -26,7 +26,7 @@ export const SKILLS_TEST_COPY = {
     statusPending: "En attente"
   },
   en: {
-    title: "Skills test",
+    title: "Quiz on the offer",
     subtitle: "A questionnaire generated from the analyzed job offer: 8 multiple-choice questions, graded automatically.",
     empty: "Import a CV and analyze a job offer to unlock this module.",
     startDescription: "8 multiple-choice questions, about 5 minutes. You get a final score out of 10 at the end.",

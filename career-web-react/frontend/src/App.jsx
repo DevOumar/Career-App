@@ -152,7 +152,7 @@ const NAV_ITEMS = [
   { id: "home", label: { fr: "Accueil", en: "Home" }, always: true, icon: "home" },
   { id: "import", label: { fr: "Importer CV", en: "Import CV" }, always: true, icon: "upload" },
   { id: "lettre", label: { fr: "Lettre & Email IA", en: "Letter & Email AI" }, icon: "mail" },
-  { id: "competences", label: { fr: "Test de compétences", en: "Skills test" }, icon: "check" },
+  { id: "competences", label: { fr: "Quiz sur l'offre", en: "Quiz on the offer" }, icon: "check" },
   { id: "candidatures", label: { fr: "Candidatures", en: "Applications" }, always: true, icon: "briefcase" },
   { id: "entretiens", label: { fr: "Entretiens", en: "Interviews" }, icon: "chat" },
   { id: "negociation", label: { fr: "Négociation", en: "Negotiation" }, icon: "scale" },
