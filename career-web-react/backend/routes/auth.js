@@ -303,6 +303,14 @@ app.post("/api/auth/register", async (req, res) => {
       return res.status(409).json({ error: "Un compte existe déjà avec cet email." });
     }
 
+    const { rows: emailAddressRows } = await db.query(
+      "SELECT user_id FROM user_email_addresses WHERE email = $1 LIMIT 1",
+      [email]
+    );
+    const emailAddressOwnerId = emailAddressRows[0]?.user_id || null;
+    if (emailAddressOwnerId && emailAddressOwnerId !== reusableUnverified?.id) {
+      return res.status(409).json({ error: "Un compte existe deja avec cet email." });
+    }
     if (requestedUsername) {
       const usernameOwner = await getUserRowByUsername(requestedUsername);
       if (usernameOwner && usernameOwner.id !== reusableUnverified?.id) {
@@ -399,6 +407,9 @@ app.post("/api/auth/register", async (req, res) => {
       verification: { email: verification.email, expiresAt: verification.expiresAt, resendAfterSeconds: 30 }
     });
   } catch (error) {
+    if (error?.code === "23505" && String(error?.constraint || "").includes("user_email_addresses_email")) {
+      return res.status(409).json({ error: "Un compte existe deja avec cet email." });
+    }
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
