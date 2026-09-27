@@ -8,6 +8,21 @@ function normalize(value) {
     .trim();
 }
 
+function escapeRegex(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Verification par limite de mot (pas .includes() brut) : un mot-cl\u00e9 court
+// comme "git" ou "r" apparait comme simple sous-chaine dans des mots
+// francais courants ("s'agit", "porter"...) sans aucun rapport avec la
+// competence recherchee. Fonctionne aussi pour les mots-cl\u00e9s a caracteres
+// speciaux ("c++") ou multi-mots ("power bi") : [^a-z0-9] comme delimiteur
+// plutot que \b, qui echouerait sur "c++" suivi d'une virgule (deux
+// caracteres non-mot consecutifs = pas de transition \w/\W detectee par \b).
+function matchesKeywordBoundary(normalizedText, keyword) {
+  return new RegExp(`(^|[^a-z0-9])${escapeRegex(keyword)}([^a-z0-9]|$)`, "i").test(normalizedText);
+}
+
 function unique(list) {
   return [...new Set(list.filter(Boolean))];
 }
@@ -99,7 +114,7 @@ function inferJobDescription(text) {
 
 export function extractOfferSummary(text) {
   const normalized = normalize(text);
-  const skills = SKILL_KEYWORDS.filter((skill) => normalized.includes(skill));
+  const skills = SKILL_KEYWORDS.filter((skill) => matchesKeywordBoundary(normalized, skill));
   const softSkills = SOFT_SKILL_KEYWORDS.filter((skill) => normalized.includes(normalize(skill)));
   const yearsMatch = normalized.match(/(\d+)\s*(ans|an|years|year)/);
   const experienceMin = yearsMatch ? Number(yearsMatch[1]) : 1;

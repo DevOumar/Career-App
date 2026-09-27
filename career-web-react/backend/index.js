@@ -1939,12 +1939,13 @@ function extractLocalJobSummary(text) {
   const raw = cleanExtractedText(text);
   const normalized = normalizeText(raw);
   const lines = raw.split(/\n+/).map((line) => line.trim()).filter(Boolean);
+  // Verification par limite de mot pour tous les mots-cles (pas seulement
+  // les courts) : "git" ou "r" en .includes() brut matchent a l'interieur
+  // de mots francais courants ("s'agit", "porter"...) sans rapport avec la
+  // competence recherchee.
   const skills = SKILL_KEYWORDS.filter((skill) => {
     const normalizedSkill = normalizeText(skill);
-    if (normalizedSkill.length <= 2) {
-      return new RegExp(`(^|[^a-z0-9])${escapeRegex(normalizedSkill)}([^a-z0-9]|$)`, "i").test(normalized);
-    }
-    return normalized.includes(normalizedSkill);
+    return new RegExp(`(^|[^a-z0-9])${escapeRegex(normalizedSkill)}([^a-z0-9]|$)`, "i").test(normalized);
   });
   const softSkills = JOB_SOFT_SKILLS.filter((skill) => normalized.includes(normalizeText(skill)));
   const yearsMatch = normalized.match(/(\d+)\s*(ans|an|years|year)/);
@@ -1988,12 +1989,12 @@ function sanitizeAiJobExtraction(raw, sourceText) {
     }
     return true;
   });
+  // Meme correctif que extractLocalJobSummary : limite de mot pour tous les
+  // mots-cles, pas seulement les courts (cf. bug "git" detecte dans
+  // "s'agit").
   const detectedSkills = SKILL_KEYWORDS.filter((skill) => {
     const normalizedSkill = normalizeText(skill);
-    if (normalizedSkill.length <= 2) {
-      return new RegExp(`(^|[^a-z0-9])${escapeRegex(normalizedSkill)}([^a-z0-9]|$)`, "i").test(normalizedSource);
-    }
-    return normalizedSource.includes(normalizedSkill);
+    return new RegExp(`(^|[^a-z0-9])${escapeRegex(normalizedSkill)}([^a-z0-9]|$)`, "i").test(normalizedSource);
   });
   const skills = uniqueByNormalized([...aiSkills, ...detectedSkills, ...(fallback.skills || [])])
     .filter((skill) => {
