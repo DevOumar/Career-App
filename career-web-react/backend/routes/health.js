@@ -245,7 +245,8 @@ export function registerHealthRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    aiConfigCandidates
   } = app.locals.ctx;
 
 app.get("/", (_req, res) => {
@@ -286,9 +287,11 @@ app.get("/api/health", async (_req, res) => {
   }
   res.json({
     ok: ping.rows[0]?.ok === 1,
-    aiProvider: AI_PROVIDER,
-    aiModel: AI_MODEL || null,
-    aiKeyConfigured: Boolean(aiExtractionConfig()?.apiKey),
+    // Fournisseur principal réellement utilisé, puis ordre de repli.
+    aiProvider: aiConfigCandidates()[0]?.provider || "none",
+    aiModel: aiConfigCandidates()[0]?.model || null,
+    aiFallbacks: aiConfigCandidates("chat").slice(1).map((item) => `${item.provider}/${item.model}`),
+    aiKeyConfigured: aiConfigCandidates().length > 0,
     stripeEnabled: Boolean(stripe) && getPlatformSettingBool("stripe_enabled"),
     googleSignInEnabled: Boolean(googleOAuthClient) && getPlatformSettingBool("google_signin_enabled"),
     // Bascule temporaire démo/soutenance : signale au frontend de sauter la

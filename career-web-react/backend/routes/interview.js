@@ -94,7 +94,8 @@ export function registerInterviewRoutes(app) {
     getPublicUserById,
     computePremiumAccess,
     affectedRowCount,
-    resolveSubscriptionCredits
+    resolveSubscriptionCredits,
+    callAiChat
   } = app.locals.ctx;
 
   // Le simulateur d'entretiens n'est inclus que dans le plan Trajectoire Pro
@@ -134,67 +135,15 @@ export function registerInterviewRoutes(app) {
     throw lastError;
   }
 
+  // Modèle payant (OpenAI) en priorité, repli automatique sur Groq.
   async function callLlmMessagesOnce(messages) {
-    const apiKey = GROQ_API_KEY || OPENAI_API_KEY || XAI_API_KEY;
-    const provider = GROQ_API_KEY ? "groq" : OPENAI_API_KEY ? "openai" : XAI_API_KEY ? "xai" : "none";
-    const preferredGroqModel = String(AI_MODEL || "").trim() || "openai/gpt-oss-120b";
-    const groqModels = [...new Set([preferredGroqModel, "openai/gpt-oss-20b"])];
-
-    if (provider === "groq" && GROQ_API_KEY) {
-      for (const model of groqModels) {
-        try {
-          const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${GROQ_API_KEY}`
-            },
-            body: JSON.stringify({
-              model,
-              messages,
-              temperature: 0.7,
-              max_tokens: 1500
-            })
-          });
-          if (response.ok) {
-            const data = await response.json();
-            return data.choices?.[0]?.message?.content || "";
-          }
-          const errorText = await response.text().catch(() => "");
-          console.warn(`Erreur Groq LLM (${model}): ${response.status} ${errorText.slice(0, 240)}`);
-        } catch (err) {
-          console.warn(`Erreur Groq LLM (${model}):`, err.message);
-        }
-      }
+    try {
+      return await callAiChat({ messages, temperature: 0.7, maxTokens: 1500 });
+    } catch (_error) {
+      // Aucune réponse inventée : sans réponse réelle du modèle, l'échange
+      // s'interrompt avec une erreur explicite (le candidat peut réessayer).
+      throw Object.assign(new Error("Le recruteur IA est momentanément indisponible. Réessayez dans un instant."), { statusCode: 503 });
     }
-
-    if (provider === "openai" && OPENAI_API_KEY) {
-      try {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${OPENAI_API_KEY}`
-          },
-          body: JSON.stringify({
-            model: "gpt-4o-mini",
-            messages,
-            temperature: 0.7,
-            max_tokens: 1500
-          })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          return data.choices?.[0]?.message?.content || "";
-        }
-      } catch (err) {
-        console.warn("Erreur OpenAI LLM:", err.message);
-      }
-    }
-
-    // Aucune réponse inventée : sans réponse réelle du modèle, l'échange
-    // s'interrompt avec une erreur explicite (le candidat peut réessayer).
-    throw Object.assign(new Error("Le recruteur IA est momentanément indisponible. Réessayez dans un instant."), { statusCode: 503 });
   }
 
   // Quotas du jour (entretiens et test technique) pour l'affichage.

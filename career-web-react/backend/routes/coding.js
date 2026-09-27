@@ -16,7 +16,8 @@ export function registerCodingRoutes(app) {
     CODING_DAILY_LIMIT,
     consumeDailyQuota,
     releaseDailyQuota,
-    sendDailyQuotaReached
+    sendDailyQuotaReached,
+    callAiChat
   } = app.locals.ctx;
 
   // Limites des champs envoyés à l'IA (coût et injection de consignes).
@@ -40,77 +41,23 @@ export function registerCodingRoutes(app) {
     return true;
   }
 
+  // Modèle payant (OpenAI) en priorité, repli automatique sur Groq.
+  // null si aucun fournisseur ne répond (l'appelant renvoie alors une 503).
   async function callLlm(systemPrompt, userPrompt, jsonMode = true) {
-    const apiKey = GROQ_API_KEY || OPENAI_API_KEY || XAI_API_KEY;
-    const preferredGroqModel = String(AI_MODEL || "").trim() || "openai/gpt-oss-120b";
-    const groqModels = [...new Set([preferredGroqModel, "openai/gpt-oss-20b"])];
-
-    const messages = [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt }
-    ];
-
-    if (GROQ_API_KEY) {
-      for (const model of groqModels) {
-        try {
-          const bodyPayload = {
-            model,
-            messages,
-            temperature: 0.2,
-            max_tokens: 2200
-          };
-          if (jsonMode) {
-            bodyPayload.response_format = { type: "json_object" };
-          }
-          const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${GROQ_API_KEY}`
-            },
-            body: JSON.stringify(bodyPayload)
-          });
-          if (response.ok) {
-            const data = await response.json();
-            return data.choices?.[0]?.message?.content || "";
-          }
-          const errText = await response.text().catch(() => "");
-          console.warn(`Groq Coding error (${model}): ${response.status} ${errText.slice(0, 200)}`);
-        } catch (err) {
-          console.warn(`Groq Coding error (${model}):`, err.message);
-        }
-      }
+    try {
+      return await callAiChat({
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        temperature: 0.2,
+        maxTokens: 2200,
+        jsonMode
+      });
+    } catch (error) {
+      console.warn("Test technique : IA indisponible :", error.message);
+      return null;
     }
-
-    if (OPENAI_API_KEY) {
-      try {
-        const bodyPayload = {
-          model: "gpt-4o-mini",
-          messages,
-          temperature: 0.2,
-          max_tokens: 2200
-        };
-        if (jsonMode) {
-          bodyPayload.response_format = { type: "json_object" };
-        }
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${OPENAI_API_KEY}`
-          },
-          body: JSON.stringify(bodyPayload)
-        });
-        if (response.ok) {
-          const data = await response.json();
-          return data.choices?.[0]?.message?.content || "";
-        }
-      } catch (err) {
-        console.warn("OpenAI Coding error:", err.message);
-      }
-    }
-
-    return null;
   }
 
   // Fallback challenges if LLM key is absent or offline

@@ -2378,6 +2378,89 @@ function aiExtractionConfig() {
   return null;
 }
 
+// ---------------------------------------------------------------- modèles IA
+// OpenAI (payant, crédit prépayé) en premier dès que OPENAI_API_KEY est
+// défini, puis repli automatique sur le fournisseur historique (Groq) si
+// OpenAI ne répond pas ou si le crédit est épuisé : l'app ne tombe jamais
+// en panne à cause du fournisseur. Modèles modifiables sans code :
+// OPENAI_MODEL (qualité : CV, offres, lettres, entretiens...) et
+// OPENAI_MODEL_LIGHT (petites tâches : domaine d'entreprise pour Email Scout).
+const OPENAI_MODEL = String(process.env.OPENAI_MODEL || "gpt-4.1-mini").trim();
+const OPENAI_MODEL_LIGHT = String(process.env.OPENAI_MODEL_LIGHT || "gpt-4.1-nano").trim();
+const OPENAI_CHAT_URL = "https://api.openai.com/v1/chat/completions";
+const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
+
+// tier : "structured" (extractions JSON), "chat" (échanges texte) ou
+// "light" (petites tâches, modèle OpenAI le moins cher).
+function aiConfigCandidates(tier = "structured") {
+  const candidates = [];
+  if (OPENAI_API_KEY) {
+    candidates.push({
+      provider: "openai",
+      apiKey: OPENAI_API_KEY,
+      model: tier === "light" ? OPENAI_MODEL_LIGHT : OPENAI_MODEL,
+      url: OPENAI_CHAT_URL
+    });
+  }
+  if (GROQ_API_KEY) {
+    const groqModel = AI_PROVIDER === "groq" && AI_MODEL ? AI_MODEL : "openai/gpt-oss-120b";
+    candidates.push({ provider: "groq", apiKey: GROQ_API_KEY, model: groqModel, url: GROQ_CHAT_URL });
+    // Quota journalier distinct du modèle principal : dernier recours gratuit,
+    // réservé aux échanges texte (trop peu fiable pour les extractions JSON).
+    if (tier !== "structured" && groqModel !== "openai/gpt-oss-20b") {
+      candidates.push({ provider: "groq", apiKey: GROQ_API_KEY, model: "openai/gpt-oss-20b", url: GROQ_CHAT_URL });
+    }
+  }
+  const legacy = aiExtractionConfig();
+  if (legacy?.apiKey && !candidates.some((item) => item.provider === legacy.provider)) candidates.push(legacy);
+  return candidates;
+}
+
+// Les modèles « à raisonnement » (gpt-5*, o*) n'acceptent que la
+// température par défaut.
+function aiTemperature(config, value) {
+  return /^(gpt-5|o\d)/i.test(String(config?.model || "")) ? {} : { temperature: value };
+}
+
+async function tryAiConfigs(configs, run) {
+  let lastError = new Error("Aucun fournisseur IA configuré.");
+  for (const config of configs) {
+    try {
+      return await run(config);
+    } catch (error) {
+      lastError = error;
+      console.warn(`IA ${config.provider}/${config.model} indisponible (${error.message}), essai du fournisseur suivant.`);
+    }
+  }
+  throw lastError;
+}
+
+// Appel texte générique (entretiens, test technique, Email Scout) : renvoie
+// le contenu du premier fournisseur qui répond.
+async function callAiChat({ messages, temperature = 0.4, maxTokens = 1500, jsonMode = false, tier = "chat", timeoutMs = AI_TIMEOUT_MS }) {
+  const configs = aiConfigCandidates(tier);
+  if (!configs.length) throw Object.assign(new Error("Aucun fournisseur IA configuré."), { statusCode: 503 });
+  return tryAiConfigs(configs, async (config) => {
+    const response = await fetch(config.url, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.apiKey}`, "Content-Type": "application/json" },
+      signal: AbortSignal.timeout(timeoutMs),
+      body: JSON.stringify({
+        model: config.model,
+        messages,
+        ...aiTemperature(config, temperature),
+        max_completion_tokens: maxTokens,
+        ...(jsonMode ? { response_format: { type: "json_object" } } : {})
+      })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data?.error?.message || `Erreur IA ${response.status}`);
+    const content = data.choices?.[0]?.message?.content || "";
+    if (!content.trim()) throw new Error("Réponse IA vide.");
+    return content;
+  });
+}
+
 function normalizeAiList(value, max = 40) {
   if (!Array.isArray(value)) return [];
   return [...new Set(value.map((item) => coerceString(item)).filter(Boolean))].slice(0, max);
@@ -2552,8 +2635,8 @@ function sanitizeAiJobExtraction(raw, sourceText) {
 }
 
 async function extractJobWithAi(sourceText) {
-  const config = aiExtractionConfig();
-  if (!config?.apiKey) return null;
+  const configs = aiConfigCandidates();
+  if (!configs.length) return null;
 
   const messages = [
     {
@@ -2570,6 +2653,10 @@ async function extractJobWithAi(sourceText) {
   ];
 
   async function callAi(responseFormat) {
+    return tryAiConfigs(configs, (config) => callAiWith(config, responseFormat));
+  }
+
+  async function callAiWith(config, responseFormat) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
     try {
@@ -2582,7 +2669,7 @@ async function extractJobWithAi(sourceText) {
         signal: controller.signal,
         body: JSON.stringify({
           model: config.model,
-          temperature: 0.05,
+          ...aiTemperature(config, 0.05),
           messages,
           response_format: responseFormat
         })
@@ -2673,8 +2760,8 @@ function sanitizeAiMatchAnalysis(raw, { candidate, offer }) {
 }
 
 async function analyzeMatchWithAi(candidate, offer) {
-  const config = aiExtractionConfig();
-  if (!config?.apiKey) return null;
+  const configs = aiConfigCandidates();
+  if (!configs.length) return null;
 
   const candidateName = [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ").trim();
 
@@ -2698,6 +2785,10 @@ async function analyzeMatchWithAi(candidate, offer) {
   ];
 
   async function callAi(responseFormat) {
+    return tryAiConfigs(configs, (config) => callAiWith(config, responseFormat));
+  }
+
+  async function callAiWith(config, responseFormat) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
     try {
@@ -2710,7 +2801,7 @@ async function analyzeMatchWithAi(candidate, offer) {
         signal: controller.signal,
         body: JSON.stringify({
           model: config.model,
-          temperature: 0.2,
+          ...aiTemperature(config, 0.2),
           messages,
           response_format: responseFormat
         })
@@ -2797,8 +2888,8 @@ function sanitizeAiCoverLetter(raw, { candidate, offer, language }) {
 }
 
 async function generateCoverLetterWithAi(candidate, offer, tone, language) {
-  const config = aiExtractionConfig();
-  if (!config?.apiKey) return null;
+  const configs = aiConfigCandidates();
+  if (!configs.length) return null;
 
   const candidateName = [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ").trim();
   const toneLabel = TONE_LABELS[language]?.[tone] || TONE_LABELS.fr[tone] || TONE_LABELS.fr.formal;
@@ -2824,6 +2915,10 @@ async function generateCoverLetterWithAi(candidate, offer, tone, language) {
   ];
 
   async function callAi(responseFormat) {
+    return tryAiConfigs(configs, (config) => callAiWith(config, responseFormat));
+  }
+
+  async function callAiWith(config, responseFormat) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
     try {
@@ -2836,7 +2931,7 @@ async function generateCoverLetterWithAi(candidate, offer, tone, language) {
         signal: controller.signal,
         body: JSON.stringify({
           model: config.model,
-          temperature: 0.55,
+          ...aiTemperature(config, 0.55),
           messages,
           response_format: responseFormat
         })
@@ -2940,8 +3035,8 @@ function sanitizeAiCvOptimization(raw, { candidate, offer }) {
 }
 
 async function generateCvAtsOptimizationWithAi(candidate, offer, language) {
-  const config = aiExtractionConfig();
-  if (!config?.apiKey) return null;
+  const configs = aiConfigCandidates();
+  if (!configs.length) return null;
 
   const langLabel = language === "en" ? "in English" : "en francais";
 
@@ -2961,6 +3056,10 @@ async function generateCvAtsOptimizationWithAi(candidate, offer, language) {
   ];
 
   async function callAi(responseFormat) {
+    return tryAiConfigs(configs, (config) => callAiWith(config, responseFormat));
+  }
+
+  async function callAiWith(config, responseFormat) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
     try {
@@ -2973,7 +3072,7 @@ async function generateCvAtsOptimizationWithAi(candidate, offer, language) {
         signal: controller.signal,
         body: JSON.stringify({
           model: config.model,
-          temperature: 0.3,
+          ...aiTemperature(config, 0.3),
           messages,
           response_format: responseFormat
         })
@@ -3048,8 +3147,8 @@ function localNegotiationSummary(language) {
 }
 
 async function negotiationReplyWithAi(candidate, offer, history, options = {}) {
-  const config = aiExtractionConfig();
-  if (!config?.apiKey) return null;
+  const configs = aiConfigCandidates();
+  if (!configs.length) return null;
 
   const language = options.language === "en" ? "en" : "fr";
   const finish = Boolean(options.finish);
@@ -3087,6 +3186,10 @@ async function negotiationReplyWithAi(candidate, offer, history, options = {}) {
   ];
 
   async function callAi(responseFormat) {
+    return tryAiConfigs(configs, (config) => callAiWith(config, responseFormat));
+  }
+
+  async function callAiWith(config, responseFormat) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
     try {
@@ -3099,7 +3202,7 @@ async function negotiationReplyWithAi(candidate, offer, history, options = {}) {
         signal: controller.signal,
         body: JSON.stringify({
           model: config.model,
-          temperature: 0.6,
+          ...aiTemperature(config, 0.6),
           messages,
           response_format: responseFormat
         })
@@ -3781,15 +3884,14 @@ function computeMaxCompletionTokens(messages, responseFormat, ceiling = 8000) {
 }
 
 async function extractCvWithAi(sourceText) {
-  const config = aiExtractionConfig();
-  if (!config?.apiKey) return null;
+  const configs = aiConfigCandidates();
+  if (!configs.length) return null;
 
   // Le texte source est borné à une taille raisonnable : au-delà, on garde
   // le début (identité, résumé, expériences récentes — l'essentiel d'un CV)
   // plutôt que d'envoyer un texte trop long qui grignoterait tout le budget
   // de tokens disponible pour la réponse.
-  const CV_SOURCE_TEXT_CAP = 6000;
-  const messages = [
+  const buildMessages = (sourceCap) => [
     {
       role: "system",
       content:
@@ -3799,11 +3901,17 @@ async function extractCvWithAi(sourceText) {
       role: "user",
       content:
         "Structure ce CV. Cherche précisément: identité, titre, résumé, compétences techniques, soft skills, langues, expériences, formations, certifications, projets et centres d'intérêt. Pour les formations, repère toute école, université ou diplôme mentionné (quel que soit son nom : Master, Mastère, Licence, Bachelor, BTS, DUT, etc.), même écrits sans titre de section clair. Pour les expériences, repère chaque entreprise mentionnée (quel que soit son nom), stages, alternances, CDI, CDD, dates et descriptions. Pour le champ description de chaque expérience et formation, découpe le texte en plusieurs points distincts (une réalisation/mission par ligne, phrases courtes et concrètes) séparés par des retours à la ligne (\\n) plutôt qu'un seul paragraphe continu — ne fusionne jamais deux idées différentes sur la même ligne.\n\n" +
-        `CV:\n${sourceText.slice(0, CV_SOURCE_TEXT_CAP)}`
+        `CV:\n${sourceText.slice(0, sourceCap)}`
     }
   ];
 
   async function callAi(responseFormat) {
+    return tryAiConfigs(configs, (config) => callAiWith(config, responseFormat));
+  }
+
+  async function callAiWith(config, responseFormat) {
+    const isOpenAi = config.provider === "openai";
+    const messages = buildMessages(isOpenAi ? 30000 : 6000);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
     try {
@@ -3816,8 +3924,8 @@ async function extractCvWithAi(sourceText) {
         signal: controller.signal,
         body: JSON.stringify({
           model: config.model,
-          temperature: 0,
-          max_completion_tokens: computeMaxCompletionTokens(messages, responseFormat),
+          ...aiTemperature(config, 0),
+          max_completion_tokens: isOpenAi ? 12000 : computeMaxCompletionTokens(messages, responseFormat),
           response_format: responseFormat,
           messages
         })
@@ -5359,6 +5467,11 @@ const AI_PRICE_TABLE = {
   "openai/gpt-oss-120b": { input: 0.15, output: 0.6 },
   "openai/gpt-oss-20b": { input: 0.075, output: 0.3 },
   "gpt-4o-mini": { input: 0.15, output: 0.6 },
+  // Tarifs officiels OpenAI (developers.openai.com/api/docs/pricing).
+  "gpt-4.1-mini": { input: 0.4, output: 1.6 },
+  "gpt-4.1-nano": { input: 0.1, output: 0.4 },
+  "gpt-5-mini": { input: 0.25, output: 2.0 },
+  "gpt-5-nano": { input: 0.05, output: 0.4 },
   "whisper-large-v3-turbo": { audioPerHour: 0.04 },
   "whisper-large-v3": { audioPerHour: 0.111 }
 };
@@ -5772,6 +5885,8 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  callAiChat,
+  aiConfigCandidates,
   resolveSubscriptionCredits,
   requireMatchingSession,
   mfa,

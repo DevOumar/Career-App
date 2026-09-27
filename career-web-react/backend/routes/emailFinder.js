@@ -245,8 +245,47 @@ export function registerEmailFinderRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    callAiChat
   } = app.locals.ctx;
+
+// Domaine e-mail officiel d'une entreprise : l'IA propose (ex. « Vinci
+// Construction » → vinci-construction.com), un enregistrement MX réel
+// confirme. Sans confirmation, on garde la déduction simple du nom : jamais
+// de domaine inventé retenu.
+async function resolveCompanyDomain(companyName) {
+  const guess = companyNameToDomain(companyName);
+  try {
+    const content = await callAiChat({
+      tier: "light",
+      jsonMode: true,
+      temperature: 0,
+      maxTokens: 600,
+      timeoutMs: 12000,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Tu identifies le nom de domaine utilisé pour les adresses e-mail professionnelles d’une entreprise. Réponds uniquement en JSON : {\"domain\":\"exemple.com\"}. Si tu n’es pas certain, réponds {\"domain\":\"\"}. N’invente jamais."
+        },
+        { role: "user", content: `Entreprise : ${companyName.slice(0, 120)}` }
+      ]
+    });
+    const candidate = String(JSON.parse(content)?.domain || "")
+      .trim()
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .replace(/^www\./, "")
+      .replace(/\/.*$/, "");
+    if (/^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(candidate)) {
+      const records = await dns.resolveMx(candidate).catch(() => []);
+      if (records.length) return { domain: candidate, source: "ai" };
+    }
+  } catch (_error) {
+    // IA indisponible : déduction simple ci-dessous.
+  }
+  return { domain: guess, source: "guess" };
+}
 
 app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
   try {
@@ -269,7 +308,8 @@ app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
-    const domain = domainOverride || companyNameToDomain(companyName);
+    const resolved = domainOverride ? { domain: domainOverride, source: "user" } : await resolveCompanyDomain(companyName);
+    const domain = resolved.domain;
     if (!domain) {
       return res.status(400).json({ error: "Impossible de déterminer un nom de domaine à partir de l'entreprise." });
     }
@@ -308,7 +348,7 @@ app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
 
     await logSecurityEvent(req, userId, "email_finder_search", { companyName, domain, firstName, lastName });
 
-    return res.json({ domain, domainHasMx, best, items: ranked });
+    return res.json({ domain, domainSource: resolved.source, domainHasMx, best, items: ranked });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
