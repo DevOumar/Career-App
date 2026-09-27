@@ -6,6 +6,7 @@ import { useState, useEffect } from "react";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { getFriendlyErrorMessage } from "../../lib/errors.js";
 import { generateCoverLetter, listCoverLetters, saveCoverLetter, updateCoverLetter, deleteCoverLetter } from "../../lib/inMemoryDb.js";
+import { loadPdfFitter, slugifyForFilename, downloadBlob } from "../../lib/pdfDownload.js";
 import { COVER_LETTER_COPY } from "./coverLetterCopy.js";
 import { ModuleHero, ModuleHistorySidebar, ModuleTargetCard, ModuleTipsCard, LetterHeroArt, LetterTemplateThumb } from "../../components/ModuleWorkspace.jsx";
 import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
@@ -29,6 +30,7 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draftLetter, setDraftLetter] = useState("");
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
   const [conversations, setConversations] = useState([]);
   const [conversationId, setConversationId] = useState(null);
   // Offre active : celle de la conversation reprise (enregistrée avec
@@ -156,12 +158,22 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
     setTimeout(() => setCopied(false), 1800);
   }
 
-  function handleDownload() {
-    document.body.classList.add("print-cover-letter-only");
-    const cleanup = () => document.body.classList.remove("print-cover-letter-only");
-    window.addEventListener("afterprint", cleanup, { once: true });
-    window.print();
-    setTimeout(cleanup, 1200);
+  // Vrai fichier PDF (react-pdf), garanti sur une page A4, au lieu de la
+  // fenêtre d'impression du navigateur.
+  async function handleDownload() {
+    if (isDownloadingPdf) return;
+    setIsDownloadingPdf(true);
+    setError("");
+    try {
+      const fitToOnePage = await loadPdfFitter("letter");
+      const fit = await fitToOnePage({ subject, letter, template });
+      const baseName = offer?.company || offer?.title || [candidate?.firstName, candidate?.lastName].filter(Boolean).join(" ");
+      downloadBlob(fit.blob, `Lettre-${slugifyForFilename(baseName)}-${new Date().toISOString().slice(0, 10)}.pdf`);
+    } catch (err) {
+      setError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setIsDownloadingPdf(false);
+    }
   }
 
   function startEditing() {
@@ -352,8 +364,8 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
                   <button type="button" className="btn-ghost" onClick={handleCopy}>
                     {copied ? copy.copied : copy.copy}
                   </button>
-                  <button type="button" className="btn-main" onClick={handleDownload}>
-                    <UiIcon name="download" /> {copy.download}
+                  <button type="button" className="btn-main" onClick={handleDownload} disabled={isDownloadingPdf}>
+                    {isDownloadingPdf ? <span className="btn-spinner" /> : <UiIcon name="download" />} {copy.download}
                   </button>
                 </>
               )}
