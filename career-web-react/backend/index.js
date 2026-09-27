@@ -2607,9 +2607,10 @@ const SKILLS_TEST_GRADING_SCHEMA = {
         },
         required: ["id", "score"]
       }
-    }
+    },
+    synthesis: { type: "string" }
   },
-  required: ["scores"]
+  required: ["scores", "synthesis"]
 };
 
 // Repli deterministe (sans IA) : questions generiques de bonnes pratiques
@@ -2951,12 +2952,38 @@ function buildLocalOpenAnswerScore(question, answerText) {
   return 2;
 }
 
+// Repli deterministe pour la synthese finale (IA indisponible, ou champ
+// synthesis absent/invalide dans sa reponse) : texte generique par palier,
+// sans les details personnalises (points faibles reels) que seule l'IA peut
+// identifier a partir des reponses effectives.
+function buildLocalSynthesis(finalScore, language) {
+  if (language === "en") {
+    if (finalScore >= 75) {
+      return "Great result: your answers show a solid command of the skills tested for this role. You're in a strong position to apply.";
+    }
+    if (finalScore >= 45) {
+      return "Decent result overall, but a few areas still need work before you're fully ready — review the questions you missed and try again.";
+    }
+    return "This result points to real gaps on several of the skills tested here. Take time to strengthen these areas before applying for this role.";
+  }
+  if (finalScore >= 75) {
+    return "Très bon résultat : vos réponses montrent une bonne maîtrise des compétences testées pour ce poste. Vous êtes en bonne position pour postuler.";
+  }
+  if (finalScore >= 45) {
+    return "Résultat correct dans l'ensemble, mais certains points restent à travailler avant d'être pleinement prêt(e) — revoyez les questions manquées et retentez le test.";
+  }
+  return "Ce résultat révèle de vraies lacunes sur plusieurs compétences testées ici. Prenez le temps de les retravailler avant de postuler à ce poste.";
+}
+
 // Revalide chaque score IA (borne 0-4) exactement comme sanitizeAiMatchAnalysis
 // borne son score 0-100 : si l'IA n'a pas note une question donnee ou a
 // renvoye une valeur non numerique, repli sur la note heuristique locale pour
 // cette question precise (pas d'echec global du test pour une seule entree
-// manquante).
-function sanitizeAiSkillsTestGrading(raw, { openQuestions, answers }) {
+// manquante). qcmResults est necessaire ici uniquement pour estimer la note
+// globale provisoire (QCM + scores valides ci-dessous) qui determine le
+// palier de synthese en cas de repli local — l'IA, elle, estime cette note
+// elle-meme dans le meme appel (cf. gradeSkillsTestOpenAnswersWithAi).
+function sanitizeAiSkillsTestGrading(raw, { qcmResults, openQuestions, answers, language }) {
   const parsed = raw && typeof raw === "object" ? raw : {};
   const aiScores = new Map(
     (Array.isArray(parsed.scores) ? parsed.scores : [])
@@ -2964,7 +2991,7 @@ function sanitizeAiSkillsTestGrading(raw, { openQuestions, answers }) {
       .map((item) => [coerceString(item.id), item])
   );
 
-  return openQuestions.map((question) => {
+  const scores = openQuestions.map((question) => {
     const aiEntry = aiScores.get(question.id);
     const answerText = coerceString(answers?.[question.id]);
     const fallbackScore = buildLocalOpenAnswerScore(question, answerText);
@@ -2976,12 +3003,17 @@ function sanitizeAiSkillsTestGrading(raw, { openQuestions, answers }) {
       feedback: coerceString(aiEntry?.feedback)
     };
   });
+
+  const rawTotal = qcmResults.reduce((sum, item) => sum + item.score, 0) + scores.reduce((sum, item) => sum + item.score, 0);
+  const provisionalFinalScore = Math.round((rawTotal / SKILLS_TEST_MAX_RAW_SCORE) * 100);
+  const synthesis = coerceString(parsed.synthesis) || buildLocalSynthesis(provisionalFinalScore, language);
+
+  return { scores, synthesis };
 }
 
-async function gradeSkillsTestOpenAnswersWithAi(openQuestions, answers, language) {
+async function gradeSkillsTestOpenAnswersWithAi(qcmQuestions, qcmResults, openQuestions, answers, language) {
   const config = aiExtractionConfig();
   if (!config?.apiKey) return null;
-  if (!openQuestions.length) return [];
 
   const langLabel = language === "en" ? "in English" : "en francais";
   const items = openQuestions.map((question) => ({
@@ -2989,16 +3021,31 @@ async function gradeSkillsTestOpenAnswersWithAi(openQuestions, answers, language
     "énoncé": question["énoncé"],
     réponse: coerceString(answers?.[question.id])
   }));
+  // Chaque QCM est deja corrige cote serveur (voir gradeQcmAnswer) : on ne
+  // transmet que enonce + correct/incorrect a l'IA, jamais la bonne reponse
+  // elle-meme, pour qu'elle sache quelles competences sont fragiles sans
+  // avoir a re-corriger quoi que ce soit.
+  const qcmSummary = qcmQuestions.map((question, index) => ({
+    "énoncé": question["énoncé"],
+    correct: qcmResults[index]?.score === SKILLS_TEST_QCM_MAX
+  }));
 
   const messages = [
     {
       role: "system",
       content:
-        "Tu es un evaluateur recrutement rigoureux. Tu notes des reponses ouvertes a un test de competences, sur une echelle de 0 a 4 par reponse (0 = hors sujet ou absente, 1 = tres insuffisante, 2 = partielle, 3 = bonne, 4 = excellente et precise). Sois exigeant : une reponse vague, generique ou trop courte pour etre evaluee ne merite pas plus de 1 ou 2. Reponds uniquement en JSON."
+        "Tu es un evaluateur recrutement rigoureux. Tu notes des reponses ouvertes a un test de competences, sur une echelle de 0 a 4 par reponse (0 = hors sujet ou absente, 1 = tres insuffisante, 2 = partielle, 3 = bonne, 4 = excellente et precise). Sois exigeant : une reponse vague, generique ou trop courte pour etre evaluee ne merite pas plus de 1 ou 2. " +
+        "Tu rediges aussi un champ synthesis (1 a 2 phrases, dans la langue demandee) qui resume la performance du candidat, en te basant precisement sur les competences ratees (QCM incorrects fournis) et les reponses ouvertes que tu notes mal. Ne mentionne jamais le score chiffre ni un pourcentage dans synthesis (il est deja affiche ailleurs a l'ecran) : synthesis est un verdict qualitatif, pas un recapitulatif de note. Calcule mentalement une estimation de la note globale (chaque QCM correct vaut 4 points sur 32 au total, chaque reponse ouverte que tu notes vaut jusqu'a 4 points sur 32 au total, ramene le tout sur 100) et adapte STRICTEMENT le ton de synthesis a ce palier : " +
+        "si elle est >= 75, sois franchement positif et affirmatif des la premiere phrase (ex: \"Vous maitrisez tres bien les competences cles de ce poste\"), confirme explicitement que le candidat est pret a postuler, et mentionne au plus un point mineur a consolider s'il y en a un reellement ; " +
+        "si elle est entre 45 et 74, ton neutre et factuel, nomme 1 a 2 points concrets a retravailler sans jugement de valeur ; " +
+        "si elle est < 45, ton incitatif et bienveillant sans etre decourageant, nomme precisement les sujets/competences a approfondir avant de postuler. Reponds uniquement en JSON."
     },
     {
       role: "user",
-      content: `Note chacune des reponses suivantes ${langLabel}, sur 4, avec un court retour justifiant la note.\n\n` + JSON.stringify(items).slice(0, 20000)
+      content:
+        `Note chacune des reponses suivantes ${langLabel}, sur 4, avec un court retour justifiant la note, puis redige la synthese finale.\n\n` +
+        `QCM deja corriges (competences testees) :\n${JSON.stringify(qcmSummary).slice(0, 8000)}\n\n` +
+        `Reponses ouvertes a noter :\n${JSON.stringify(items).slice(0, 20000)}`
     }
   ];
 
@@ -3036,10 +3083,10 @@ async function gradeSkillsTestOpenAnswersWithAi(openQuestions, answers, language
         type: "json_schema",
         json_schema: { name: "skills_test_grading", strict: false, schema: SKILLS_TEST_GRADING_SCHEMA }
       }),
-      { openQuestions, answers }
+      { qcmResults, openQuestions, answers, language }
     );
   } catch (_schemaError) {
-    return sanitizeAiSkillsTestGrading(await callAi({ type: "json_object" }), { openQuestions, answers });
+    return sanitizeAiSkillsTestGrading(await callAi({ type: "json_object" }), { qcmResults, openQuestions, answers, language });
   }
 }
 
@@ -5771,6 +5818,7 @@ app.locals.ctx = {
   generateSkillsTestQuestionsWithAi,
   gradeQcmAnswer,
   buildLocalOpenAnswerScore,
+  buildLocalSynthesis,
   sanitizeAiSkillsTestGrading,
   gradeSkillsTestOpenAnswersWithAi,
   computeSkillsTestFinalScore,

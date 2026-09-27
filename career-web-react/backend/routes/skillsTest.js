@@ -19,6 +19,7 @@ export function registerSkillsTestRoutes(app) {
     generateSkillsTestQuestionsWithAi,
     gradeQcmAnswer,
     buildLocalOpenAnswerScore,
+    buildLocalSynthesis,
     gradeSkillsTestOpenAnswersWithAi,
     computeSkillsTestFinalScore
   } = app.locals.ctx;
@@ -118,36 +119,40 @@ export function registerSkillsTestRoutes(app) {
         maxScore: SKILLS_TEST_QCM_MAX
       }));
 
-      let openScores = null;
+      let gradingResult = null;
       let provider = "local";
       try {
-        openScores = await gradeSkillsTestOpenAnswersWithAi(openQuestions, answers, language);
-        if (openScores) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
+        gradingResult = await gradeSkillsTestOpenAnswersWithAi(qcmQuestions, qcmResults, openQuestions, answers, language);
+        if (gradingResult) provider = AI_PROVIDER === "grok" ? "xai" : AI_PROVIDER;
       } catch (aiError) {
-        openScores = null;
+        gradingResult = null;
         console.warn(`Notation IA du test de competences indisponible: ${aiError.message}`);
       }
-      if (!openScores) {
-        openScores = openQuestions.map((question) => ({
+      if (!gradingResult) {
+        const localScores = openQuestions.map((question) => ({
           id: question.id,
           score: buildLocalOpenAnswerScore(question, answers?.[question.id]),
           feedback: ""
         }));
+        const rawTotal = qcmResults.reduce((sum, item) => sum + item.score, 0) + localScores.reduce((sum, item) => sum + item.score, 0);
+        const provisionalFinalScore = Math.round((rawTotal / SKILLS_TEST_MAX_RAW_SCORE) * 100);
+        gradingResult = { scores: localScores, synthesis: buildLocalSynthesis(provisionalFinalScore, language) };
       }
 
-      const openResults = openScores.map((item) => ({ ...item, type: "ouverte", maxScore: SKILLS_TEST_OPEN_MAX }));
+      const openResults = gradingResult.scores.map((item) => ({ ...item, type: "ouverte", maxScore: SKILLS_TEST_OPEN_MAX }));
       const results = [...qcmResults, ...openResults];
       const finalScore = computeSkillsTestFinalScore(results);
+      const synthesis = gradingResult.synthesis;
 
       const updatedAt = nowIso();
-      const updatedPayload = { ...stored, status: "graded", answers, results, finalScore, gradedAt: updatedAt };
+      const updatedPayload = { ...stored, status: "graded", answers, results, finalScore, synthesis, gradedAt: updatedAt };
       await db.query("UPDATE skills_tests SET payload_json = $1, updated_at = $2 WHERE id = $3", [
         JSON.stringify(updatedPayload),
         updatedAt,
         testId
       ]);
 
-      return res.json({ id: testId, results, finalScore, maxRawScore: SKILLS_TEST_MAX_RAW_SCORE, provider });
+      return res.json({ id: testId, results, finalScore, synthesis, maxRawScore: SKILLS_TEST_MAX_RAW_SCORE, provider });
     } catch (error) {
       return res.status(400).json({ error: error.message || "Notation du test impossible." });
     }

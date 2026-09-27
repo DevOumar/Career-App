@@ -9964,6 +9964,41 @@ input[aria-invalid="true"] {
   color: var(--danger, #a8071a);
 }
 
+/* Synthese finale personnalisee (meme appel IA que la notation) : encart
+   bordure gauche + fond teinte, meme langage visuel que .advice-card
+   (bordure gauche coloree) et .match-recommendation-level (teintes
+   rgba success/warning/danger) deja utilises ailleurs dans l'app. */
+.skills-test-synthesis {
+  width: 100%;
+  text-align: left;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line);
+  border-left-width: 4px;
+  padding: 0.9rem 1.1rem;
+}
+
+.skills-test-synthesis p {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.skills-test-synthesis.skills-test-synthesis-good {
+  border-left-color: var(--success, #237804);
+  background: rgba(35, 120, 4, 0.08);
+}
+
+.skills-test-synthesis.skills-test-synthesis-mid {
+  border-left-color: var(--warning, #b45309);
+  background: rgba(212, 56, 13, 0.08);
+}
+
+.skills-test-synthesis.skills-test-synthesis-bad {
+  border-left-color: var(--danger, #a8071a);
+  background: rgba(245, 34, 45, 0.08);
+}
+
 /* Salary negotiation */
 
 .negotiation-layout {

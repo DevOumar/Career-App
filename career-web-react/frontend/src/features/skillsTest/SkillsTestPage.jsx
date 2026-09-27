@@ -12,6 +12,12 @@ function scoreClass(score, maxScore) {
   return "skills-test-score-bad";
 }
 
+function synthesisTierClass(finalScore) {
+  if (finalScore >= 75) return "skills-test-synthesis-good";
+  if (finalScore >= 45) return "skills-test-synthesis-mid";
+  return "skills-test-synthesis-bad";
+}
+
 function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onGoToTarifs, onConsumeToken }) {
   const copy = SKILLS_TEST_COPY[language] || SKILLS_TEST_COPY.fr;
   // "start" -> "in-progress" -> "result", jamais de retour arriere hors
@@ -23,6 +29,7 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
   const [answers, setAnswers] = useState({});
   const [results, setResults] = useState([]);
   const [finalScore, setFinalScore] = useState(0);
+  const [synthesis, setSynthesis] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const [isGrading, setIsGrading] = useState(false);
   const [error, setError] = useState("");
@@ -102,6 +109,7 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
       const result = await gradeSkillsTest({ userId, id: testId, answers });
       setResults(result.results);
       setFinalScore(result.finalScore);
+      setSynthesis(result.synthesis || "");
       setStage("result");
       // idem : /grade a mis à jour le statut ("graded") et la note côté
       // serveur, on recharge la liste pour refléter le badge à jour.
@@ -123,6 +131,7 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
     setAnswers({});
     setResults([]);
     setFinalScore(0);
+    setSynthesis("");
     setError("");
   }
 
@@ -137,7 +146,23 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
     setQuestions(test.questions || []);
     setResults(test.results || []);
     setFinalScore(test.finalScore || 0);
+    setSynthesis(test.synthesis || "");
     setStage("result");
+  }
+
+  // Reprend un test "en attente" depuis l'historique : les 8 questions sont
+  // deja stockees en base depuis la generation initiale (test.questions),
+  // donc pas de nouvel appel a /generate ni de jeton consomme ici. Repart de
+  // la question 1 avec des reponses vierges (pas de sauvegarde des reponses
+  // partielles cote serveur pour l'instant, rien a reprendre a mi-chemin).
+  function handleResumeTest(test) {
+    if (test.status === "graded") return;
+    setTestId(test.id);
+    setQuestions(test.questions || []);
+    setCurrentQuestionIndex(0);
+    setAnswers({});
+    setError("");
+    setStage("in-progress");
   }
 
   async function handleDeleteTest(event, test) {
@@ -188,8 +213,7 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
             <li
               key={test.id}
               className="negotiation-history-item"
-              style={{ cursor: test.status === "graded" ? "pointer" : "default" }}
-              onClick={test.status === "graded" ? () => handleViewTest(test) : undefined}
+              onClick={() => (test.status === "graded" ? handleViewTest(test) : handleResumeTest(test))}
             >
               <span className="negotiation-history-main">
                 <span className="negotiation-history-title">{test.title || copy.untitled}</span>
@@ -314,6 +338,12 @@ function SkillsTestPage({ language, userId, candidate, offer, tokensBalance, onG
             <span className="skills-test-result-score-value">{finalScore}</span>
             <span className="skills-test-result-score-max">/100</span>
           </div>
+
+          {synthesis ? (
+            <div className={`skills-test-synthesis ${synthesisTierClass(finalScore)}`}>
+              <p>{synthesis}</p>
+            </div>
+          ) : null}
 
           <h4>{copy.resultDetailTitle}</h4>
           <ul className="skills-test-result-list">
