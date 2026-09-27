@@ -459,7 +459,9 @@ function makeAiRateLimiter({ windowMs, limit, envFlag, message }) {
     limit,
     standardHeaders: true,
     legacyHeaders: false,
-    keyGenerator: (req) => coerceString(req.body?.userId || req.query?.userId) || ipKeyGenerator(req),
+    // Compteur par compte connecté (identité vérifiée par la session, pas
+    // l'userId envoyé par le navigateur) ; à défaut, par adresse IP.
+    keyGenerator: (req) => (req.sessionUserId ? `user:${req.sessionUserId}` : `ip:${ipKeyGenerator(req.ip || "")}`),
     skip: () => process.env[envFlag] === "1",
     message: { error: message }
   });

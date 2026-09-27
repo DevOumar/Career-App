@@ -1,7 +1,7 @@
 export function registerCodingRoutes(app) {
   const {
     requireMatchingSession,
-    aiActionRateLimiter,
+    aiConversationRateLimiter,
     AI_MODEL,
     GROQ_API_KEY,
     OPENAI_API_KEY,
@@ -268,7 +268,7 @@ print(two_sum([3, 2, 4], 6))       # [1, 2]
   }
 
   // 1. Générer un exercice de coding sur-mesure
-  app.post("/api/coding/generate", aiActionRateLimiter, async (req, res) => {
+  app.post("/api/coding/generate", aiConversationRateLimiter, async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
       if (!(await requireInterviewAccess(req, res, userId))) return;
@@ -351,7 +351,7 @@ Règles impératives :
   });
 
   // 2. Évaluer et faire la revue de code
-  app.post("/api/coding/review", aiActionRateLimiter, async (req, res) => {
+  app.post("/api/coding/review", aiConversationRateLimiter, async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
       if (!(await requireInterviewAccess(req, res, userId))) return;
