@@ -1,4 +1,5 @@
 import React from "react";
+import "./admin-shell.css";
 // Module Admin : interface d'administration de la plateforme (dashboard,
 // comptes, finance, licences, modération IA, paramètres, annonces...).
 // Le dashboard École vit désormais séparément dans features/school/ ; les

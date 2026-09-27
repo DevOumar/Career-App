@@ -1,4 +1,5 @@
 import React from "react";
+import "../admin/admin-shell.css";
 // Module Cabinet : espace des cabinets de recrutement / cellules RH, avec la
 // même charpente que l'administration de la plateforme et l'espace École
 // (menu latéral à groupes repliables, barre du haut, palette Ctrl K,

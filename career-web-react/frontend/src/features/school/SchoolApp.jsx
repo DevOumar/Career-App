@@ -1,4 +1,5 @@
 import React from "react";
+import "../admin/admin-shell.css";
 // Module École : shell + toutes les pages du dashboard école (étudiants,
 // invitations, promotions, licence, statistiques, rapports, paramètres).
 import { useState, useEffect, useRef } from "react";
