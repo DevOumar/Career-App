@@ -32,7 +32,7 @@ Règles :
 - N'invente et ne formule jamais toi-même de clause de non-responsabilité, de confidentialité ou d'avertissement légal, sous quelque forme que ce soit : une mention officielle est ajoutée automatiquement après ta réponse, il ne faut pas la doubler ni l'anticiper.
 - Si une offre d'emploi est fournie, mets-toi dans la peau de l'entreprise qui recrute pour CE poste précis : ancre tes questions et tes retours dans son contenu réel.`;
 
-function retrieveChunks(queryText, type_entretien, domaine, topK = 4) {
+export function retrieveChunks(queryText, type_entretien, domaine, topK = 4) {
   if (!corpusData || corpusData.length === 0) return [];
   const normalizedQuery = (queryText || "").toLowerCase();
   
@@ -54,12 +54,14 @@ function retrieveChunks(queryText, type_entretien, domaine, topK = 4) {
   return scored.slice(0, topK);
 }
 
-function formatContext(chunks) {
+export function formatContext(chunks) {
   if (!chunks || chunks.length === 0) return "(aucun contexte spécifique trouvé)";
   return chunks
     .map((chunk, idx) => `[Extrait ${idx + 1} — ${chunk.sous_theme || "?"} / ${chunk.domaine || "?"}]\n${chunk.texte}`)
     .join("\n\n");
 }
+
+export { DISCLAIMER, INTERVIEWER_SYSTEM_PROMPT };
 
 export function registerInterviewRoutes(app) {
   const {
