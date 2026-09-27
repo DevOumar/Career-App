@@ -245,8 +245,14 @@ export function registerAdminAiRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     getFxRates,
-    aiPriceFor
+    aiPriceFor,
+    aiConfigCandidates
   } = app.locals.ctx;
+
+  // Groq est utilisé sur son offre gratuite : ses appels ne sont pas
+  // facturés (GROQ_FREE_TIER=0 si un jour l'offre payante est activée).
+  const GROQ_FREE_TIER = String(process.env.GROQ_FREE_TIER ?? "1") !== "0";
+  const isBilledProvider = (provider) => !(provider === "groq" && GROQ_FREE_TIER);
 
   // Regroupement des modules mesurés (table ai_usage) pour l'affichage.
   const AI_MODULE_GROUPS = {
@@ -349,22 +355,59 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
               COALESCE(SUM(completion_tokens), 0)::bigint AS completion_tokens,
               COALESCE(SUM(audio_seconds), 0) AS audio_seconds,
               COALESCE(SUM(cost_usd), 0) AS cost_usd,
-              MIN(created_at) AS since
-       FROM ai_usage GROUP BY module, model`
+              COALESCE(SUM(cost_usd) FILTER (WHERE created_at >= $1), 0) AS month_cost_usd,
+              COUNT(*) FILTER (WHERE created_at >= $1)::int AS month_calls,
+              MIN(created_at) AS since,
+              provider
+       FROM ai_usage GROUP BY module, model, provider`,
+      [new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1)).toISOString()]
     );
     const fx = await getFxRates();
     const usdPerEur = Number(fx?.rates?.USD) || null;
     const since = usageRows.reduce((min, row) => (!min || row.since < min ? row.since : min), null);
-    const totalCostUsd = usageRows.reduce((sum, row) => sum + Number(row.cost_usd || 0), 0);
-    const toEur = (usd) => (usdPerEur ? Math.round((usd / usdPerEur) * 10000) / 10000 : null);
+    // Coût réellement facturé : les appels sur une offre gratuite comptent 0.
+    const billedCost = (row, key = "cost_usd") => (isBilledProvider(row.provider) ? Number(row[key] || 0) : 0);
+    const totalCostUsd = usageRows.reduce((sum, row) => sum + billedCost(row), 0);
+    const toEur = (usd) => (usdPerEur ? Math.round((usd / usdPerEur) * 1e8) / 1e8 : null);
     const costByModuleUsd = {};
     for (const row of usageRows) {
       const group = AI_MODULE_GROUPS[row.module] || "other";
-      costByModuleUsd[group] = (costByModuleUsd[group] || 0) + Number(row.cost_usd || 0);
+      costByModuleUsd[group] = (costByModuleUsd[group] || 0) + billedCost(row);
     }
     const costByModule = Object.fromEntries(Object.entries(costByModuleUsd).map(([key, usd]) => [key, toEur(usd)]));
     const totalCostEur = toEur(totalCostUsd);
     const models = [...new Set(usageRows.map((row) => row.model).filter(Boolean))];
+
+    // Par fournisseur : appels, échecs, coût facturé (total et mois en cours)
+    // et valeur au tarif public pour les offres gratuites.
+    const providerTotals = {};
+    for (const row of usageRows) {
+      const key = row.provider || "other";
+      const item = (providerTotals[key] ||= { provider: key, billed: isBilledProvider(key), calls: 0, failed: 0, monthCalls: 0, costUsd: 0, monthCostUsd: 0, publicValueUsd: 0, models: new Set() });
+      item.calls += row.calls;
+      item.failed += row.failed;
+      item.monthCalls += row.month_calls;
+      item.costUsd += billedCost(row);
+      item.monthCostUsd += billedCost(row, "month_cost_usd");
+      item.publicValueUsd += Number(row.cost_usd || 0);
+      if (row.model) item.models.add(row.model);
+    }
+    const roundMicro = (value) => Math.round(value * 1e8) / 1e8;
+    const providers = Object.values(providerTotals)
+      .map((item) => ({
+        ...item,
+        models: [...item.models],
+        costUsd: roundMicro(item.costUsd),
+        costEur: toEur(item.costUsd),
+        monthCostUsd: roundMicro(item.monthCostUsd),
+        monthCostEur: toEur(item.monthCostUsd),
+        publicValueUsd: roundMicro(item.publicValueUsd),
+        publicValueEur: toEur(item.publicValueUsd)
+      }))
+      .sort((a, b) => b.calls - a.calls);
+    const activeCandidates = aiConfigCandidates("chat");
+    const budgetUsd = Number(process.env.AI_MONTHLY_BUDGET_USD);
+    const monthBilledUsd = providers.reduce((sum, item) => sum + item.monthCostUsd, 0);
 
     const { rows: revenueSinceRows } = since
       ? await db.query("SELECT COALESCE(SUM(amount_collected), 0) AS total FROM transactions WHERE COALESCE(refunded, 0) = 0 AND created_at >= $1", [since])
@@ -418,6 +461,17 @@ app.get("/api/admin/ai-monitoring", async (req, res) => {
         pricing: Object.fromEntries(models.map((model) => [model, aiPriceFor(model)]))
       },
       costByModule,
+      providers,
+      activeAi: {
+        primary: activeCandidates[0] ? `${activeCandidates[0].provider}/${activeCandidates[0].model}` : null,
+        fallbacks: activeCandidates.slice(1).map((item) => `${item.provider}/${item.model}`),
+        groqFreeTier: GROQ_FREE_TIER
+      },
+      monthBudget: {
+        budgetUsd: Number.isFinite(budgetUsd) && budgetUsd > 0 ? budgetUsd : null,
+        spentUsd: roundMicro(monthBilledUsd),
+        spentEur: toEur(monthBilledUsd)
+      },
       totalRevenueCollected,
       revenueSinceMeasurement,
       estimatedMargin,

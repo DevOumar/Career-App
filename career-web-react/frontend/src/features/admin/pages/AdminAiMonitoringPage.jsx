@@ -152,6 +152,19 @@ export default function AdminAiMonitoringPage({ user, language }) {
   const margin = Number(data.estimatedMargin || 0);
   const sinceLabel = measured ? new Date(ai.measuredSince).toLocaleDateString(language === "en" ? "en-GB" : "fr-FR") : "";
   const number = (value) => Number(value || 0).toLocaleString(language === "en" ? "en-GB" : "fr-FR");
+  // Montants IA souvent inférieurs au centime : précision adaptée pour ne
+  // jamais afficher « 0 » quand une dépense réelle existe.
+  const preciseAmount = (value, unit) => {
+    const amount = Number(value || 0);
+    const locale = language === "en" ? "en-GB" : "fr-FR";
+    const text =
+      amount === 0
+        ? "0"
+        : amount < 0.01
+        ? amount.toLocaleString(locale, { maximumSignificantDigits: 2 })
+        : amount.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: amount < 1 ? 4 : 2 });
+    return `${text} ${unit}`;
+  };
   const costShare = revenue > 0 ? Math.min(100, (cost / revenue) * 100) : cost > 0 ? 100 : 0;
 
   const modules = [
@@ -311,6 +324,79 @@ export default function AdminAiMonitoringPage({ user, language }) {
             ))}
           </ul>
         </div>
+      </div>
+
+      <div className="jy-card ai-providers-card">
+        <div className="jy-card-head">
+          <h3>{t("Fournisseurs IA", "AI providers")}</h3>
+          {data.activeAi?.primary ? (
+            <span className="jy-pill">
+              {t("Actif", "Active")} : <code>{data.activeAi.primary}</code>
+            </span>
+          ) : null}
+        </div>
+        {data.monthBudget ? (
+          <div className="ai-budget">
+            <div className="ai-budget-row">
+              <span>{t("Dépense facturée ce mois-ci", "Billed spend this month")}</span>
+              <strong className="gold">
+                {preciseAmount(data.monthBudget.spentUsd, "$")}
+                {data.monthBudget.budgetUsd ? ` / ${data.monthBudget.budgetUsd} $` : ""}
+              </strong>
+            </div>
+            {data.monthBudget.budgetUsd ? (
+              <span className="jy-progress jy-progress-wide">
+                <span style={{ width: `${Math.min(100, (Number(data.monthBudget.spentUsd || 0) / data.monthBudget.budgetUsd) * 100)}%` }} />
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+        {(data.providers || []).length ? (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>{t("Fournisseur", "Provider")}</th>
+                  <th>{t("Modèles", "Models")}</th>
+                  <th>{t("Appels (mois)", "Calls (month)")}</th>
+                  <th>{t("Échecs", "Failures")}</th>
+                  <th>{t("Facturé (mois)", "Billed (month)")}</th>
+                  <th>{t("Facturé (total)", "Billed (total)")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.providers.map((item) => (
+                  <tr key={item.provider}>
+                    <td>
+                      <strong>{item.provider === "openai" ? "OpenAI" : item.provider === "groq" ? "Groq" : item.provider === "xai" ? "xAI" : item.provider}</strong>
+                      <span className={`tag ${item.billed ? "tag-warning" : "tag-success"}`}>{item.billed ? t("payant", "paid") : t("gratuit", "free")}</span>
+                    </td>
+                    <td className="muted">{item.models.join(", ")}</td>
+                    <td>
+                      {number(item.monthCalls)} <span className="muted">/ {number(item.calls)}</span>
+                    </td>
+                    <td className={item.failed ? "danger" : "muted"}>{number(item.failed)}</td>
+                    <td>{preciseAmount(item.billed ? item.monthCostEur : 0, "€")}</td>
+                    <td>
+                      {preciseAmount(item.billed ? item.costEur : 0, "€")}
+                      {!item.billed && item.publicValueEur ? (
+                        <span className="muted ai-public-value">{t(`valeur au tarif public : ${preciseAmount(item.publicValueEur, "€")}`, `public-rate value: ${preciseAmount(item.publicValueEur, "€")}`)}</span>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="jy-empty">{t("Aucun appel IA mesuré pour l'instant.", "No AI call measured yet.")}</p>
+        )}
+        {data.activeAi?.fallbacks?.length ? (
+          <p className="jy-card-foot">
+            {t("Repli automatique si le fournisseur principal ne répond pas : ", "Automatic fallback if the main provider fails: ")}
+            {data.activeAi.fallbacks.join(" → ")}
+          </p>
+        ) : null}
       </div>
 
       <div className="jy-card">

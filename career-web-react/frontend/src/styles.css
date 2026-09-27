@@ -21958,3 +21958,32 @@ div.cf-logo {
   -webkit-line-clamp: 2;
   line-clamp: 2;
 }
+
+/* ===================== Admin : fournisseurs IA ===================== */
+.ai-providers-card .jy-pill code {
+  font-size: 0.78rem;
+}
+.ai-budget {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 0.2rem 0 1rem;
+}
+.ai-budget-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+.ai-providers-card .admin-table td .tag {
+  margin-left: 0.45rem;
+}
+.ai-public-value {
+  display: block;
+  font-size: 0.75rem;
+}
+.ai-providers-card .admin-table td:nth-child(n + 3) {
+  white-space: nowrap;
+}
