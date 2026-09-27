@@ -2778,15 +2778,28 @@ const SKILLS_TEST_LOCAL_QCM_TEMPLATES_EN = [
 // questions du module (plus de tentative IA en amont).
 function buildLocalSkillsTestQuestions(offer, language) {
   const skills = normalizeAiList(offer?.skills, 20);
+  // Minuscule initiale : une mission ("Développer...") s'insere en milieu de
+  // phrase dans les enonces ("...impliquant developper...") — contrairement
+  // a un nom de competence (ex: "SQL", "Power BI") qui garde sa casse propre.
+  const missions = normalizeAiList(offer?.missions, 10).map((mission) =>
+    mission ? mission.charAt(0).toLowerCase() + mission.slice(1) : mission
+  );
   const skillFallback = coerceString(offer?.title) || (language === "en" ? "this role" : "ce poste");
-  const pickSkill = (index) => (skills.length ? skills[index % skills.length] : skillFallback);
+  // Melange skills + missions dans un seul pool deduplique : une offre avec
+  // une seule competence extraite (ex: "git" seul) ne doit pas repeter ce
+  // meme mot dans les 8 enonces — les missions apportent de la variete
+  // supplementaire une fois les competences epuisees. Skills passe en
+  // premier (les templates attendent plutot un nom court), les missions
+  // ne completent que si le pool est encore trop court.
+  const topics = uniqueByNormalized([...skills, ...missions]);
+  const pickTopic = (index) => (topics.length ? topics[index % topics.length] : skillFallback);
 
   const qcmTemplates = language === "en" ? SKILLS_TEST_LOCAL_QCM_TEMPLATES_EN : SKILLS_TEST_LOCAL_QCM_TEMPLATES_FR;
 
   const questions = [];
   for (let index = 0; index < SKILLS_TEST_QCM_COUNT; index += 1) {
     const template = qcmTemplates[index % qcmTemplates.length];
-    const built = template.build(pickSkill(index));
+    const built = template.build(pickTopic(index));
     questions.push({ id: `q${index + 1}`, type: "qcm", ...built });
   }
   return { questions };
