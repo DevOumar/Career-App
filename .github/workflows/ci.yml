@@ -1,0 +1,36 @@
+name: Career CV CI/CD
+
+on:
+  push:
+    branches: [ main, koceila, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test-and-build:
+    name: Run Unit Tests & Production Build
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: career-web-react
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: 'career-web-react/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm run test:unit
+
+      - name: Build production bundle (Vite)
+        run: npm run build
