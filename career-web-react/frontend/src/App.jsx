@@ -24,7 +24,6 @@ import { LegalDocPage, PrivacyPolicyPage, TermsOfServicePage } from "./features/
 const PublicPricingPage = lazy(() => import("./features/pricing/PricingPage.jsx").then((module) => ({ default: module.PublicPricingPage })));
 const PricingPage = lazy(() => import("./features/pricing/PricingPage.jsx").then((module) => ({ default: module.PricingPage })));
 import HomePage from "./features/home/HomePage.jsx";
-const ProfilePage = lazy(() => import("./features/profile/ProfilePage.jsx"));
 const CoverLetterPage = lazy(() => import("./features/coverLetter/CoverLetterPage.jsx"));
 const EmailFinderPage = lazy(() => import("./features/emailScout/EmailFinderPage.jsx"));
 const InterviewHub = lazy(() => import("./features/interviews/InterviewHub.jsx"));
@@ -43,7 +42,6 @@ import { ACCOUNT_LABELS, getAccountLabel, getUsernameValidation, accountToForm, 
 import { resizeImageFileToDataUrl } from "./lib/images.js";
 import {
   activatePlan,
-  activatePremiumSubscription,
   addCvRecord,
   analyzeMatch,
   changeUserPassword,
@@ -197,7 +195,6 @@ const NAV_ITEMS = [
 const VALID_APP_PAGE_IDS = new Set([
   "home",
   "import",
-  "profil",
   "analyse",
   "offres",
   "candidatures",
@@ -894,7 +891,7 @@ function candidateNotificationTarget(item) {
     case "application_stale":
       return { page: "candidatures" };
     case "profile_incomplete":
-      return { page: "profil" };
+      return { panel: "account" };
     default:
       return { page: "notifications" };
   }
@@ -1934,19 +1931,6 @@ export default function App() {
     }
   }
 
-  async function handlePremiumActivation() {
-    if (!user) return;
-    try {
-      clearMessages();
-      const updated = await activatePremiumSubscription(user.id);
-      setSession({ user: updated.user, premium: updated.premium });
-      setPremium(updated.premium);
-      setPageMessage(language === "en" ? "Premium offer activated for 30 days." : "Offre premium activée pour 30 jours.");
-    } catch (error) {
-      setProcessingError(getFriendlyErrorMessage(error, language));
-    }
-  }
-
   async function handleActivatePlan(planId, billingCycle) {
     if (!user) return;
     setPendingPlanAction(planId);
@@ -2672,20 +2656,6 @@ export default function App() {
               }}
             />
           ) : null}
-
-        {activePage === "profil" ? (
-          <ProfilePage
-            user={user}
-            premium={premium}
-            profileCompleteness={profileCompleteness}
-            onSaveProfile={handleProfileSave}
-            onSaveAccount={handleAccountSave}
-            onAvatarUpload={handleAvatarUpload}
-            avatarUploading={avatarUploading}
-            onActivatePremium={handlePremiumActivation}
-            language={language}
-          />
-        ) : null}
 
         {activePage === "analyse" ? <AnalysisPage matchData={latestMatch} language={language} /> : null}
         {activePage === "offres" ? <OffersPage matchData={latestMatch} premium={premium} language={language} /> : null}
