@@ -151,6 +151,7 @@ function scoreOffer({ candidate, offer, premiumAccess }) {
     (sectorSignal && normalize(offer.sector).includes(sectorSignal) ? 4 : 0);
 
   const score = Math.min(100, skillScore + experienceScore + educationScore + bonus);
+  const verdict = score >= 75 ? "excellent" : score >= 60 ? "bon" : score >= 45 ? "moyen" : "à renforcer";
 
   const locked = Boolean(offer.premium && !premiumAccess.hasAccess);
 

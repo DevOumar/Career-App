@@ -112,10 +112,10 @@ function describeActivity(item, language, currency) {
   const plural = (count, fr, en) => `${count} ${(language === "en" ? en : fr)[Number(count) > 1 ? 1 : 0]}`;
   const planLabel = (planId) => getPlanById(planId)?.name?.[language] || getPlanById(planId)?.name?.fr || planId;
   const handled = new Set();
-  const use = (...keys) => keys.forEach((key) => handled.add(key));
+  const pick = (...keys) => keys.forEach((key) => handled.add(key));
 
   if (meta.method) {
-    use("method");
+    pick("method");
     const methods = {
       google: t("Via Google", "Via Google"),
       password: t("Avec mot de passe", "With password"),
@@ -125,19 +125,19 @@ function describeActivity(item, language, currency) {
     add("key", methods[meta.method] || meta.method);
   }
   if (meta.provider) {
-    use("provider");
+    pick("provider");
     add("link", meta.provider === "google" ? "Google" : meta.provider);
   }
   if (meta.attempts != null) {
-    use("attempts");
+    pick("attempts");
     add("alert", plural(meta.attempts, ["tentative échouée", "tentatives échouées"], ["failed attempt", "failed attempts"]));
   }
   if (meta.logoutOtherSessions != null) {
-    use("logoutOtherSessions");
+    pick("logoutOtherSessions");
     add("logout", meta.logoutOtherSessions ? t("Autres sessions déconnectées", "Other sessions signed out") : t("Autres sessions conservées", "Other sessions kept"));
   }
   if (meta.key) {
-    use("key", "value");
+    pick("key", "value");
     const settingName = SETTING_LABELS[meta.key]?.[language] || SETTING_LABELS[meta.key]?.fr || meta.key;
     const state =
       typeof meta.value === "boolean" || meta.value === "true" || meta.value === "false"
@@ -148,35 +148,35 @@ function describeActivity(item, language, currency) {
     add("settings", `${settingName} : ${state}`);
   }
   if (meta.code) {
-    use("code");
+    pick("code");
     add("licenses", `${t("Code", "Code")} ${meta.code}`);
   }
   if (meta.licenseCode) {
-    use("licenseCode");
+    pick("licenseCode");
     add("licenses", `${t("Licence", "License")} ${meta.licenseCode}`);
   }
   if (meta.planId) {
-    use("planId");
+    pick("planId");
     add("pricing", `${t("Plan", "Plan")} ${planLabel(meta.planId)}`);
   }
   if (meta.monthlyPrice != null || meta.annualPrice != null) {
-    use("monthlyPrice", "annualPrice");
+    pick("monthlyPrice", "annualPrice");
     const prices = [];
     if (meta.monthlyPrice != null) prices.push(`${formatEur(meta.monthlyPrice, currency)} ${t("/ mois", "/ month")}`);
     if (meta.annualPrice != null) prices.push(`${formatEur(meta.annualPrice, currency)} ${t("/ an", "/ year")}`);
     add("finance", prices.join(" · "));
   }
   if (meta.amount != null) {
-    use("amount");
+    pick("amount");
     add("finance", `${t("Montant", "Amount")} ${formatEur(meta.amount, currency)}`);
   }
   if (meta.audience) {
-    use("audience");
+    pick("audience");
     const audience = ADMIN_ANNOUNCEMENT_AUDIENCES.find((entry) => (entry.id || "all") === meta.audience);
     add("accounts", audience?.label?.[language] || audience?.label?.fr || t("Tous les utilisateurs", "All users"));
   }
   if (meta.recipientCount != null) {
-    use("recipientCount", "failedCount");
+    pick("recipientCount", "failedCount");
     const failed = Number(meta.failedCount || 0);
     add(
       "announcements",
@@ -184,7 +184,7 @@ function describeActivity(item, language, currency) {
     );
   }
   if (meta.sentCount != null) {
-    use("sentCount", "skippedExistingCount", "skippedPendingCount", "skippedNoSeatCount");
+    pick("sentCount", "skippedExistingCount", "skippedPendingCount", "skippedNoSeatCount");
     const bits = [plural(meta.sentCount, ["envoyée", "envoyées"], ["sent", "sent"])];
     if (meta.skippedExistingCount) bits.push(`${meta.skippedExistingCount} ${t("déjà inscrit(s)", "already registered")}`);
     if (meta.skippedPendingCount) bits.push(`${meta.skippedPendingCount} ${t("déjà invité(s)", "already invited")}`);
@@ -192,17 +192,17 @@ function describeActivity(item, language, currency) {
     add("announcements", bits.join(" · "));
   }
   if (meta.companyName || meta.domain) {
-    use("companyName", "domain", "firstName", "lastName");
+    pick("companyName", "domain", "firstName", "lastName");
     const person = [meta.firstName, meta.lastName].filter(Boolean).join(" ");
     const company = meta.companyName || meta.domain;
     add("search", person ? `${person} ${t("chez", "at")} ${company}` : company);
   }
   if (meta.period) {
-    use("period");
+    pick("period");
     add("clock", `${t("Période", "Period")} ${meta.period}`);
   }
   if (meta.email) {
-    use("email");
+    pick("email");
     // L'e-mail est déjà affiché sous le nom de l'acteur : on ne le répète
     // que s'il s'agit d'une autre adresse (invitation, compte supprimé…).
     // (Si l'acteur n'a plus d'e-mail, c'est déjà celui-ci qui s'affiche.)

@@ -180,6 +180,7 @@ const VALID_APP_PAGE_IDS = new Set([
   "negociation",
   "email-finder",
   "historique",
+  "notifications",
   "tarifs"
 ]);
 
