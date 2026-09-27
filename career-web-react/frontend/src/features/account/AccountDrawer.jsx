@@ -429,12 +429,21 @@ export function AccountDrawer({
                                     : `${user.profile.experienceYears} ${language === "en" ? "yr" : "an"}${Number(user.profile.experienceYears) > 1 ? "s" : ""}`
                             },
                             { label: language === "en" ? "Education" : "Formation", value: user.profile?.education }
-                          ].map((fact) => (
-                            <span key={fact.label} className={`account-fact ${fact.value ? "" : "is-empty"}`}>
-                              <small>{fact.label}</small>
-                              {fact.value || (language === "en" ? "Not set" : "Non renseigné")}
-                            </span>
-                          ))}
+                          ].map((fact) => {
+                            // Une valeur longue (ex. plusieurs diplômes) prend toute la
+                            // largeur et reste limitée à 2 lignes, sans étirer les autres cases.
+                            const isLong = String(fact.value || "").length > 32;
+                            return (
+                              <span
+                                key={fact.label}
+                                className={`account-fact ${fact.value ? "" : "is-empty"} ${isLong ? "is-wide" : ""}`}
+                                title={isLong ? fact.value : undefined}
+                              >
+                                <small>{fact.label}</small>
+                                <span className="account-fact-value">{fact.value || (language === "en" ? "Not set" : "Non renseigné")}</span>
+                              </span>
+                            );
+                          })}
                         </div>
                       ) : null}
                     </div>

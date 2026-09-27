@@ -21945,3 +21945,16 @@ div.cf-logo {
   width: 28px;
   height: 28px;
 }
+.account-profile-facts {
+  align-items: start;
+}
+.account-fact.is-wide {
+  grid-column: 1 / -1;
+}
+.account-fact-value {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
