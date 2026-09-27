@@ -1043,17 +1043,17 @@ function ContactPage({ language, setLanguage, onBack, onLoginClick, onSignupClic
           {
             title: "General support",
             text: "Questions about your account, a CV analysis, or a bug you've run into.",
-            email: "support@career-app.example"
+            email: "contact@careercv.fr"
           },
           {
             title: "Privacy & data rights",
             text: "Access, correction, deletion, or export requests for your personal data.",
-            email: "privacy@career-app.example"
+            email: "privacy@careercv.fr"
           },
           {
             title: "Schools & recruitment agencies",
             text: "Partnership requests, license codes, or questions about a team plan.",
-            email: "partners@career-app.example"
+            email: "partners@careercv.fr"
           }
         ]
       }
@@ -1065,17 +1065,17 @@ function ContactPage({ language, setLanguage, onBack, onLoginClick, onSignupClic
           {
             title: "Support général",
             text: "Questions sur votre compte, une analyse de CV, ou un bug rencontré.",
-            email: "support@career-app.example"
+            email: "contact@careercv.fr"
           },
           {
             title: "Confidentialité & données",
             text: "Demandes d'accès, de rectification, de suppression ou d'export de vos données personnelles.",
-            email: "privacy@career-app.example"
+            email: "privacy@careercv.fr"
           },
           {
             title: "Écoles & cabinets de recrutement",
             text: "Demandes de partenariat, codes de licence, ou questions sur une offre équipe.",
-            email: "partners@career-app.example"
+            email: "partners@careercv.fr"
           }
         ]
       };

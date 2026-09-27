@@ -6,7 +6,7 @@ import { UiIcon } from "../../components/UiIcon.jsx";
 import { LanguageSwitch } from "../../components/LanguageSwitch.jsx";
 import { ConnectedFooter } from "../../App.jsx";
 
-const PRIVACY_CONTACT_EMAIL = "support@career-app.example";
+const PRIVACY_CONTACT_EMAIL = "privacy@careercv.fr";
 const PRIVACY_LAST_UPDATED = { fr: "27 juillet 2026", en: "July 27, 2026" };
 
 function slugify(text) {
