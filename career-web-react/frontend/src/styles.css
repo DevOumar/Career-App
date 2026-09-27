@@ -9528,13 +9528,95 @@ input[aria-invalid="true"] {
 }
 
 @media print {
+  @page {
+    size: A4;
+    margin: 10mm 12mm;
+  }
+
+  body:has(#cover-letter-document) {
+    background: #fff !important;
+  }
+
+  body.print-cover-letter-only {
+    background: #fff !important;
+  }
+
+  body:has(#cover-letter-document) .topbar,
+  body:has(#cover-letter-document) .connected-footer,
+  body:has(#cover-letter-document) .mw-sidebar,
+  body:has(#cover-letter-document) .mw-hero,
+  body:has(#cover-letter-document) .mw-main > .mw-card,
+  body:has(#cover-letter-document) .no-print,
+  body.print-cover-letter-only .topbar,
+  body.print-cover-letter-only .connected-footer,
+  body.print-cover-letter-only .mw-sidebar,
+  body.print-cover-letter-only .mw-hero,
+  body.print-cover-letter-only .mw-main > .mw-card,
+  body.print-cover-letter-only .no-print {
+    display: none !important;
+  }
+
+  body:has(#cover-letter-document) .app-shell,
+  body:has(#cover-letter-document) .main-wrap,
+  body:has(#cover-letter-document) .mw-layout,
+  body:has(#cover-letter-document) .mw-main,
+  body:has(#cover-letter-document) .letter-document-card,
+  body.print-cover-letter-only .app-shell,
+  body.print-cover-letter-only .main-wrap,
+  body.print-cover-letter-only .mw-layout,
+  body.print-cover-letter-only .mw-main,
+  body.print-cover-letter-only .letter-document-card {
+    display: block !important;
+    width: auto !important;
+    max-width: none !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+
   .letter-toolbar {
-    display: none;
+    display: none !important;
   }
 
   .letter-document-card {
     box-shadow: none;
     border: none;
+  }
+
+  .letter-document {
+    width: 100% !important;
+    max-height: 267mm;
+    padding: 0 !important;
+    overflow: hidden;
+    font-size: 10.5pt;
+    line-height: 1.42;
+    color: #111 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .letter-document p {
+    margin: 0 0 0.58rem;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .letter-subject {
+    margin: 0 0 0.72rem !important;
+    font-size: 10.8pt !important;
+  }
+
+  .letter-document.template-modern,
+  .letter-document.template-minimal {
+    border-left: 0 !important;
+    padding: 0 !important;
+  }
+
+  .letter-document.template-minimal .letter-subject {
+    padding-bottom: 0.45rem;
   }
 }
 

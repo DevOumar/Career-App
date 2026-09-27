@@ -1,8 +1,8 @@
 import React from "react";
 import { OtpBoxes } from "../features/account/mfa/MfaUi.jsx";
 
-// Bloc commun de saisie d'un code recu par e-mail : inscription, connexion,
-// mot de passe oublie et adresse e-mail secondaire.
+// Bloc commun de saisie d'un code reçu par e-mail : inscription, connexion,
+// mot de passe oublié et adresse e-mail secondaire.
 export function CodeEntry({
   language = "fr",
   email,
@@ -31,7 +31,7 @@ export function CodeEntry({
       ) : null}
       {email ? (
         <p className="ce-sent">
-          {t("Code envoye a", "Code sent to")}
+          {t("Code envoyé à", "Code sent to")}
           <span className="ce-email">{email}</span>
           {onChangeEmail ? (
             <button type="button" className="ce-link" onClick={onChangeEmail}>
@@ -43,14 +43,14 @@ export function CodeEntry({
       <OtpBoxes value={value} onChange={onChange} onComplete={onComplete} disabled={disabled} />
       {onResend ? (
         <p className="ce-resend">
-          {t("Vous n'avez rien recu ?", "Didn't get it?")}
+          {t("Vous n'avez rien reçu ?", "Didn't get it?")}
           <button type="button" className="ce-link" onClick={onResend} disabled={disabled || resendSeconds > 0}>
             {resendSeconds > 0 ? t(`Renvoyer dans ${resendSeconds} s`, `Resend in ${resendSeconds}s`) : t("Renvoyer le code", "Resend code")}
           </button>
         </p>
       ) : null}
       <p className="ce-hint">
-        {t("Le code est valable 10 minutes. Pensez a verifier vos courriers indesirables.", "The code is valid for 10 minutes. Check your spam folder too.")}
+        {t("Le code est valable 10 minutes. Pensez à vérifier vos courriers indésirables.", "The code is valid for 10 minutes. Check your spam folder too.")}
       </p>
     </div>
   );
