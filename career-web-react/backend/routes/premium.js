@@ -264,50 +264,12 @@ app.get("/api/premium", async (req, res) => {
   }
 });
 
-app.post("/api/premium/activate", async (req, res) => {
-  try {
-    const userId = coerceString(req.body?.userId);
-    if (!requireMatchingSession(req, res, userId)) return;
-    if (!userId) {
-      return res.status(400).json({ error: "userId requis." });
-    }
-
-    const user = await getUserRowById(userId);
-    if (!user) {
-      return res.status(404).json({ error: "Utilisateur introuvable." });
-    }
-
-    // Idempotent et sans risque pour un compte déjà premium (jetons achetés,
-    // abonnement Stripe) : rien n'est réécrit.
-    const currentSubscription = parseJsonField(user.subscription_json, {});
-    if (currentSubscription.plan === "premium" && currentSubscription.status === "active") {
-      return res.json({ user: await getPublicUserById(userId), premium: await computePremiumAccess(user), alreadyActive: true });
-    }
-
-    const access = await computePremiumAccess(user);
-    if (!access.eligibility.eligible) {
-      return res.status(400).json({ error: "Profil non éligible à l'activation premium." });
-    }
-
-    const startedAt = nowIso();
-    const renewalAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-
-    await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [
-      JSON.stringify({
-        plan: "premium",
-        status: "active",
-        startedAt,
-        renewalAt
-      }),
-      nowIso(),
-      userId
-    ]);
-
-    const updatedUser = await getUserRowById(userId);
-    const premium = await computePremiumAccess(updatedUser);
-    return res.json({ user: await getPublicUserById(userId), premium });
-  } catch (error) {
-    return res.status(500).json({ error: error.message || "Erreur serveur." });
-  }
+// Ancienne activation Premium gratuite (30 jours) : désactivée. Le Premium
+// s'obtient uniquement par un paiement (Stripe) ou une licence école/cabinet.
+app.post("/api/premium/activate", (_req, res) => {
+  return res.status(410).json({
+    error: "L'activation gratuite n'est plus disponible. Choisissez une offre depuis la page Tarifs.",
+    code: "PREMIUM_ACTIVATION_REMOVED"
+  });
 });
 }

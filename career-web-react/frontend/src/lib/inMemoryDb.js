@@ -449,13 +449,6 @@ export async function updateUserAvatar(userId, avatarDataUrl) {
   });
 }
 
-export async function activatePremiumSubscription(userId) {
-  return request("/premium/activate", {
-    method: "POST",
-    idempotent: "premium-activate",
-    body: { userId }
-  });
-}
 
 export async function activatePlan({ userId, planId, billingCycle }) {
   return request("/plans/activate", {
