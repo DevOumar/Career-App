@@ -1647,29 +1647,35 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
   const isReset = purpose === "reset";
 
   const subject = isSignup
-    ? `Bienvenue sur Career CV - votre code de vérification : ${safeCode}`
+    ? `Bienvenue sur Career CV - votre code de verification : ${safeCode}`
     : isReset
-    ? `${safeCode} est votre code de réinitialisation Career CV`
-    : `${safeCode} est votre code de vérification Career CV`;
+    ? `${safeCode} est votre code de reinitialisation Career CV`
+    : `${safeCode} est votre code de verification Career CV`;
 
-  const introTitle = isSignup ? "Bienvenue sur Career CV !" : isReset ? "Réinitialisez votre mot de passe" : "Vérifiez votre messagerie";
+  const introTitle = isSignup ? "Bienvenue sur Career CV" : isReset ? "Reinitialisation du mot de passe" : "Verification de votre adresse";
   const introText = isSignup
-    ? `Merci de rejoindre Career CV, ${safeName}. Confirmez votre adresse <strong>${safeEmail}</strong> avec le code ci-dessous pour activer votre compte et commencer à optimiser vos candidatures.`
+    ? `Confirmez l'adresse <strong>${safeEmail}</strong> avec le code ci-dessous pour activer votre compte et commencer a optimiser vos candidatures.`
     : isReset
-    ? `Utilisez le code ci-dessous pour choisir un nouveau mot de passe pour le compte associé à <strong>${safeEmail}</strong>. Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet email : votre mot de passe actuel reste inchangé.`
-    : `Utilisez le code ci-dessous pour continuer vers Career CV avec l'adresse <strong>${safeEmail}</strong>.`;
+    ? `Utilisez ce code pour choisir un nouveau mot de passe pour le compte associe a <strong>${safeEmail}</strong>.`
+    : `Utilisez ce code pour continuer vers Career CV avec l'adresse <strong>${safeEmail}</strong>.`;
+  const codeLabel = isReset ? "Code de reinitialisation" : "Code de verification";
+  const previewText = isSignup
+    ? `Votre code Career CV est ${code}. Il expire dans 10 minutes.`
+    : isReset
+    ? `Votre code de reinitialisation Career CV est ${code}.`
+    : `Votre code de verification Career CV est ${code}.`;
 
   const text = [
     isSignup ? `Bienvenue sur Career CV, ${firstName || ""} !`.trim() : `Bonjour ${firstName || ""}`.trim(),
     "",
     isSignup
-      ? `Merci de rejoindre Career CV. Votre code de vérification est : ${code}`
+      ? `Merci de rejoindre Career CV. Votre code de verification est : ${code}`
       : isReset
-      ? `Votre code de réinitialisation de mot de passe Career CV est : ${code}`
-      : `Votre code de vérification Career CV est : ${code}`,
+      ? `Votre code de reinitialisation de mot de passe Career CV est : ${code}`
+      : `Votre code de verification Career CV est : ${code}`,
     "",
     "Ce code expire dans 10 minutes.",
-    "Ne le partagez avec personne. Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email.",
+    "Ne le partagez avec personne. Si vous n'etes pas a l'origine de cette demande, vous pouvez ignorer cet email.",
     "",
     "Career CV"
   ].join("\n");
@@ -1679,45 +1685,53 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>${isSignup ? "Bienvenue sur Career CV" : isReset ? "Réinitialisation de mot de passe" : "Code de vérification Career CV"}</title>
+    <title>${isSignup ? "Bienvenue sur Career CV" : isReset ? "Reinitialisation de mot de passe" : "Code Career CV"}</title>
   </head>
-  <body style="margin:0;background:#f4f7fb;font-family:Arial,Helvetica,sans-serif;color:#101828;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f7fb;padding:32px 12px;">
+  <body style="margin:0;background:#f6f2ec;font-family:Arial,Helvetica,sans-serif;color:#171317;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${escapeHtml(previewText)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f2ec;padding:34px 12px;">
       <tr>
         <td align="center">
-          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border:1px solid #e5eaf3;border-radius:24px;overflow:hidden;box-shadow:0 18px 45px rgba(15,23,42,0.08);">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:590px;background:#ffffff;border:1px solid #eadfd3;border-radius:24px;overflow:hidden;box-shadow:0 18px 45px rgba(92,26,6,0.10);">
             <tr>
-              <td style="padding:28px 30px 18px;">
-                <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:linear-gradient(135deg,#4f46e5,#10b981);vertical-align:middle;"></div>
-                <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#101828;vertical-align:middle;">Career CV</span>
+              <td style="padding:28px 30px 22px;background:linear-gradient(135deg,#5c1a06 0%,#b83309 100%);">
+                <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td>
+                      <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:#ffffff;color:#b83309;text-align:center;line-height:42px;font-size:22px;font-weight:900;vertical-align:middle;">CV</div>
+                      <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#ffffff;vertical-align:middle;">Career CV</span>
+                    </td>
+                    <td align="right" style="color:rgba(255,255,255,0.82);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;">Compte securise</td>
+                  </tr>
+                </table>
               </td>
             </tr>
             <tr>
-              <td style="padding:8px 30px 4px;">
-                <p style="margin:0 0 8px;color:#667085;font-size:14px;">Bonjour ${safeName},</p>
-                <h1 style="margin:0;font-size:28px;line-height:1.2;color:#101828;">${introTitle}</h1>
-                <p style="margin:12px 0 0;color:#475467;font-size:16px;line-height:1.6;">${introText}</p>
+              <td style="padding:30px 30px 8px;">
+                <p style="margin:0 0 8px;color:#7b6d63;font-size:14px;">Bonjour ${safeName},</p>
+                <h1 style="margin:0;font-size:28px;line-height:1.2;color:#171317;">${introTitle}</h1>
+                <p style="margin:13px 0 0;color:#5f5651;font-size:16px;line-height:1.65;">${introText}</p>
               </td>
             </tr>
             <tr>
               <td style="padding:24px 30px;">
-                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:18px;padding:22px;text-align:center;">
-                  <p style="margin:0 0 12px;color:#667085;font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.12em;">Code de vérification</p>
-                  <div style="font-size:42px;line-height:1;font-weight:900;letter-spacing:10px;color:#111827;">${safeCode}</div>
-                  <p style="margin:16px 0 0;color:#667085;font-size:14px;">Ce code expire dans 10 minutes.</p>
+                <div style="background:#fff7f0;border:1px solid #f0d7c7;border-radius:18px;padding:24px 18px;text-align:center;">
+                  <p style="margin:0 0 14px;color:#9a4318;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;">${codeLabel}</p>
+                  <div style="font-size:44px;line-height:1;font-weight:900;letter-spacing:10px;color:#171317;">${safeCode}</div>
+                  <p style="margin:16px 0 0;color:#7b6d63;font-size:14px;">Ce code expire dans 10 minutes.</p>
                 </div>
               </td>
             </tr>
             <tr>
               <td style="padding:0 30px 28px;">
-                <div style="border-left:4px solid #10b981;background:#ecfdf5;border-radius:14px;padding:14px 16px;color:#065f46;font-size:14px;line-height:1.55;">
-                  Ne partagez jamais ce code. Si vous n'êtes pas à l'origine de cette demande, ignorez simplement cet email.
+                <div style="border-left:4px solid #237804;background:#f0f8ea;border-radius:14px;padding:14px 16px;color:#205c0a;font-size:14px;line-height:1.55;">
+                  Ne partagez jamais ce code. Si vous n'&ecirc;tes pas &agrave; l'origine de cette demande, ignorez simplement cet email.
                 </div>
               </td>
             </tr>
             <tr>
-              <td style="padding:18px 30px;background:#f8fafc;border-top:1px solid #e5eaf3;color:#667085;font-size:12px;line-height:1.5;">
-                © ${new Date().getFullYear()} Career CV. Email automatique envoyé pour sécuriser votre connexion.
+              <td style="padding:18px 30px;background:#fbf8f4;border-top:1px solid #eadfd3;color:#7b6d63;font-size:12px;line-height:1.5;">
+                &copy; ${new Date().getFullYear()} Career CV. Email automatique envoye par noreply@careercv.fr pour securiser votre compte.
               </td>
             </tr>
           </table>
@@ -1729,7 +1743,6 @@ function buildVerificationEmail({ code, firstName, email, purpose = "login" }) {
 
   return { subject, text, html };
 }
-
 let cachedMailTransporter = null;
 
 function getMailTransporter() {

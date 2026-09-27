@@ -72,7 +72,7 @@ npm run dev
 
 Copier `.env.example` vers `.env` à la racine de `career-web-react/` et renseigner :
 
-- **SMTP** (obligatoire pour l'envoi des codes de vérification) : `SMTP_HOST`, `SMTP_USER`, `SMTP_PASS` (mot de passe d'application Google, pas le mot de passe Gmail normal).
+- **SMTP Resend** (obligatoire pour l'envoi des codes de verification et de reinitialisation) : `SMTP_HOST=smtp.resend.com`, `SMTP_PORT=465`, `SMTP_SECURE=true`, `SMTP_USER=resend`, `SMTP_PASS` (cle API Resend), `MAIL_FROM=Career CV <noreply@careercv.fr>`.
 - **Base de données** : `DATABASE_URL` (connexion Supabase Postgres). Si absent, l'app utilise automatiquement une base PostgreSQL embarquée locale (PGlite, aucune installation système requise).
 - **Google Sign-In** : `GOOGLE_CLIENT_ID` (serveur) et `VITE_GOOGLE_CLIENT_ID` (front, même valeur) depuis Google Cloud Console.
 - **IA** (CV, matching, lettre, négociation) : `AI_PROVIDER` (`groq`, `xai`, `openai` ou `none`) + la clé API correspondante. Sans clé configurée, chaque fonctionnalité IA retombe sur un repli local plutôt que d'échouer.
