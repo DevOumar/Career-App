@@ -118,7 +118,7 @@ export function getUsernameValidation(username, language = "fr") {
   if (!/^[a-z0-9_-]{3,30}$/i.test(value)) {
     return language === "en"
       ? "Use 3 to 30 characters: letters, numbers, - or _."
-      : "Utilise 3 à 30 caractères : lettres, chiffres, - ou _.";
+      : "3 à 30 caractères, sans espace : lettres, chiffres, - ou _.";
   }
   return "";
 }

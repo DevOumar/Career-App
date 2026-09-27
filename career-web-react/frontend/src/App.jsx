@@ -19,7 +19,7 @@ const CvHistoryPage = lazy(() => import("./features/cv/CvPages.jsx").then((modul
 import { APPLICATIONS_COPY } from "./features/applications/applicationsCopy.js";
 import { SatisfactionSurveyModal, satisfactionTierFor } from "./features/satisfaction/SatisfactionSurveyModal.jsx";
 import AccountDrawer from "./features/account/AccountDrawer.jsx";
-import { LandingPage, PRODUCT_SECTION_IDS, InfoPage, AboutPage, ContactPage, FooterColumn } from "./features/landing/LandingPage.jsx";
+import { LandingPage, PRODUCT_SECTION_IDS, InfoPage, AboutPage, ContactPage } from "./features/landing/LandingPage.jsx";
 import { LegalDocPage, PrivacyPolicyPage, TermsOfServicePage } from "./features/legal/LegalPages.jsx";
 const PublicPricingPage = lazy(() => import("./features/pricing/PricingPage.jsx").then((module) => ({ default: module.PublicPricingPage })));
 const PricingPage = lazy(() => import("./features/pricing/PricingPage.jsx").then((module) => ({ default: module.PricingPage })));
@@ -3101,6 +3101,9 @@ export function GoogleLogo() {
 }
 
 
+// Pied de page commun (espace candidat, admin, école, cabinet, pages légales).
+// Un lien n'est affiché que s'il a une vraie destination dans l'espace courant :
+// jamais de lien mort ni de lien qui renvoie ailleurs que ce qu'il annonce.
 export function ConnectedFooter({
   copy,
   onPrivacyClick,
@@ -3120,70 +3123,105 @@ export function ConnectedFooter({
   onEmailScoutClick,
   onApplicationsClick
 }) {
-  const hasCompanyNav = Boolean(onAboutClick || onContactClick);
+  const en = copy?.footerProduct === "Product";
+  const t = (fr, enText) => (en ? enText : fr);
+  const year = new Date().getFullYear();
 
-  // Ordre synchronisé avec linksProduct dans LANDING_COPY : Fonctionnalités,
-  // Matching CV, Entretiens, Lettre IA, Négociation, Email Scout, Offres,
-  // Tarifs, FAQ. Tableau explicite plutôt que des `if (index === N)`
-  // égrenés — plus facile à vérifier d'un coup d'œil et moins sujet à
-  // erreur quand on ajoute/retire un lien (un vrai bug de ce type existait
-  // ici : "FAQ" renvoyait par erreur vers "À propos").
-  const productHandlers = [
-    onHomeClick || onBrandClick,
-    onImportClick || onHomeClick,
-    onInterviewsClick || onHomeClick,
-    onLetterClick || onHomeClick,
-    onNegotiationClick || onHomeClick,
-    onEmailScoutClick || onHomeClick,
-    onApplicationsClick || onHomeClick,
-    onPricingClick,
-    // Pas de page FAQ dédiée une fois connecté : Contact reste la
-    // destination la plus utile pour "j'ai une question" (à défaut, À propos).
-    onContactClick || onAboutClick
-  ];
+  const columns = [
+    {
+      title: t("Modules", "Modules"),
+      links: [
+        { label: t("Analyse de CV", "CV analysis"), onClick: onImportClick },
+        { label: t("Candidatures", "Applications"), onClick: onApplicationsClick },
+        { label: t("Entretiens", "Interviews"), onClick: onInterviewsClick },
+        { label: t("Test technique", "Coding test"), onClick: onCodingClick },
+        { label: t("Lettre IA", "AI letter"), onClick: onLetterClick },
+        { label: t("Négociation", "Negotiation"), onClick: onNegotiationClick },
+        { label: "Email Scout", onClick: onEmailScoutClick }
+      ]
+    },
+    {
+      title: t("Plateforme", "Platform"),
+      links: [
+        { label: t("Accueil", "Home"), onClick: onHomeClick || onBrandClick },
+        { label: t("Tarifs", "Pricing"), onClick: onPricingClick },
+        { label: t("Aide et contact", "Help & contact"), onClick: onContactClick }
+      ]
+    },
+    {
+      title: copy?.footerCompany || t("Entreprise", "Company"),
+      links: [
+        { label: t("À propos", "About"), onClick: onAboutClick },
+        { label: t("Partenariats écoles et cabinets", "School & firm partnerships"), onClick: onContactClick }
+      ]
+    },
+    {
+      title: copy?.footerLegal || t("Légal", "Legal"),
+      links: [
+        { label: t("Confidentialité", "Privacy"), onClick: onPrivacyClick },
+        { label: t("Conditions d'utilisation", "Terms of use"), onClick: onTermsClick },
+        { label: t("Cookies", "Cookies"), onClick: onCookiesClick },
+        { label: t("Sécurité", "Security"), onClick: onSecurityClick }
+      ]
+    }
+  ]
+    .map((column) => ({ ...column, links: column.links.filter((link) => typeof link.onClick === "function") }))
+    .filter((column) => column.links.length);
+
+  const brand = <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />;
 
   return (
-    <footer className="connected-footer">
-      <div>
-        {onBrandClick ? (
-          <button type="button" className="landing-brand footer-brand brand-link" onClick={onBrandClick}>
-            <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
-          </button>
-        ) : (
-          <div className="landing-brand footer-brand">
-            <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
-          </div>
-        )}
-        <p>{copy.footerText}</p>
+    <footer className="connected-footer cf-footer">
+      <div className="cf-top">
+        <div className="cf-brand">
+          {onBrandClick ? (
+            <button type="button" className="cf-logo" onClick={onBrandClick} aria-label={t("Accueil Career CV", "Career CV home")}>
+              {brand}
+            </button>
+          ) : (
+            <div className="cf-logo">{brand}</div>
+          )}
+          <p>{copy?.footerText}</p>
+          {onContactClick ? (
+            <button type="button" className="cf-cta" onClick={onContactClick}>
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M3 5.5A1.5 1.5 0 0 1 4.5 4h11A1.5 1.5 0 0 1 17 5.5v9a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 14.5z" fill="none" stroke="currentColor" strokeWidth="1.6" />
+                <path d="M3.5 5l6.5 5 6.5-5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              {t("Nous contacter", "Contact us")}
+            </button>
+          ) : null}
+        </div>
+        <div className="cf-columns" style={{ "--cf-cols": columns.length }}>
+          {columns.map((column) => (
+            <nav key={column.title} className="cf-column" aria-label={column.title}>
+              <h3>{column.title}</h3>
+              <ul>
+                {column.links.map((link) => (
+                  <li key={link.label}>
+                    <button type="button" onClick={link.onClick}>
+                      {link.label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          ))}
+        </div>
       </div>
-      <FooterColumn
-        title={copy.footerProduct}
-        links={copy.linksProduct}
-        onLinkClick={(_link, index) => productHandlers[index]?.()}
-      />
-      <FooterColumn
-        title={copy.footerCompany}
-        links={copy.linksCompany}
-        onLinkClick={
-          hasCompanyNav
-            ? (_link, index) => {
-                if (index === 0) onAboutClick?.();
-                if (index === 1) onContactClick?.();
-                if (index === 2) onContactClick?.();
-              }
-            : undefined
-        }
-      />
-      <FooterColumn
-        title={copy.footerLegal}
-        links={copy.linksLegal}
-        onLinkClick={(_link, index) => {
-          if (index === 0) onPrivacyClick?.();
-          if (index === 1) onTermsClick?.();
-          if (index === 2) onCookiesClick?.();
-          if (index === 3) onSecurityClick?.();
-        }}
-      />
+      <div className="cf-bottom">
+        <span>© {year} Career CV. {t("Tous droits réservés.", "All rights reserved.")}</span>
+        <button
+          type="button"
+          className="cf-top-link"
+          onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+        >
+          {t("Retour en haut", "Back to top")}
+          <svg viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M10 15V5M5.5 9.5L10 5l4.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
+      </div>
     </footer>
   );
 }
@@ -3265,6 +3303,24 @@ export function GoogleSignInButton({ language, onCredential, showLastUsed = fals
 }
 
 
+
+// Alerte d'erreur au style de l'app (toast), à la place de window.alert.
+function showErrorToast(message) {
+  if (!message) return;
+  Swal.fire({
+    toast: true,
+    position: "top-end",
+    icon: "error",
+    title: message,
+    showConfirmButton: false,
+    timer: 4200,
+    timerProgressBar: true,
+    customClass: {
+      popup: "career-toast",
+      title: "career-toast-title"
+    }
+  });
+}
 
 function AuthScreen({
   onLogin,
@@ -3488,11 +3544,11 @@ function AuthScreen({
       // forgotStep === "newPassword"
       const code = forgotCode.join("");
       if (newPassword.length < 8) {
-        alert(language === "en" ? "The password must contain at least 8 characters." : "Le mot de passe doit contenir au moins 8 caractères.");
+        showErrorToast(language === "en" ? "The password must contain at least 8 characters." : "Le mot de passe doit contenir au moins 8 caractères.");
         return;
       }
       if (newPassword !== confirmNewPassword) {
-        alert(language === "en" ? "Passwords do not match." : "Les mots de passe ne correspondent pas.");
+        showErrorToast(language === "en" ? "Passwords do not match." : "Les mots de passe ne correspondent pas.");
         return;
       }
       setIsSubmitting(true);
@@ -3547,7 +3603,7 @@ function AuthScreen({
       try {
         validateSignupForm();
       } catch (validationError) {
-        alert(validationError.message);
+        showErrorToast(validationError.message);
         return;
       }
 
@@ -3773,7 +3829,7 @@ function AuthScreen({
               setMfaChallenge(null);
               setLoginStep("credentials");
               setLoginForm((prev) => ({ ...prev, password: "" }));
-              if (message) alert(message);
+              if (message) showErrorToast(message);
             }}
           />
         </div>
