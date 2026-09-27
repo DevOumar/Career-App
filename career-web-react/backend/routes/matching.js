@@ -246,10 +246,14 @@ export function registerMatchingRoutes(app) {
     probeSmtp,
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
-    currentAiProvider
+    currentAiProvider,
+    takeModuleAllowance,
+    releaseModuleAllowance,
+    accountSnapshot
   } = app.locals.ctx;
 
 app.post("/api/match/analyze", aiActionRateLimiter, async (req, res) => {
+  let allowance = null;
   try {
     if (!req.sessionUserId) {
       return res.status(401).json({ error: "Authentification requise." });
@@ -260,6 +264,9 @@ app.post("/api/match/analyze", aiActionRateLimiter, async (req, res) => {
     if (!Array.isArray(offer.skills) || !offer.title) {
       return res.status(400).json({ error: "Offre invalide pour lancer le matching." });
     }
+
+    allowance = await takeModuleAllowance(res, req.sessionUserId, null);
+    if (!allowance) return;
 
     let analysis = null;
     let provider = "local";
@@ -273,9 +280,11 @@ app.post("/api/match/analyze", aiActionRateLimiter, async (req, res) => {
 
     return res.json({
       analysis: analysis || buildLocalMatchInsights({ candidate, offer }),
-      provider
+      provider,
+      account: await accountSnapshot(req.sessionUserId)
     });
   } catch (error) {
+    await releaseModuleAllowance(req.sessionUserId, allowance);
     return res.status(400).json({ error: error.message || "Analyse du matching impossible." });
   }
 });

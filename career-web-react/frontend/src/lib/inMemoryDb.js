@@ -648,7 +648,11 @@ export async function optimizeCvForAts({ candidate, offer, language }) {
     method: "POST",
     body: { candidate, offer, language }
   });
-  return data.optimization;
+  // Compte à jour (jeton débité par le serveur), non énumérable pour ne pas
+  // se mêler aux champs de l'optimisation appliqués au CV.
+  const optimization = data.optimization;
+  if (optimization && data.account) Object.defineProperty(optimization, "account", { value: data.account, enumerable: false });
+  return optimization;
 }
 
 export async function generateCoverLetter({ candidate, offer, tone, language }) {

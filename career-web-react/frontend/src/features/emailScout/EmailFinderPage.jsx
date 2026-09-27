@@ -152,7 +152,7 @@ function EmailFinderPage({ language, userId, tokensBalance, onGoToTarifs, onCons
         lastName: lastName.trim()
       });
       setResult(data);
-      await onConsumeToken();
+      onConsumeToken?.(data.account);
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));
     } finally {

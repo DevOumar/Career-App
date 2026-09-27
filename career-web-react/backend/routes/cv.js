@@ -250,12 +250,13 @@ export function registerCvRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     currentAiProvider,
-    releaseDailyQuota,
-    takeModuleAllowance
+    takeModuleAllowance,
+    releaseModuleAllowance,
+    accountSnapshot
   } = app.locals.ctx;
 
 app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
-  let quotaTaken = false;
+  let allowance = null;
   try {
     if (!req.sessionUserId) {
       return res.status(401).json({ error: "Authentification requise." });
@@ -280,10 +281,10 @@ app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
       });
     }
 
-    // Jetons ou quota quotidien, vérifiés seulement pour un fichier lisible.
-    const allowance = await takeModuleAllowance(res, req.sessionUserId, "cv_import");
+    // Import gratuit pour les candidats ; quota quotidien pour les comptes
+    // illimités, compté seulement pour un fichier lisible.
+    allowance = await takeModuleAllowance(res, req.sessionUserId, "cv_import", { tokenCost: 0 });
     if (!allowance) return;
-    quotaTaken = allowance.quotaTaken;
 
     let parsed = null;
     let extractionProvider = "local";
@@ -311,7 +312,7 @@ app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
       extractionProvider
     });
   } catch (error) {
-    if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "cv_import").catch(() => {});
+    await releaseModuleAllowance(req.sessionUserId, allowance);
     return res.status(400).json({ error: error.message || "Extraction du CV impossible." });
   }
 });
@@ -346,6 +347,7 @@ app.post("/api/jobs/extract", aiActionRateLimiter, async (req, res) => {
 });
 
 app.post("/api/cv/optimize-ats", aiActionRateLimiter, async (req, res) => {
+  let allowance = null;
   try {
     if (!req.sessionUserId) {
       return res.status(401).json({ error: "Authentification requise." });
@@ -363,6 +365,9 @@ app.post("/api/cv/optimize-ats", aiActionRateLimiter, async (req, res) => {
       });
     }
 
+    allowance = await takeModuleAllowance(res, req.sessionUserId, null);
+    if (!allowance) return;
+
     let result = null;
     try {
       result = await generateCvAtsOptimizationWithAi(candidate, offer, language);
@@ -371,6 +376,7 @@ app.post("/api/cv/optimize-ats", aiActionRateLimiter, async (req, res) => {
     }
 
     if (!result) {
+      await releaseModuleAllowance(req.sessionUserId, allowance);
       return res.status(503).json({
         error:
           language === "en"
@@ -379,8 +385,9 @@ app.post("/api/cv/optimize-ats", aiActionRateLimiter, async (req, res) => {
       });
     }
 
-    return res.json({ optimization: result });
+    return res.json({ optimization: result, account: await accountSnapshot(req.sessionUserId) });
   } catch (error) {
+    await releaseModuleAllowance(req.sessionUserId, allowance);
     return res.status(400).json({ error: error.message || "Optimisation ATS impossible." });
   }
 });

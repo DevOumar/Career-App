@@ -154,7 +154,7 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
       const result = await generateCoverLetter({ candidate, offer, tone, language });
       setLetter(result.letter);
       setSubject(result.subject || "");
-      await onConsumeToken();
+      onConsumeToken?.(result.account);
       await persistConversation(result.letter, result.subject || "");
     } catch (err) {
       setError(getFriendlyErrorMessage(err, language));

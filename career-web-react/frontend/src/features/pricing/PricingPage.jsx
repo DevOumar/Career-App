@@ -354,7 +354,7 @@ function PricingPage({
         <div className="pricing-balance-pill">
           <UiIcon name="pricetag" />
           <span>
-            {copy.currentBalance} : {currentBalance} {copy.credits}
+            {copy.currentBalance} : {currentBalance >= 999 ? (language === "en" ? "unlimited" : "illimité") : `${currentBalance} ${copy.credits}`}
           </span>
         </div>
       </header>

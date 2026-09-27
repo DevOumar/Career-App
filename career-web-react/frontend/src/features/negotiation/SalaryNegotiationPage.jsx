@@ -183,7 +183,7 @@ function SalaryNegotiationPage({ language, currency = "EUR", userId, candidate, 
       const nextMessages = [{ type: "ai", text: result.reply }, { type: "feedback", text: `${copy.tip}: ${result.tip}` }];
       setMessages(nextMessages);
       setSalaryReference(result.salaryReference || null);
-      await onConsumeToken();
+      onConsumeToken?.(result.account);
       setStarted(true);
       await persistConversation(nextMessages, result.salaryReference || null, null);
     } catch (err) {

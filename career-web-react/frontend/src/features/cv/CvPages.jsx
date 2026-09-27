@@ -880,7 +880,7 @@ function MatchResultsStep({
     try {
       const result = await optimizeCvForAts({ candidate: cvReview, offer: jobReview, language });
       setAtsOptimization(result);
-      await onConsumeToken();
+      onConsumeToken?.(result?.account);
     } catch (err) {
       setAtsError(getFriendlyErrorMessage(err, language));
     } finally {

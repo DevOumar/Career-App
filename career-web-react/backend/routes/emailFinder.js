@@ -247,8 +247,9 @@ export function registerEmailFinderRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     callAiChat,
-    releaseDailyQuota,
-    takeModuleAllowance
+    takeModuleAllowance,
+    releaseModuleAllowance,
+    accountSnapshot
   } = app.locals.ctx;
 
 // Domaine e-mail officiel d'une entreprise : l'IA propose (ex. « Vinci
@@ -290,7 +291,7 @@ async function resolveCompanyDomain(companyName) {
 }
 
 app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
-  let quotaTaken = false;
+  let allowance = null;
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
@@ -311,9 +312,8 @@ app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
-    const allowance = await takeModuleAllowance(res, userId, "email_scout");
+    allowance = await takeModuleAllowance(res, userId, "email_scout");
     if (!allowance) return;
-    quotaTaken = allowance.quotaTaken;
 
     const resolved = domainOverride ? { domain: domainOverride, source: "user" } : await resolveCompanyDomain(companyName);
     const domain = resolved.domain;
@@ -355,9 +355,9 @@ app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
 
     await logSecurityEvent(req, userId, "email_finder_search", { companyName, domain, firstName, lastName });
 
-    return res.json({ domain, domainSource: resolved.source, domainHasMx, best, items: ranked });
+    return res.json({ domain, domainSource: resolved.source, domainHasMx, best, items: ranked, account: await accountSnapshot(userId) });
   } catch (error) {
-    if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "email_scout").catch(() => {});
+    await releaseModuleAllowance(req.sessionUserId, allowance);
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });

@@ -248,12 +248,13 @@ export function registerNegotiationRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     currentAiProvider,
-    releaseDailyQuota,
-    takeModuleAllowance
+    takeModuleAllowance,
+    releaseModuleAllowance,
+    accountSnapshot
   } = app.locals.ctx;
 
 app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) => {
-  let quotaTaken = false;
+  let allowance = null;
   try {
     if (!req.sessionUserId) {
       return res.status(401).json({ error: "Authentification requise." });
@@ -268,9 +269,8 @@ app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) =
 
     // Jetons ou quota quotidien, vérifiés à chaque nouvelle séance (premier échange).
     if (!history.length && !finish) {
-      const allowance = await takeModuleAllowance(res, req.sessionUserId, "negotiation");
+      allowance = await takeModuleAllowance(res, req.sessionUserId, "negotiation");
       if (!allowance) return;
-      quotaTaken = allowance.quotaTaken;
     }
 
     let salaryReference = req.body?.salaryReference && typeof req.body.salaryReference === "object"
@@ -302,12 +302,12 @@ app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) =
 
     // Pas de réplique ni de synthèse génériques : sans IA, erreur explicite.
     if (!result) {
-      if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "negotiation").catch(() => {});
+      await releaseModuleAllowance(req.sessionUserId, allowance);
       return res.status(503).json({ error: "Le service d'IA est momentanément indisponible. Réessayez dans un instant : aucun jeton n'a été débité." });
     }
-    return res.json({ ...result, provider, salaryReference });
+    return res.json({ ...result, provider, salaryReference, ...(allowance ? { account: await accountSnapshot(req.sessionUserId) } : {}) });
   } catch (error) {
-    if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "negotiation").catch(() => {});
+    await releaseModuleAllowance(req.sessionUserId, allowance);
     return res.status(400).json({ error: error.message || "Reponse de negociation impossible." });
   }
 });

@@ -45,7 +45,6 @@ import {
   addCvRecord,
   analyzeMatch,
   changeUserPassword,
-  consumeTokens,
   getFxRates,
   createStripeCheckoutSession,
   confirmStripeCheckoutSession,
@@ -1931,6 +1930,14 @@ export default function App() {
     }
   }
 
+  // Solde de jetons renvoyé par le serveur après une action IA (le débit
+  // est fait côté serveur, jamais par le navigateur).
+  function applyServerAccount(account) {
+    if (!account?.user) return;
+    setSession({ user: account.user, premium: account.premium });
+    setPremium(account.premium);
+  }
+
   async function handleActivatePlan(planId, billingCycle) {
     if (!user) return;
     setPendingPlanAction(planId);
@@ -2062,13 +2069,8 @@ export default function App() {
         .catch(() => {});
       setMatchInsights(matchResponse.analysis);
 
-      try {
-        const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
-        setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
-        setPremium(tokenUpdate.premium);
-      } catch (_tokenError) {
-        // Analysis already succeeded; a token-accounting hiccup shouldn't block the result.
-      }
+      // Jeton débité par le serveur : on affiche le solde qu'il renvoie.
+      applyServerAccount(matchResponse.account);
 
       await syncSession(token);
       setPageMessage(
@@ -2649,11 +2651,7 @@ export default function App() {
               onApplyOptimization={(next) => setCvReview((prev) => ({ ...(prev || {}), ...next }))}
               onSaveCvReview={persistCvReview}
               onGoToModule={(page) => goTo(page)}
-              onConsumeToken={async () => {
-                const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
-                setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
-                setPremium(tokenUpdate.premium);
-              }}
+              onConsumeToken={applyServerAccount}
             />
           ) : null}
 
@@ -2685,11 +2683,7 @@ export default function App() {
             tokensBalance={tokensBalance}
             onGoToTarifs={() => goTo("tarifs")}
             onGoToImport={() => goTo("import")}
-            onConsumeToken={async () => {
-              const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
-              setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
-              setPremium(tokenUpdate.premium);
-            }}
+            onConsumeToken={applyServerAccount}
           />
         ) : null}
         {activePage === "negociation" ? (
@@ -2702,11 +2696,7 @@ export default function App() {
             tokensBalance={tokensBalance}
             onGoToTarifs={() => goTo("tarifs")}
             onGoToImport={() => goTo("import")}
-            onConsumeToken={async () => {
-              const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
-              setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
-              setPremium(tokenUpdate.premium);
-            }}
+            onConsumeToken={applyServerAccount}
           />
         ) : null}
         {activePage === "email-finder" ? (
@@ -2716,11 +2706,7 @@ export default function App() {
             tokensBalance={tokensBalance}
             onGoToTarifs={() => goTo("tarifs")}
             onGoToImport={() => goTo("import")}
-            onConsumeToken={async () => {
-              const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
-              setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
-              setPremium(tokenUpdate.premium);
-            }}
+            onConsumeToken={applyServerAccount}
           />
         ) : null}
         {activePage === "historique" ? (

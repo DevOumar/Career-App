@@ -247,19 +247,19 @@ export function registerCoverLetterRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     currentAiProvider,
-    releaseDailyQuota,
-    takeModuleAllowance
+    takeModuleAllowance,
+    releaseModuleAllowance,
+    accountSnapshot
   } = app.locals.ctx;
 
 app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
-  let quotaTaken = false;
+  let allowance = null;
   try {
     if (!req.sessionUserId) {
       return res.status(401).json({ error: "Authentification requise." });
     }
-    const allowance = await takeModuleAllowance(res, req.sessionUserId, "cover_letter");
+    allowance = await takeModuleAllowance(res, req.sessionUserId, "cover_letter");
     if (!allowance) return;
-    quotaTaken = allowance.quotaTaken;
     const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
     const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
     const tone = coerceString(req.body?.tone) || "formal";
@@ -277,12 +277,12 @@ app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
 
     // Pas de lettre modèle présentée comme générée : sans IA, erreur explicite.
     if (!letterResult) {
-      if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "cover_letter").catch(() => {});
+      await releaseModuleAllowance(req.sessionUserId, allowance);
       return res.status(503).json({ error: "Le service d'IA est momentanément indisponible. Réessayez dans un instant : aucun jeton n'a été débité." });
     }
-    return res.json({ letter: letterResult.letter, subject: letterResult.subject, provider });
+    return res.json({ letter: letterResult.letter, subject: letterResult.subject, provider, account: await accountSnapshot(req.sessionUserId) });
   } catch (error) {
-    if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "cover_letter").catch(() => {});
+    await releaseModuleAllowance(req.sessionUserId, allowance);
     return res.status(400).json({ error: error.message || "Generation de la lettre impossible." });
   }
 });

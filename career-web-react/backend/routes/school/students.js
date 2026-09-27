@@ -346,7 +346,8 @@ app.post("/api/school/students/remove", async (req, res) => {
         startedAt: nowIso(),
         renewalAt: null,
         licenseCode: null,
-        credits: freePlan?.credits ?? 0
+        // Jetons achetés avant la licence rendus (au moins l'offre gratuite).
+        credits: Math.max(freePlan?.credits ?? 0, Number(subscription.savedCredits) || 0)
       }),
       nowIso(),
       studentId

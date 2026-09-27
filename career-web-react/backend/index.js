@@ -728,28 +728,50 @@ async function getDailyQuotaUsage(userId, quotaKey) {
   return Number(rows[0]?.count || 0);
 }
 
-// Droit d'utiliser un module IA avant l'appel :
+// Droit d'utiliser un module IA, pris AVANT l'appel à l'IA :
+// - candidat non rattaché : le serveur débite lui-même le jeton (débit
+//   atomique : deux requêtes simultanées ne peuvent pas dépenser le même
+//   jeton), sans quota quotidien ;
 // - compte à jetons illimités (licence école ou cabinet) : quota quotidien
-//   du module (DAILY_MODULE_LIMITS), seule limite de ces comptes ;
-// - candidat non rattaché : ses jetons sont sa limite, sans quota
-//   quotidien ; le serveur vérifie qu'il en reste avant d'appeler l'IA.
-// Renvoie null si la réponse (refus) est déjà envoyée, sinon { quotaTaken }.
-async function takeModuleAllowance(res, userId, quotaKey) {
+//   du module (DAILY_MODULE_LIMITS), seule limite de ces comptes.
+// Renvoie null si le refus est déjà envoyé, sinon l'autorisation à rendre
+// avec releaseModuleAllowance si l'action échoue.
+async function takeModuleAllowance(res, userId, quotaKey, { tokenCost = 1 } = {}) {
   const user = await getUserRowById(userId);
   const credits = resolveSubscriptionCredits(parseJsonField(user?.subscription_json, {}));
   if (credits < 999) {
-    if (credits <= 0) {
+    if (!tokenCost) return { quotaKey, quotaTaken: false, charged: 0 };
+    const debit = await adjustUserTokens(userId, -tokenCost);
+    if (!debit.ok) {
       res.status(402).json({ code: "NO_TOKENS", error: "Vous n'avez plus de jetons. Rechargez depuis la page Tarifs pour continuer." });
       return null;
     }
-    return { quotaTaken: false };
+    return { quotaKey, quotaTaken: false, charged: debit.charged || 0 };
   }
+  if (!quotaKey) return { quotaKey, quotaTaken: false, charged: 0 };
   const quota = DAILY_MODULE_LIMITS[quotaKey];
   if (!(await consumeDailyQuota(userId, quotaKey, quota.limit))) {
     sendDailyQuotaReached(res, quota);
     return null;
   }
-  return { quotaTaken: true };
+  return { quotaKey, quotaTaken: true, charged: 0 };
+}
+
+// L'action a échoué : quota rendu et jeton remboursé.
+async function releaseModuleAllowance(userId, allowance) {
+  if (!allowance) return;
+  try {
+    if (allowance.quotaTaken) await releaseDailyQuota(userId, allowance.quotaKey);
+    if (allowance.charged) await adjustUserTokens(userId, allowance.charged);
+  } catch (error) {
+    console.warn(`Remboursement d'action IA impossible : ${error.message}`);
+  }
+}
+
+// Compte à jour (solde de jetons) renvoyé avec la réponse d'un module.
+async function accountSnapshot(userId) {
+  const user = await getUserRowById(userId);
+  return { user: await getPublicUserById(userId), premium: await computePremiumAccess(user) };
 }
 
 function sendDailyQuotaReached(res, { limit, what }) {
@@ -4792,10 +4814,11 @@ async function releaseStripeEventClaim(eventId) {
 // n'existe pas encore et le compte dispose des jetons offerts du plan gratuit.
 // Règle unique pour l'affichage, les notifications, les débits et les achats.
 function resolveSubscriptionCredits(subscription) {
-  if (typeof subscription?.credits === "number") return subscription.credits;
+  // 999 = illimité : un ancien solde « 999 + reste » (ex. 1002) reste 999.
+  if (typeof subscription?.credits === "number") return Math.min(subscription.credits, 999);
   const parsed = Number(subscription?.credits);
   if (subscription?.credits !== undefined && subscription?.credits !== null && subscription?.credits !== "" && Number.isFinite(parsed)) {
-    return parsed;
+    return Math.min(parsed, 999);
   }
   return getPlanById("candidate_discovery")?.credits ?? 0;
 }
@@ -4826,7 +4849,21 @@ async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeId
   // s'additionnent au nouveau pack plutôt que d'être perdus (upgrade, pas
   // remplacement). Un plan gratuit part toujours de son solde propre (il
   // n'est atteignable ici que pour un compte qui n'était pas encore premium).
-  const nextCredits = plan.grantsPremium ? currentCredits + Number(plan.credits || 0) : Number(plan.credits || 0);
+  // Licence école ou cabinet (999 = illimité) : le solde devient 999, jamais
+  // 999 + le reste. Les jetons achetés auparavant sont mis de côté
+  // (savedCredits) et rendus si l'étudiant quitte la licence.
+  const planCredits = Number(plan.credits || 0);
+  const currentIsUnlimited = currentCredits >= 999;
+  let nextCredits;
+  let savedCredits = null;
+  if (planCredits >= 999) {
+    nextCredits = 999;
+    savedCredits = currentIsUnlimited ? Number(currentSubscription.savedCredits) || null : currentCredits;
+  } else if (plan.grantsPremium) {
+    nextCredits = (currentIsUnlimited ? 0 : currentCredits) + planCredits;
+  } else {
+    nextCredits = planCredits;
+  }
 
   await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [
     JSON.stringify({
@@ -4835,6 +4872,7 @@ async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeId
       planId: plan.id,
       billingCycle: cycle,
       credits: nextCredits,
+      ...(savedCredits > 0 ? { savedCredits } : {}),
       licenseCode: licenseCode || null,
       startedAt,
       renewalAt,
@@ -5934,6 +5972,8 @@ await loadPlatformSettings();
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
   takeModuleAllowance,
+  releaseModuleAllowance,
+  accountSnapshot,
   DAILY_MODULE_LIMITS,
   callAiChat,
   currentAiProvider,
