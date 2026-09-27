@@ -732,17 +732,25 @@ export async function deleteInterviewConversation({ userId, conversationId }) {
 export async function startInterviewSession({ userId, type_entretien, domaine, offre }) {
   const data = await request("/interview/start", {
     method: "POST",
+    idempotent: "interview-start",
     body: { userId, type_entretien, domaine, offre }
   });
-  return { message: data.message, history: data.history || [] };
+  return { ...data, history: data.history || [] };
 }
 
-export async function sendInterviewMessage({ userId, text, history = [], type_entretien, domaine, offre }) {
+export async function sendInterviewMessage({ userId, sessionId, text, history = [], type_entretien, domaine, offre, finishSession = false }) {
   const data = await request("/interview/message", {
     method: "POST",
-    body: { userId, message: text, history, type_entretien, domaine, offre }
+    idempotent: true,
+    body: { userId, sessionId, message: text, history, type_entretien, domaine, offre, finishSession }
   });
-  return { message: data.message, history: data.history || history };
+  return { ...data, history: data.history || history };
+}
+
+// Quotas du jour : entretiens (5), test technique (30), jetons.
+export async function getInterviewQuotas(userId) {
+  if (!userId) return null;
+  return request(`/interview/quotas?userId=${encodeURIComponent(userId)}`);
 }
 
 // Méthodes pour l'entraînement au code (Coding Practice)

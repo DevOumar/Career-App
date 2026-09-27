@@ -28,6 +28,8 @@ export const CODING_TOPICS = [
 export const CODING_COPY = {
   fr: {
     configTitle: "Paramètres de l'exercice",
+    quotaLeft: "Exercices restants aujourd'hui : {left} / {limit}",
+    quotaEmpty: "Limite du jour atteinte : votre quota se réinitialise à minuit.",
     configText: "Choisissez le langage, le niveau et le thème : l'IA génère un exercice sur mesure.",
     customLanguageName: "Autre langage",
     regenerateBtn: "Générer un autre exercice",
@@ -100,6 +102,8 @@ export const CODING_COPY = {
   },
   en: {
     configTitle: "Exercise settings",
+    quotaLeft: "Exercises left today: {left} / {limit}",
+    quotaEmpty: "Daily limit reached: your quota resets at midnight.",
     configText: "Pick the language, level and topic: the AI generates a tailored exercise.",
     customLanguageName: "Other language",
     regenerateBtn: "Generate another exercise",

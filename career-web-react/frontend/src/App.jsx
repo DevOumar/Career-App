@@ -2655,6 +2655,10 @@ export default function App() {
             userId={user?.id}
             avatarDataUrl={user?.avatarDataUrl}
             analyzedOffer={jobReview}
+            onSessionUpdate={(nextUser, nextPremium) => {
+              setSession({ user: nextUser, premium: nextPremium });
+              if (nextPremium) setPremium(nextPremium);
+            }}
           />
         ) : null}
         {activePage === "lettre" ? (

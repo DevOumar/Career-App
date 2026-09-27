@@ -630,6 +630,123 @@ app.use(async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Quotas journaliers (entretiens, test technique) et jetons
+// ---------------------------------------------------------------------------
+// Compteurs persistés en base (ils survivent aux redémarrages du serveur) et
+// remis à zéro à minuit, heure de Paris.
+const INTERVIEW_DAILY_LIMIT = 5;
+const INTERVIEW_MAX_ANSWERS = 10;
+const CODING_DAILY_LIMIT = 30;
+const QUOTA_TIME_ZONE = "Europe/Paris";
+
+function parisParts(date = new Date()) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-GB", {
+      timeZone: QUOTA_TIME_ZONE,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23"
+    })
+      .formatToParts(date)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, Number(part.value)])
+  );
+  return parts;
+}
+
+function quotaDay(date = new Date()) {
+  const p = parisParts(date);
+  return `${p.year}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+}
+
+// Prochain minuit à Paris, en ISO (UTC).
+function nextQuotaReset(now = new Date()) {
+  const p = parisParts(now);
+  const parisAsUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
+  const offset = parisAsUtc - Math.floor(now.getTime() / 1000) * 1000;
+  return new Date(Date.UTC(p.year, p.month - 1, p.day + 1, 0, 0, 0) - offset).toISOString();
+}
+
+function resetDelayLabel(resetAt) {
+  const minutes = Math.max(1, Math.round((new Date(resetAt).getTime() - Date.now()) / 60000));
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours ? `${hours} h ${String(rest).padStart(2, "0")} min` : `${rest} min`;
+}
+
+// Réserve une unité du quota du jour. Renvoie false si la limite est atteinte.
+async function consumeDailyQuota(userId, quotaKey, limit) {
+  const result = await db.query(
+    `INSERT INTO ai_daily_usage (user_id, quota_key, day, count, updated_at)
+     VALUES ($1, $2, $3, 1, $4)
+     ON CONFLICT (user_id, quota_key, day) DO UPDATE
+       SET count = ai_daily_usage.count + 1, updated_at = EXCLUDED.updated_at
+       WHERE ai_daily_usage.count < $5
+     RETURNING count`,
+    [userId, quotaKey, quotaDay(), nowIso(), limit]
+  );
+  return (result.rows || []).length > 0;
+}
+
+// Rend l'unité réservée quand l'action n'a pas abouti (IA indisponible...).
+async function releaseDailyQuota(userId, quotaKey) {
+  try {
+    await db.query(
+      "UPDATE ai_daily_usage SET count = GREATEST(count - 1, 0) WHERE user_id = $1 AND quota_key = $2 AND day = $3",
+      [userId, quotaKey, quotaDay()]
+    );
+  } catch (error) {
+    console.error("Erreur restitution quota:", error);
+  }
+}
+
+async function getDailyQuotaUsage(userId, quotaKey) {
+  const { rows } = await db.query("SELECT count FROM ai_daily_usage WHERE user_id = $1 AND quota_key = $2 AND day = $3", [
+    userId,
+    quotaKey,
+    quotaDay()
+  ]);
+  return Number(rows[0]?.count || 0);
+}
+
+function sendDailyQuotaReached(res, { limit, what }) {
+  const resetAt = nextQuotaReset();
+  return res.status(429).json({
+    code: "DAILY_QUOTA_REACHED",
+    limit,
+    resetAt,
+    error: `Vous avez atteint votre limite de ${limit} ${what} pour aujourd'hui. Votre quota se réinitialise à minuit (heure de Paris), dans ${resetDelayLabel(resetAt)}.`
+  });
+}
+
+// Jetons : 999 = accès illimité (compte rattaché à une école ou un cabinet).
+// Débit atomique (compare-and-swap) : deux actions simultanées ne peuvent
+// pas dépenser le même jeton.
+async function adjustUserTokens(userId, delta) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const user = await getUserRowById(userId);
+    if (!user) return { ok: false, reason: "not_found" };
+    const subscription = parseJsonField(user.subscription_json, {});
+    const credits = typeof subscription.credits === "number" ? subscription.credits : getPlanById("candidate_discovery")?.credits ?? 0;
+    if (credits >= 999) return { ok: true, unlimited: true, charged: 0, credits };
+    if (delta < 0 && credits < -delta) return { ok: false, reason: "no_tokens", credits };
+    const next = { ...subscription, credits: credits + delta };
+    const updated = await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3 AND subscription_json = $4", [
+      JSON.stringify(next),
+      nowIso(),
+      userId,
+      user.subscription_json
+    ]);
+    if (affectedRowCount(updated) > 0) return { ok: true, unlimited: false, charged: -delta, credits: credits + delta };
+  }
+  return { ok: false, reason: "conflict" };
+}
+
 async function purgeExpiredIdempotencyKeys() {
   try {
     await db.query("DELETE FROM idempotency_keys WHERE created_at < $1", [new Date(Date.now() - IDEMPOTENCY_TTL_MS).toISOString()]);
@@ -1159,6 +1276,21 @@ await db.exec(`
   ALTER TABLE cabinet_candidates ADD COLUMN IF NOT EXISTS cv_hash TEXT NOT NULL DEFAULT '';
   ALTER TABLE cvs ADD COLUMN IF NOT EXISTS content_hash TEXT NOT NULL DEFAULT '';
   ALTER TABLE cvs ADD COLUMN IF NOT EXISTS deleted_at TEXT;
+  CREATE TABLE IF NOT EXISTS ai_daily_usage (
+    user_id TEXT NOT NULL,
+    quota_key TEXT NOT NULL,
+    day TEXT NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL,
+    PRIMARY KEY (user_id, quota_key, day)
+  );
+  CREATE TABLE IF NOT EXISTS interview_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    answers INTEGER NOT NULL DEFAULT 0,
+    finished_at TEXT
+  );
   CREATE TABLE IF NOT EXISTS idempotency_keys (
     scope TEXT NOT NULL,
     idem_key TEXT NOT NULL,
@@ -5789,6 +5921,15 @@ app.locals.ctx = {
   applyPlanToUser,
   claimStripeEventOnce,
   releaseStripeEventClaim,
+  INTERVIEW_DAILY_LIMIT,
+  INTERVIEW_MAX_ANSWERS,
+  CODING_DAILY_LIMIT,
+  consumeDailyQuota,
+  releaseDailyQuota,
+  getDailyQuotaUsage,
+  sendDailyQuotaReached,
+  nextQuotaReset,
+  adjustUserTokens,
   computeContentHash,
   affectedRowCount,
   CV_TRASH_RETENTION_DAYS,

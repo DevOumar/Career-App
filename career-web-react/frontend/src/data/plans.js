@@ -53,8 +53,8 @@ export const PLANS = [
     highlighted: false,
     badge: null,
     features: {
-      fr: ["30 jetons d'analyse (6x plus qu'Essentiel)", "Simulateur d'entretiens et test technique de code", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
-      en: ["30 analysis tokens (6x more than Essentiel)", "Interview simulator and coding test", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
+      fr: ["30 jetons d'analyse (6x plus qu'Essentiel)", "Simulateur d'entretiens (1 jeton par séance de 10 questions)", "Test technique de code (30 exercices par jour)", "Historique CV illimité", "Export PDF", "Lettre de motivation IA", "Simulateur de négociation salariale", "Email Scout (recherche d'email pro)", "Support standard"],
+      en: ["30 analysis tokens (6x more than Essentiel)", "Interview simulator (1 token per 10-question session)", "Coding test (30 exercises per day)", "Unlimited CV history", "PDF export", "AI cover letter", "Salary negotiation simulator", "Email Scout (pro email finder)", "Standard support"]
     }
   },
   {
@@ -83,7 +83,8 @@ export const PLANS = [
     features: {
       fr: [
         "130 jetons d'analyse (4x plus qu'Élan)",
-        "Simulateur d'entretiens et test technique de code",
+        "Simulateur d'entretiens (1 jeton par séance de 10 questions)",
+        "Test technique de code (30 exercices par jour)",
         "Lettre de motivation IA",
         "Simulateur de négociation salariale",
         "Email Scout (recherche d'email pro)",
@@ -92,7 +93,8 @@ export const PLANS = [
       ],
       en: [
         "130 analysis tokens (4x more than Élan)",
-        "Interview simulator and coding test",
+        "Interview simulator (1 token per 10-question session)",
+        "Coding test (30 exercises per day)",
         "AI cover letter",
         "Salary negotiation simulator",
         "Email Scout (pro email finder)",
@@ -173,7 +175,7 @@ export const PLANS = [
     features: {
       fr: [
         "Accès illimité aux modules IA pour chaque étudiant (analyse CV, lettre de motivation, négociation salariale, Email Scout)",
-        "Simulateur d'entretiens illimité (chat et appel vocal) et test technique de code pour chaque étudiant",
+        "Simulateur d'entretiens sans jeton (chat et appel vocal, 5 séances par jour) et test technique de code (30 exercices par jour) pour chaque étudiant",
         "Historique CV et candidatures, export CV en PDF pour chaque étudiant",
         "Codes de licence à distribuer",
         "Tableau de bord établissement",
@@ -181,7 +183,7 @@ export const PLANS = [
       ],
       en: [
         "Unlimited AI modules for every student (CV analysis, cover letter, salary negotiation, Email Scout)",
-        "Unlimited interview simulator (chat and voice call) and coding test for every student",
+        "Token-free interview simulator (chat and voice, 5 sessions a day) and coding test (30 exercises a day) for every student",
         "CV and application history, CV export to PDF for every student",
         "License codes to distribute",
         "Institution dashboard",

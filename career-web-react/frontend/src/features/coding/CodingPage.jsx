@@ -12,7 +12,8 @@ import {
   reviewCodingSolution,
   listCodingSessions,
   saveCodingSession,
-  deleteCodingSession
+  deleteCodingSession,
+  getInterviewQuotas
 } from "../../lib/inMemoryDb.js";
 import "./coding.css";
 import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
@@ -62,6 +63,19 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
   const [copiedSolution, setCopiedSolution] = useState(false);
 
   const textareaRef = useRef(null);
+  // Quota du jour : 30 exercices générés, remis à zéro à minuit (Paris).
+  const [codingQuota, setCodingQuota] = useState(null);
+  function refreshCodingQuota() {
+    if (!user?.id) return;
+    getInterviewQuotas(user.id)
+      .then((data) => setCodingQuota(data?.coding || null))
+      .catch(() => {});
+  }
+  useEffect(() => {
+    refreshCodingQuota();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
+  const codingLeft = codingQuota ? Math.max(0, codingQuota.limit - codingQuota.used) : null;
   const gutterRef = useRef(null);
   const reviewRef = useRef(null);
 
@@ -111,10 +125,15 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
         setChallenge(res);
         setUserCode(res.starterCode || "");
       }
+      refreshCodingQuota();
     } catch (err) {
+      refreshCodingQuota();
+      const quotaReached = err.code === "DAILY_QUOTA_REACHED";
       Swal.fire({
-        icon: "error",
-        title: language === "en" ? "Generation Error" : "Erreur de génération",
+        icon: quotaReached ? "info" : "error",
+        title: quotaReached
+          ? language === "en" ? "Daily limit reached" : "Limite du jour atteinte"
+          : language === "en" ? "Generation Error" : "Erreur de génération",
         text: err.message || (language === "en" ? "Failed to generate challenge." : "Impossible de générer le défi technique.")
       });
     } finally {
@@ -370,7 +389,15 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
             />
           </label>
 
-          <button type="button" className="btn-main ready mw-cta cd-generate" disabled={isGenerating} onClick={handleGenerate}>
+          {codingQuota ? (
+            <p className={`cd-quota ${codingLeft === 0 ? "is-empty" : ""}`}>
+              <UiIcon name="history" />
+              {codingLeft === 0
+                ? copy.quotaEmpty
+                : copy.quotaLeft.replace("{left}", codingLeft).replace("{limit}", codingQuota.limit)}
+            </p>
+          ) : null}
+          <button type="button" className="btn-main ready mw-cta cd-generate" disabled={isGenerating || codingLeft === 0} onClick={handleGenerate}>
             {isGenerating ? <span className="btn-spinner" /> : <UiIcon name="code" />}
             {isGenerating ? copy.generatingBtn : challenge ? copy.regenerateBtn : copy.generateBtn}
           </button>

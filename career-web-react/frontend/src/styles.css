@@ -20839,3 +20839,137 @@ input[aria-invalid="true"] {
 .cr-solution pre {
   white-space: pre;
 }
+
+
+/* ===================== Entretiens : séances et quotas ===================== */
+.iv-progress-pill {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.iv-progress-pill i {
+  display: block;
+  width: 110px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+.iv-progress-pill b {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+  transition: width 0.3s ease;
+}
+.iv-progress-pill.is-done {
+  border-color: #b7eb8f;
+  color: #237804;
+}
+.iv-progress-pill.is-done b {
+  background: #237804;
+}
+.iv-session-done {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+  margin: 0.8rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #b7eb8f;
+  border-radius: 16px;
+  background: #f6ffed;
+}
+.iv-session-done > div {
+  flex: 1;
+  min-width: 12rem;
+}
+.iv-session-done strong {
+  display: block;
+  color: #135200;
+}
+.iv-session-done small {
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.iv-session-done-icon {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: #237804;
+  color: #fff;
+}
+.iv-session-done-icon svg,
+.iv-session-done .btn-main svg {
+  width: 16px;
+  height: 16px;
+}
+.iv-session-done .btn-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.iv-session-error {
+  margin: 0.8rem 0.8rem 0;
+}
+.interview-setup-error .iw-mini-btn {
+  margin-left: auto;
+}
+.iv-quota {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 0.9rem;
+}
+.iv-quota span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  font-size: 0.8rem;
+  color: var(--text-2);
+}
+.iv-quota span.is-empty {
+  border-color: #ffccc7;
+  background: #fff1f0;
+  color: var(--danger);
+}
+.iv-quota svg {
+  width: 13px;
+  height: 13px;
+  color: var(--primary);
+}
+.cd-quota {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 1rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-2);
+}
+.cd-quota svg {
+  width: 14px;
+  height: 14px;
+  color: var(--primary);
+}
+.cd-quota.is-empty {
+  font-weight: 700;
+  color: var(--danger);
+}
+.cd-quota + .cd-generate {
+  margin-top: 0.6rem;
+}

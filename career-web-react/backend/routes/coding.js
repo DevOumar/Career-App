@@ -12,7 +12,11 @@ export function registerCodingRoutes(app) {
     coerceString,
     parseJsonField,
     getUserRowById,
-    getEffectivePlanById
+    getEffectivePlanById,
+    CODING_DAILY_LIMIT,
+    consumeDailyQuota,
+    releaseDailyQuota,
+    sendDailyQuotaReached
   } = app.locals.ctx;
 
   // Limites des champs envoyés à l'IA (coût et injection de consignes).
@@ -272,6 +276,9 @@ print(two_sum([3, 2, 4], 6))       # [1, 2]
     try {
       const userId = coerceString(req.body?.userId);
       if (!(await requireInterviewAccess(req, res, userId))) return;
+      if (!(await consumeDailyQuota(userId, "coding_generate", CODING_DAILY_LIMIT))) {
+        return sendDailyQuotaReached(res, { limit: CODING_DAILY_LIMIT, what: "exercices de test technique" });
+      }
       const language = clip(req.body?.language || "Python", 40);
       const level = clip(req.body?.level || "intermediate", 20);
       const topic = clip(req.body?.topic || "algorithms", 80);
@@ -330,6 +337,7 @@ Règles impératives :
       // IA indisponible ou réponse inexploitable : on le dit, plutôt que de
       // présenter un exercice pré-écrit comme généré pour ce candidat.
       if (!parsed || !parsed.title || !parsed.starterCode) {
+        await releaseDailyQuota(userId, "coding_generate");
         return res.status(503).json({ error: "La génération d'exercice est momentanément indisponible. Réessayez dans quelques instants." });
       }
 

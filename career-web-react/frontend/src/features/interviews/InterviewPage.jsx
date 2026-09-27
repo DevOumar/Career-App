@@ -9,6 +9,7 @@ import {
   deleteInterviewConversation,
   startInterviewSession,
   sendInterviewMessage,
+  getInterviewQuotas,
   getApiBase,
   getSessionToken
 } from "../../lib/inMemoryDb.js";
@@ -19,10 +20,10 @@ import { ModuleHistorySidebar, ModuleTargetCard, ModuleTipsCard } from "../../co
 // passe pas par le client request() générique — mais il doit quand même
 // porter le même token de session (le backend vérifie l'accès Pro avant de
 // transcrire) et userId pour l'identifier.
-async function sendInterviewAudioMessage(audioBlob, { userId, type_entretien, domaine } = {}) {
+async function transcribeInterviewAudio(audioBlob, { userId, sessionId } = {}) {
   const apiBase = await getApiBase();
   const token = getSessionToken();
-  const params = new URLSearchParams({ userId: userId || "", type_entretien: type_entretien || "RH", domaine: domaine || "générique" });
+  const params = new URLSearchParams({ userId: userId || "", sessionId: sessionId || "" });
   const response = await fetch(`${apiBase}/interview/audio-message?${params.toString()}`, {
     method: "POST",
     headers: {
@@ -32,8 +33,8 @@ async function sendInterviewAudioMessage(audioBlob, { userId, type_entretien, do
     body: audioBlob
   });
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Erreur lors de la transcription audio.");
-  return { transcribed_text: data.transcribed_text, message: data.message };
+  if (!response.ok) throw Object.assign(new Error(data.error || "Erreur lors de la transcription audio."), { code: data.code });
+  return { transcribed_text: data.transcribed_text };
 }
 
 const DISCLAIMER =
@@ -94,7 +95,7 @@ function InterviewAssistantIllustration() {
   );
 }
 
-function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, avatarDataUrl, analyzedOffer = null }) {
+function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, avatarDataUrl, analyzedOffer = null, onSessionUpdate }) {
   // Élan et Trajectoire Pro débloquent le simulateur d'entretiens (voir
   // data/plans.js) — seul Essentiel (gratuit) en est exclu.
   const isFreePlan = !getPlanById(subscription?.planId)?.unlocksInterviews;
@@ -133,6 +134,25 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
   // Historique de conversation pour le backend (stateless : renvoyé à
   // chaque appel, mis à jour avec la réponse de chaque tour).
   const conversationHistoryRef = useRef([]);
+  // Séance suivie côté serveur : 10 réponses maximum, puis bilan automatique.
+  const sessionIdRef = useRef(null);
+  const [answersUsed, setAnswersUsed] = useState(0);
+  const [maxAnswers, setMaxAnswers] = useState(10);
+  const [sessionComplete, setSessionComplete] = useState(false);
+  const [quotas, setQuotas] = useState(null);
+  const [errorCode, setErrorCode] = useState("");
+
+  function refreshQuotas() {
+    if (!userId) return;
+    getInterviewQuotas(userId)
+      .then((data) => setQuotas(data))
+      .catch(() => {});
+  }
+
+  useEffect(() => {
+    refreshQuotas();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   useEffect(() => {
     return () => {
@@ -159,13 +179,21 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
     return domaine ? `${typeLabel} · ${domaine}` : typeLabel;
   }
 
-  function buildConversationPayload(nextMessages) {
-    return { typeEntretien, domaine, offre, messages: nextMessages };
+  function buildConversationPayload(nextMessages, extra = {}) {
+    return {
+      typeEntretien,
+      domaine,
+      offre,
+      messages: nextMessages,
+      sessionId: sessionIdRef.current,
+      answersUsed: extra.answersUsed ?? answersUsed,
+      sessionComplete: extra.sessionComplete ?? sessionComplete
+    };
   }
 
-  async function persistConversation(nextMessages) {
+  async function persistConversation(nextMessages, extra) {
     if (!userId) return;
-    const payload = buildConversationPayload(nextMessages);
+    const payload = buildConversationPayload(nextMessages, extra);
     try {
       if (conversationId) {
         await updateInterviewConversation({ userId, conversationId, payload });
@@ -187,7 +215,11 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
     setMessages([]);
     setConversationId(null);
     setErrorMsg("");
+    setErrorCode("");
     conversationHistoryRef.current = [];
+    sessionIdRef.current = null;
+    setAnswersUsed(0);
+    setSessionComplete(false);
     setMode("chat");
   }
 
@@ -197,10 +229,17 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
     setDomaine(conv.domaine || "");
     setOffre(conv.offre || "");
     setMessages(conv.messages || []);
-    conversationHistoryRef.current = [];
+    const cleanText = (text) => String(text || "").replace(/^\[Vocal\]\s*/, "").replace(/\n\n_[^_]*_\s*$/, "").trim();
+    conversationHistoryRef.current = (conv.messages || [])
+      .filter((msg) => msg.text && !String(msg.text).startsWith("Erreur :"))
+      .map((msg) => ({ role: msg.role === "candidate" ? "user" : "assistant", content: cleanText(msg.text) }));
+    sessionIdRef.current = conv.sessionId || null;
+    setAnswersUsed(Number(conv.answersUsed) || (conv.messages || []).filter((msg) => msg.role === "candidate").length);
+    setSessionComplete(Boolean(conv.sessionComplete) || !conv.sessionId);
     setMode("chat");
     setInSession(true);
     setErrorMsg("");
+    setErrorCode("");
   }
 
   async function handleDeleteConversation(event, conv) {
@@ -307,6 +346,13 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
         offre: offre.trim(),
       });
       conversationHistoryRef.current = res.history || [];
+      sessionIdRef.current = res.sessionId || null;
+      setAnswersUsed(0);
+      setMaxAnswers(res.maxAnswers || 10);
+      setSessionComplete(false);
+      setErrorCode("");
+      if (res.user) onSessionUpdate?.(res.user, res.premium);
+      refreshQuotas();
 
       const firstMsg = {
         id: Date.now().toString(),
@@ -316,7 +362,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
 
       setMessages([firstMsg]);
       setInSession(true);
-      persistConversation([firstMsg]);
+      persistConversation([firstMsg], { answersUsed: 0, sessionComplete: false });
 
       if (selectedMode === "call") {
         startCallTimer();
@@ -328,6 +374,63 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
       }
     } catch (err) {
       setErrorMsg(err.message || "Impossible de démarrer la session.");
+      setErrorCode(err.code || "");
+      refreshQuotas();
+    } finally {
+      setLoading(false);
+      setStatusText("");
+    }
+  }
+
+  // --- Réponse du candidat (écrite ou vocale) : un seul circuit ---
+  // Historique complet envoyé à chaque tour, décompte des 10 réponses de la
+  // séance côté serveur ; à la 10e, le recruteur conclut avec le bilan.
+  async function submitAnswer(text, displayText = text) {
+    const userMsg = { id: Date.now().toString(), role: "candidate", text: displayText };
+    const withUser = [...messages, userMsg];
+    setMessages(withUser);
+    setLoading(true);
+    setStatusText("Le recruteur analyse votre réponse...");
+    try {
+      const res = await sendInterviewMessage({
+        userId,
+        sessionId: sessionIdRef.current,
+        text,
+        history: conversationHistoryRef.current,
+        type_entretien: typeEntretien,
+        domaine: domaine.trim(),
+        offre: offre.trim()
+      });
+      conversationHistoryRef.current = res.history || conversationHistoryRef.current;
+      const recruiterMsg = { id: (Date.now() + 1).toString(), role: "recruiter", text: res.message };
+      const withReply = [...withUser, recruiterMsg];
+      const nextAnswers = Number(res.answersUsed) || answersUsed + 1;
+      const complete = Boolean(res.sessionComplete);
+      setMessages(withReply);
+      setAnswersUsed(nextAnswers);
+      if (res.maxAnswers) setMaxAnswers(res.maxAnswers);
+      if (complete) setSessionComplete(true);
+      persistConversation(withReply, { answersUsed: nextAnswers, sessionComplete: complete });
+
+      if (mode === "call") {
+        if (complete) {
+          stopCallTimer();
+          setMode("chat");
+          speakText("L'entretien est terminé. Voici votre bilan complet avec vos points forts et axes d'amélioration.");
+        } else {
+          setLastCaption({ role: "recruiter", text: res.message });
+          setCallStatus("Le recruteur vous répond...");
+          speakText(res.message, () => {
+            setCallStatus("Cliquez sur 'Parler' pour votre prochaine réplique");
+          });
+        }
+      }
+    } catch (err) {
+      if (err.code === "INTERVIEW_SESSION_FINISHED" || err.code === "INTERVIEW_SESSION_REQUIRED") setSessionComplete(true);
+      setMessages(withUser);
+      setErrorMsg(err.message);
+      setErrorCode(err.code || "");
+      if (mode === "call") setCallStatus(`Erreur : ${err.message}`);
     } finally {
       setLoading(false);
       setStatusText("");
@@ -337,188 +440,70 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
   // --- Send Text Message ---
   async function handleSendText() {
     const text = inputText.trim();
-    if (!text || loading) return;
-
-    const userMsg = {
-      id: Date.now().toString(),
-      role: "candidate",
-      text,
-    };
-
-    const withUser = [...messages, userMsg];
-    setMessages(withUser);
+    if (!text || loading || sessionComplete) return;
     setInputText("");
-    setLoading(true);
-    setStatusText("Le recruteur analyse votre réponse...");
+    await submitAnswer(text);
+  }
 
+  // Enregistrement vocal commun (chat ou appel) : transcription, puis envoi
+  // par le même circuit que l'écrit.
+  async function recordVoice(setRecording, onStarted) {
     try {
-      const res = await sendInterviewMessage({
-        userId,
-        text,
-        history: conversationHistoryRef.current,
-        type_entretien: typeEntretien,
-        domaine: domaine.trim(),
-        offre: offre.trim(),
-      });
-      conversationHistoryRef.current = res.history || conversationHistoryRef.current;
-      const recruiterMsg = {
-        id: (Date.now() + 1).toString(),
-        role: "recruiter",
-        text: res.message,
+      stopSpeaking();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioChunksRef.current = [];
+      const mr = new MediaRecorder(stream);
+      mediaRecorderRef.current = mr;
+      mr.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
       };
-      const withReply = [...withUser, recruiterMsg];
-      setMessages(withReply);
-      persistConversation(withReply);
-
-      if (mode === "call") {
-        setLastCaption({ role: "recruiter", text: res.message });
-        speakText(res.message, () => {
-          setCallStatus("Cliquez sur 'Parler au micro' pour votre prochaine réplique");
-        });
-      }
-    } catch (err) {
-      setMessages([
-        ...withUser,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "recruiter",
-          text: `Erreur : ${err.message}`,
-        },
-      ]);
-    } finally {
-      setLoading(false);
-      setStatusText("");
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
+        if (audioBlob.size === 0) return;
+        setLoading(true);
+        setStatusText("Transcription de votre réponse vocale...");
+        if (mode === "call") setCallStatus("Transcription de votre réponse orale...");
+        try {
+          const res = await transcribeInterviewAudio(audioBlob, { userId, sessionId: sessionIdRef.current });
+          await submitAnswer(res.transcribed_text, `[Vocal] ${res.transcribed_text}`);
+        } catch (err) {
+          if (err.code === "INTERVIEW_SESSION_REQUIRED") setSessionComplete(true);
+          setErrorMsg(err.message);
+          if (mode === "call") setCallStatus(`Erreur : ${err.message}`);
+          setLoading(false);
+          setStatusText("");
+        }
+      };
+      mr.start();
+      setRecording(true);
+      onStarted?.();
+    } catch (_err) {
+      const message = "Accès au microphone refusé ou non disponible.";
+      setErrorMsg(message);
+      if (mode === "call") setCallStatus(`Erreur micro : ${message}`);
     }
+  }
+
+  function stopRecording(setRecording) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    setRecording(false);
   }
 
   // --- Record Audio in Chat ---
   async function toggleChatRecording() {
-    if (isRecordingChat) {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
-      }
-      setIsRecordingChat(false);
-    } else {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioChunksRef.current = [];
-        const mr = new MediaRecorder(stream);
-        mediaRecorderRef.current = mr;
-
-        mr.ondataavailable = (event) => {
-          if (event.data.size > 0) audioChunksRef.current.push(event.data);
-        };
-
-        mr.onstop = async () => {
-          stream.getTracks().forEach((t) => t.stop());
-          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-          if (audioBlob.size === 0) return;
-
-          setLoading(true);
-          setStatusText("Whisper transcrit votre message vocal...");
-
-          try {
-            const res = await sendInterviewAudioMessage(audioBlob, {
-              userId,
-              type_entretien: typeEntretien,
-              domaine: domaine.trim(),
-            });
-            const userMsg = {
-              id: Date.now().toString(),
-              role: "candidate",
-              text: `[Vocal] ${res.transcribed_text}`,
-            };
-            const recruiterMsg = {
-              id: (Date.now() + 1).toString(),
-              role: "recruiter",
-              text: res.message,
-            };
-            const nextMessages = [...messages, userMsg, recruiterMsg];
-            setMessages(nextMessages);
-            persistConversation(nextMessages);
-          } catch (err) {
-            setErrorMsg(err.message);
-          } finally {
-            setLoading(false);
-            setStatusText("");
-          }
-        };
-
-        mr.start();
-        setIsRecordingChat(true);
-      } catch (err) {
-        alert("Accès au microphone refusé ou non supporté.");
-      }
-    }
+    if (sessionComplete) return;
+    if (isRecordingChat) stopRecording(setIsRecordingChat);
+    else await recordVoice(setIsRecordingChat);
   }
 
   // --- Record Audio in Call Mode ---
   async function toggleCallRecording() {
-    if (isRecordingCall) {
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-        mediaRecorderRef.current.stop();
-      }
-      setIsRecordingCall(false);
-    } else {
-      try {
-        stopSpeaking();
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        audioChunksRef.current = [];
-        const mr = new MediaRecorder(stream);
-        mediaRecorderRef.current = mr;
-
-        mr.ondataavailable = (event) => {
-          if (event.data.size > 0) audioChunksRef.current.push(event.data);
-        };
-
-        mr.onstop = async () => {
-          stream.getTracks().forEach((t) => t.stop());
-          const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-          if (audioBlob.size === 0) return;
-
-          setCallStatus("Whisper analyse votre réponse orale...");
-          setLoading(true);
-
-          try {
-            const res = await sendInterviewAudioMessage(audioBlob, {
-              userId,
-              type_entretien: typeEntretien,
-              domaine: domaine.trim(),
-            });
-            const userMsg = {
-              id: Date.now().toString(),
-              role: "candidate",
-              text: `[Vocal] ${res.transcribed_text}`,
-            };
-            const recruiterMsg = {
-              id: (Date.now() + 1).toString(),
-              role: "recruiter",
-              text: res.message,
-            };
-
-            const nextMessages = [...messages, userMsg, recruiterMsg];
-            setMessages(nextMessages);
-            persistConversation(nextMessages);
-            setLastCaption({ role: "recruiter", text: res.message });
-
-            setCallStatus("Le recruteur vous répond...");
-            speakText(res.message, () => {
-              setCallStatus("Cliquez sur 'Parler' pour votre prochaine réplique");
-            });
-          } catch (err) {
-            setCallStatus(`Erreur : ${err.message}`);
-          } finally {
-            setLoading(false);
-          }
-        };
-
-        mr.start();
-        setIsRecordingCall(true);
-        setCallStatus("Enregistrement vocal en cours… parlez à voix haute.");
-      } catch (err) {
-        setCallStatus("Erreur micro : Accès refusé ou microphone non disponible.");
-      }
-    }
+    if (sessionComplete) return;
+    if (isRecordingCall) stopRecording(setIsRecordingCall);
+    else await recordVoice(setIsRecordingCall, () => setCallStatus("Enregistrement vocal en cours… parlez à voix haute."));
   }
 
   // --- Conclude / End Interview ---
@@ -547,13 +532,16 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
     try {
       const res = await sendInterviewMessage({
         userId,
+        sessionId: sessionIdRef.current,
         text: END_INTERVIEW_MESSAGE,
+        finishSession: true,
         history: conversationHistoryRef.current,
         type_entretien: typeEntretien,
         domaine: domaine.trim(),
         offre: offre.trim(),
       });
       conversationHistoryRef.current = res.history || conversationHistoryRef.current;
+      setSessionComplete(true);
       const reportMsg = {
         id: (Date.now() + 1).toString(),
         role: "recruiter",
@@ -561,7 +549,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
       };
       const withReport = [...withEndMsg, reportMsg];
       setMessages(withReport);
-      persistConversation(withReport);
+      persistConversation(withReport, { sessionComplete: true });
 
       // If in call mode, switch back to chat to display full formatted report cleanly
       if (mode === "call") {
@@ -571,7 +559,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
         );
       }
     } catch (err) {
+      setMessages(messages);
       setErrorMsg(err.message);
+      if (err.code === "INTERVIEW_SESSION_FINISHED" || err.code === "INTERVIEW_SESSION_REQUIRED") setSessionComplete(true);
     } finally {
       setLoading(false);
       setStatusText("");
@@ -591,8 +581,13 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
     setMessages([]);
     setConversationId(null);
     conversationHistoryRef.current = [];
+    sessionIdRef.current = null;
+    setAnswersUsed(0);
+    setSessionComplete(false);
     setErrorMsg("");
+    setErrorCode("");
     setStatusText("");
+    refreshQuotas();
   }
 
   // --- Render formatted text with disclaimer handling ---
@@ -874,6 +869,11 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
             <div className="interview-setup-error">
               <UiIcon name="alert" />
               <span>{errorMsg}</span>
+              {errorCode === "NO_TOKENS" ? (
+                <button type="button" className="iw-mini-btn" onClick={onGoToTarifs}>
+                  Voir les tarifs
+                </button>
+              ) : null}
             </div>
           )}
 
@@ -956,9 +956,21 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
                   <span className="mw-step-num">3</span>
                   <div>
                     <h3>Lancez la simulation</h3>
-                    <p>Entretien {TYPE_LABELS[typeEntretien]}{domaine ? ` · ${domaine}` : ""}</p>
+                    <p>Entretien {TYPE_LABELS[typeEntretien]}{domaine ? ` · ${domaine}` : ""} · {maxAnswers} questions, puis votre bilan</p>
                   </div>
                 </div>
+                {quotas ? (
+                  <div className="iv-quota">
+                    <span className={quotas.interview.used >= quotas.interview.limit ? "is-empty" : ""}>
+                      <UiIcon name="history" />
+                      Entretiens restants aujourd'hui : <strong>{Math.max(0, quotas.interview.limit - quotas.interview.used)} / {quotas.interview.limit}</strong>
+                    </span>
+                    <span>
+                      <UiIcon name="pricetag" />
+                      {quotas.tokens.unlimited ? "Inclus dans votre licence : aucun jeton" : <>Coût : <strong>1 jeton</strong> par entretien ({quotas.tokens.credits} disponible{quotas.tokens.credits > 1 ? "s" : ""})</>}
+                    </span>
+                  </div>
+                ) : null}
                 <div className="iv-modes">
                   <button type="button" className="iv-mode" onClick={() => handleStartSession("chat")} disabled={loading}>
                     <span className="iv-mode-icon">
@@ -1000,10 +1012,16 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
             {typeEntretien === "technique" ? "Entretien technique" : typeEntretien === "direction" ? "Entretien direction" : "Entretien RH"}
           </span>
           {domaine && <span className="interview-session-domain">{domaine}</span>}
+          <span className={`iv-progress-pill ${sessionComplete ? "is-done" : ""}`}>
+            {sessionComplete ? "Séance terminée" : `Question ${Math.min(answersUsed + 1, maxAnswers)} / ${maxAnswers}`}
+            <i aria-hidden="true">
+              <b style={{ width: `${Math.min(100, (answersUsed / maxAnswers) * 100)}%` }} />
+            </i>
+          </span>
         </div>
 
         <div className="interview-session-actions">
-          <button type="button" className="btn-main" onClick={handleEndInterview} disabled={loading}>
+          <button type="button" className="btn-main" onClick={handleEndInterview} disabled={loading || sessionComplete}>
             <UiIcon name="check" />
             Terminer &amp; bilan
           </button>
@@ -1097,6 +1115,30 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
             <div ref={messagesEndRef} />
           </div>
 
+          {errorMsg ? (
+            <div className="interview-setup-error iv-session-error">
+              <UiIcon name="alert" />
+              <span>{errorMsg}</span>
+            </div>
+          ) : null}
+          {sessionComplete ? (
+            <div className="iv-session-done">
+              <span className="iv-session-done-icon">
+                <UiIcon name="check" />
+              </span>
+              <div>
+                <strong>Séance terminée</strong>
+                <small>
+                  {quotas
+                    ? `Entretiens restants aujourd'hui : ${Math.max(0, quotas.interview.limit - quotas.interview.used)} / ${quotas.interview.limit}.`
+                    : "Retrouvez votre bilan ci-dessus."}
+                </small>
+              </div>
+              <button type="button" className="btn-main ready" onClick={handleReset}>
+                <UiIcon name="plus" /> Nouvel entretien
+              </button>
+            </div>
+          ) : (
           <div className="interview-chat-input-bar">
             <button
               type="button"
@@ -1126,6 +1168,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
               Envoyer
             </button>
           </div>
+          )}
         </div>
       )}
       </section>

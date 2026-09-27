@@ -45,7 +45,7 @@ function saveTab(tabId) {
   }
 }
 
-export default function InterviewHub({ language = "fr", initialTab = "interview", user, subscription, onGoToTarifs, userId, avatarDataUrl, analyzedOffer }) {
+export default function InterviewHub({ language = "fr", initialTab = "interview", user, subscription, onGoToTarifs, userId, avatarDataUrl, analyzedOffer, onSessionUpdate }) {
   const [tab, setTab] = useState(() => readSavedTab() || initialTab);
   const en = language === "en";
   // Même droit d'accès pour toute la page : le plan doit débloquer les entretiens.
@@ -130,6 +130,7 @@ export default function InterviewHub({ language = "fr", initialTab = "interview"
           userId={userId}
           avatarDataUrl={avatarDataUrl}
           analyzedOffer={analyzedOffer}
+          onSessionUpdate={onSessionUpdate}
         />
       )}
     </section>

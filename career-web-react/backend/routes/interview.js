@@ -78,7 +78,19 @@ export function registerInterviewRoutes(app) {
     coerceString,
     getUserRowById,
     getEffectivePlanById,
-    parseJsonField
+    parseJsonField,
+    INTERVIEW_DAILY_LIMIT,
+    INTERVIEW_MAX_ANSWERS,
+    CODING_DAILY_LIMIT,
+    consumeDailyQuota,
+    releaseDailyQuota,
+    getDailyQuotaUsage,
+    sendDailyQuotaReached,
+    nextQuotaReset,
+    adjustUserTokens,
+    getPublicUserById,
+    computePremiumAccess,
+    affectedRowCount
   } = app.locals.ctx;
 
   // Le simulateur d'entretiens n'est inclus que dans le plan Trajectoire Pro
@@ -103,7 +115,22 @@ export function registerInterviewRoutes(app) {
     return true;
   }
 
+  // Jusqu'à 3 essais espacés : une saturation passagère du fournisseur IA
+  // ne doit pas interrompre l'entretien.
   async function callLlmMessages(messages) {
+    let lastError;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (attempt) await new Promise((resolve) => setTimeout(resolve, attempt * 2000));
+      try {
+        return await callLlmMessagesOnce(messages);
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw lastError;
+  }
+
+  async function callLlmMessagesOnce(messages) {
     const apiKey = GROQ_API_KEY || OPENAI_API_KEY || XAI_API_KEY;
     const provider = GROQ_API_KEY ? "groq" : OPENAI_API_KEY ? "openai" : XAI_API_KEY ? "xai" : "none";
     const preferredGroqModel = String(AI_MODEL || "").trim() || "openai/gpt-oss-120b";
@@ -166,12 +193,49 @@ export function registerInterviewRoutes(app) {
     throw Object.assign(new Error("Le recruteur IA est momentanément indisponible. Réessayez dans un instant."), { statusCode: 503 });
   }
 
+  // Quotas du jour (entretiens et test technique) pour l'affichage.
+  app.get("/api/interview/quotas", async (req, res) => {
+    try {
+      const userId = coerceString(req.query?.userId);
+      if (!requireMatchingSession(req, res, userId)) return;
+      const user = await getUserRowById(userId);
+      const subscription = parseJsonField(user?.subscription_json, {});
+      const credits = typeof subscription.credits === "number" ? subscription.credits : 0;
+      res.json({
+        interview: { used: await getDailyQuotaUsage(userId, "interview_session"), limit: INTERVIEW_DAILY_LIMIT, maxAnswers: INTERVIEW_MAX_ANSWERS },
+        coding: { used: await getDailyQuotaUsage(userId, "coding_generate"), limit: CODING_DAILY_LIMIT },
+        tokens: { unlimited: credits >= 999, credits },
+        resetAt: nextQuotaReset()
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message || "Erreur serveur." });
+    }
+  });
+
   // Démarrer la simulation
   app.post("/api/interview/start", aiConversationRateLimiter, async (req, res) => {
     try {
       const userId = coerceString(req.body?.userId);
       if (!(await requireInterviewAccess(req, res, userId))) return;
       const { type_entretien = "RH", domaine = "générique", offre = "" } = req.body || {};
+
+      // 5 séances par jour, puis 1 jeton par séance (sauf accès illimité
+      // école / cabinet). Rien n'est consommé si l'IA ne répond pas.
+      if (!(await consumeDailyQuota(userId, "interview_session", INTERVIEW_DAILY_LIMIT))) {
+        return sendDailyQuotaReached(res, { limit: INTERVIEW_DAILY_LIMIT, what: "entretiens" });
+      }
+      const debit = await adjustUserTokens(userId, -1);
+      if (!debit.ok) {
+        await releaseDailyQuota(userId, "interview_session");
+        return res.status(402).json({
+          code: "NO_TOKENS",
+          error: "Il vous faut 1 jeton pour démarrer un entretien. Rechargez vos jetons depuis la page Tarifs."
+        });
+      }
+      const refundStart = async () => {
+        await releaseDailyQuota(userId, "interview_session");
+        if (debit.charged) await adjustUserTokens(userId, debit.charged);
+      };
       const chunks = retrieveChunks("présentation motivation parcours", type_entretien, domaine);
       const context = formatContext(chunks);
 
@@ -189,12 +253,29 @@ export function registerInterviewRoutes(app) {
         { role: "user", content: kickoffMessage }
       ];
 
-      const rawAnswer = await callLlmMessages(messages);
+      let rawAnswer;
+      try {
+        rawAnswer = await callLlmMessages(messages);
+      } catch (aiError) {
+        await refundStart();
+        throw aiError;
+      }
       const answer = `${rawAnswer}\n\n_${DISCLAIMER}_`;
+
+      const sessionId = `ivs-${crypto.randomUUID()}`;
+      await db.query("INSERT INTO interview_sessions (id, user_id, created_at, answers) VALUES ($1, $2, $3, 0)", [sessionId, userId, nowIso()]);
+      const updatedUser = await getUserRowById(userId);
 
       res.json({
         ok: true,
         message: answer,
+        sessionId,
+        maxAnswers: INTERVIEW_MAX_ANSWERS,
+        answersUsed: 0,
+        tokenCharged: debit.charged || 0,
+        interviewsLeftToday: Math.max(0, INTERVIEW_DAILY_LIMIT - (await getDailyQuotaUsage(userId, "interview_session"))),
+        user: await getPublicUserById(userId),
+        premium: await computePremiumAccess(updatedUser),
         history: [
           { role: "assistant", content: rawAnswer }
         ]
@@ -219,13 +300,43 @@ export function registerInterviewRoutes(app) {
         finishSession = false
       } = req.body || {};
 
-      const userText = message.trim();
+      const userText = String(message || "").trim().slice(0, 4000);
       if (!userText && !finishSession) {
         return res.status(400).json({ error: "Message vide." });
       }
 
+      const sessionId = coerceString(req.body?.sessionId);
+      const { rows: sessionRows } = sessionId
+        ? await db.query("SELECT id, answers, finished_at FROM interview_sessions WHERE id = $1 AND user_id = $2", [sessionId, userId])
+        : { rows: [] };
+      const session = sessionRows[0];
+      if (!session) {
+        return res.status(409).json({ code: "INTERVIEW_SESSION_REQUIRED", error: "Cette séance n'est plus active. Démarrez un nouvel entretien." });
+      }
+      if (session.finished_at) {
+        return res.status(409).json({ code: "INTERVIEW_SESSION_FINISHED", error: "Cette séance est terminée. Démarrez un nouvel entretien." });
+      }
+
+      // Une réponse de plus ; à la 10e, le recruteur conclut avec le bilan.
+      let answersUsed = Number(session.answers || 0);
+      let lastAnswer = false;
+      if (!finishSession) {
+        const counted = await db.query(
+          "UPDATE interview_sessions SET answers = answers + 1 WHERE id = $1 AND user_id = $2 AND finished_at IS NULL AND answers < $3 RETURNING answers",
+          [sessionId, userId, INTERVIEW_MAX_ANSWERS]
+        );
+        if (!(counted.rows || []).length) {
+          return res.status(409).json({ code: "INTERVIEW_SESSION_FINISHED", error: "Cette séance est terminée. Démarrez un nouvel entretien." });
+        }
+        answersUsed = Number(counted.rows[0].answers);
+        lastAnswer = answersUsed >= INTERVIEW_MAX_ANSWERS;
+      }
+      const concluding = finishSession || lastAnswer;
+
       const promptInput = finishSession
         ? "[Le candidat souhaite clore l'entretien. Conclus l'entretien et fournis le bilan complet et la correction finale en détaillant ses points forts et ses axes d'amélioration.]"
+        : lastAnswer
+        ? `${userText}\n\n[C'était la ${INTERVIEW_MAX_ANSWERS}e et dernière réponse de la séance. Réagis en une phrase à cette réponse, puis conclus l'entretien et fournis le bilan complet et la correction finale en détaillant ses points forts et ses axes d'amélioration.]`
         : userText;
 
       const chunks = retrieveChunks(promptInput, type_entretien, domaine);
@@ -249,8 +360,19 @@ export function registerInterviewRoutes(app) {
         { role: "user", content: promptInput }
       ];
 
-      const rawAnswer = await callLlmMessages(messages);
+      let rawAnswer;
+      try {
+        rawAnswer = await callLlmMessages(messages);
+      } catch (aiError) {
+        if (!finishSession) {
+          await db.query("UPDATE interview_sessions SET answers = GREATEST(answers - 1, 0) WHERE id = $1 AND user_id = $2", [sessionId, userId]);
+        }
+        throw aiError;
+      }
       const answer = `${rawAnswer}\n\n_${DISCLAIMER}_`;
+      if (concluding) {
+        await db.query("UPDATE interview_sessions SET finished_at = $1 WHERE id = $2 AND user_id = $3", [nowIso(), sessionId, userId]);
+      }
 
       const updatedHistory = [
         ...formattedHistory,
@@ -263,7 +385,10 @@ export function registerInterviewRoutes(app) {
         message: answer,
         rawAnswer,
         history: updatedHistory,
-        isBilan: finishSession || rawAnswer.toLowerCase().includes("points forts") || rawAnswer.toLowerCase().includes("bilan")
+        answersUsed,
+        maxAnswers: INTERVIEW_MAX_ANSWERS,
+        sessionComplete: concluding,
+        isBilan: concluding || rawAnswer.toLowerCase().includes("points forts") || rawAnswer.toLowerCase().includes("bilan")
       });
     } catch (error) {
       console.error("Erreur API interview message:", error);
@@ -276,6 +401,13 @@ export function registerInterviewRoutes(app) {
     try {
       const userId = coerceString(req.query?.userId);
       if (!(await requireInterviewAccess(req, res, userId))) return;
+      const audioSessionId = coerceString(req.query?.sessionId);
+      const { rows: audioSession } = audioSessionId
+        ? await db.query("SELECT id FROM interview_sessions WHERE id = $1 AND user_id = $2 AND finished_at IS NULL", [audioSessionId, userId])
+        : { rows: [] };
+      if (!audioSession[0]) {
+        return res.status(409).json({ code: "INTERVIEW_SESSION_REQUIRED", error: "Cette séance n'est plus active. Démarrez un nouvel entretien." });
+      }
       const audioBuffer = req.body;
       let transcribedText = "";
 
@@ -311,29 +443,9 @@ export function registerInterviewRoutes(app) {
         return res.status(422).json({ error: "Votre réponse vocale n'a pas pu être transcrite. Réessayez, ou répondez par écrit." });
       }
 
-      const type_entretien = req.query.type_entretien || "RH";
-      const domaine = req.query.domaine || "générique";
-
-      const chunks = retrieveChunks(transcribedText, type_entretien, domaine);
-      const context = formatContext(chunks);
-
-      const systemPrompt = INTERVIEWER_SYSTEM_PROMPT.replace("{scenario}", ` de type ${type_entretien}`) +
-        `\n\nBonnes pratiques RAG :\n${context}`;
-
-      const messages = [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: transcribedText }
-      ];
-
-      const rawAnswer = await callLlmMessages(messages);
-      const answer = `${rawAnswer}\n\n_${DISCLAIMER}_`;
-
-      res.json({
-        ok: true,
-        transcribed_text: transcribedText,
-        message: answer,
-        rawAnswer
-      });
+      // Transcription seule : la réponse est ensuite envoyée à /message, avec
+      // l'historique complet et le décompte des 10 questions de la séance.
+      res.json({ ok: true, transcribed_text: transcribedText.slice(0, 4000) });
     } catch (error) {
       console.error("Erreur API audio interview:", error);
       res.status(error.statusCode || 500).json({ error: error.message });
