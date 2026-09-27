@@ -1488,12 +1488,14 @@ export default function App() {
     }
   }
 
-  async function handleCompleteRoleQuiz(targetRole, sector) {
+  async function handleCompleteRoleQuiz({ targetRole, sector, experienceYears, education } = {}) {
     if (!user) return;
     try {
       const patch = { onboardingQuizSeen: true };
       if (targetRole) patch.targetRole = targetRole;
       if (sector) patch.sector = sector;
+      if (typeof experienceYears === "number") patch.experienceYears = experienceYears;
+      if (education) patch.education = education;
       const updated = await updateUserProfile(user.id, patch);
       setSession({ user: updated.user, premium: updated.premium });
       setPremium(updated.premium);
@@ -2816,142 +2818,223 @@ export const ADMIN_ACCOUNT_TYPES = [
 ];
 
 
+// Questionnaire d'accueil (après l'inscription) : poste visé, secteur,
+// expérience et niveau d'études. Tout est enregistré dans le profil et sert
+// directement au score de compatibilité et à la personnalisation.
+const ONBOARDING_ROLE_ICONS = ["code", "settings", "chart", "share", "network", "edit", "scale", "profile", "briefcase", "chat", "plus"];
+const ONBOARDING_SECTOR_ICONS = ["code", "scale", "shield", "chat", "pricetag", "settings", "share", "globe", "plus"];
+
+function OnboardingArt() {
+  return (
+    <svg viewBox="0 0 240 180" className="ob-art" aria-hidden="true">
+      <defs>
+        <linearGradient id="ob-card" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#ffffff" />
+          <stop offset="1" stopColor="#fff4ec" />
+        </linearGradient>
+      </defs>
+      <circle cx="120" cy="92" r="78" fill="#ffffff" fillOpacity="0.14" />
+      <circle cx="120" cy="92" r="54" fill="#ffffff" fillOpacity="0.12" />
+      <rect x="62" y="40" width="116" height="100" rx="16" fill="url(#ob-card)" />
+      <circle cx="90" cy="70" r="14" fill="#f5d2bd" />
+      <path d="M78 96c2-10 22-10 24 0" fill="#f26a2e" />
+      <rect x="112" y="60" width="50" height="7" rx="3.5" fill="#b83309" />
+      <rect x="112" y="73" width="36" height="5" rx="2.5" fill="#ecdfd4" />
+      <rect x="78" y="108" width="84" height="5" rx="2.5" fill="#ecdfd4" />
+      <rect x="78" y="118" width="60" height="5" rx="2.5" fill="#ecdfd4" />
+      <circle cx="176" cy="132" r="17" fill="#237804" />
+      <path d="M169 132l5 5 10-11" stroke="#fff" strokeWidth="3.2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M44 48l4 10 10 4-10 4-4 10-4-10-10-4 10-4z" fill="#ffffff" />
+      <path d="M196 36l3 7 7 3-7 3-3 7-3-7-7-3 7-3z" fill="#ffe0cc" />
+    </svg>
+  );
+}
+
 function RoleQuizModal({ language, onComplete }) {
   const copy = APP_COPY[language]?.roleQuiz || APP_COPY.fr.roleQuiz;
-  const [step, setStep] = useState(1);
-  const [role, setRole] = useState("");
-  const [sector, setSector] = useState("");
-  const [roleOther, setRoleOther] = useState("");
-  const [sectorOther, setSectorOther] = useState("");
-
-  const otherLabel = language === "en" ? "Other" : "Autre";
-  const isRoleOther = role === otherLabel;
-  const isSectorOther = sector === otherLabel;
+  const en = language === "en";
+  const t = (fr, enText) => (en ? enText : fr);
+  const otherLabel = en ? "Other" : "Autre";
   const MIN_OTHER_LENGTH = 3;
-  const roleOtherTooShort = isRoleOther && roleOther.trim().length > 0 && roleOther.trim().length < MIN_OTHER_LENGTH;
-  const sectorOtherTooShort = isSectorOther && sectorOther.trim().length > 0 && sectorOther.trim().length < MIN_OTHER_LENGTH;
 
-  function handleRoleContinue() {
-    if (!role) return;
-    if (isRoleOther && roleOther.trim().length < MIN_OTHER_LENGTH) return;
-    setStep(2);
+  const EXPERIENCES = [
+    { years: 0, label: t("Étudiant ou premier emploi", "Student or first job"), hint: t("Stage, alternance, jeune diplômé", "Internship, apprenticeship, graduate"), icon: "profile" },
+    { years: 1, label: t("Moins de 2 ans", "Less than 2 years"), hint: t("Premières expériences", "First experiences"), icon: "history" },
+    { years: 3, label: t("2 à 5 ans", "2 to 5 years"), hint: t("Profil confirmé", "Experienced"), icon: "chart" },
+    { years: 7, label: t("5 à 10 ans", "5 to 10 years"), hint: t("Profil senior", "Senior"), icon: "briefcase" },
+    { years: 12, label: t("Plus de 10 ans", "More than 10 years"), hint: t("Expert, management", "Expert, management"), icon: "shield" }
+  ];
+  const EDUCATIONS = [
+    { value: "Bac", label: t("Bac", "High school diploma"), hint: t("Baccalauréat ou équivalent", "Baccalaureate or equivalent") },
+    { value: "Bac+2", label: "Bac+2", hint: t("BTS, DUT", "Associate degree") },
+    { value: "Bac+3", label: "Bac+3", hint: t("Licence, Bachelor, BUT", "Bachelor's degree") },
+    { value: "Bac+5", label: "Bac+5", hint: t("Master, école d'ingénieur ou de commerce", "Master's, engineering or business school") },
+    { value: "Doctorat", label: t("Doctorat", "PhD"), hint: t("Bac+8", "Doctorate") }
+  ];
+  const STEPS = [
+    { key: "role", label: t("Poste visé", "Target role"), title: copy.step1Title, text: t("Pour cibler les offres et les conseils.", "To target jobs and advice.") },
+    { key: "sector", label: t("Secteur", "Industry"), title: copy.step2Title, text: t("Pour adapter les analyses à votre marché.", "To tailor analyses to your market.") },
+    { key: "experience", label: t("Expérience", "Experience"), title: t("Quelle est votre expérience ?", "How much experience do you have?"), text: t("Elle compte dans le score de compatibilité.", "It counts in the compatibility score.") },
+    { key: "education", label: t("Formation", "Education"), title: t("Votre niveau d'études ?", "Your education level?"), text: t("Comparé au niveau demandé par les offres.", "Compared with the level required by jobs.") }
+  ];
+
+  const [step, setStep] = useState(0);
+  const [role, setRole] = useState("");
+  const [roleOther, setRoleOther] = useState("");
+  const [sector, setSector] = useState("");
+  const [sectorOther, setSectorOther] = useState("");
+  const [experience, setExperience] = useState(null);
+  const [education, setEducation] = useState("");
+
+  const current = STEPS[step];
+  const otherInvalid = (value, other) => value === otherLabel && other.trim().length < MIN_OTHER_LENGTH;
+  const canContinue =
+    (current.key === "role" && role && !otherInvalid(role, roleOther)) ||
+    (current.key === "sector" && sector && !otherInvalid(sector, sectorOther)) ||
+    (current.key === "experience" && experience !== null) ||
+    (current.key === "education" && education);
+
+  function finish(skipRemaining = false) {
+    onComplete({
+      targetRole: role === otherLabel ? roleOther.trim() : role,
+      sector: sector === otherLabel ? sectorOther.trim() : sector,
+      experienceYears: skipRemaining && experience === null ? undefined : experience ?? undefined,
+      education: education || undefined
+    });
   }
 
-  function handleFinish(sectorValue, sectorOtherValue) {
-    const finalRole = isRoleOther ? roleOther.trim() : role;
-    const finalSector = sectorValue === otherLabel ? sectorOtherValue.trim() : sectorValue || "";
-    onComplete(finalRole, finalSector);
+  function next() {
+    if (!canContinue) return;
+    if (step < STEPS.length - 1) setStep(step + 1);
+    else finish();
+  }
+
+  function skip() {
+    if (step < STEPS.length - 1) setStep(step + 1);
+    else finish(true);
+  }
+
+  function optionGrid(items, selected, onSelect, icons) {
+    return (
+      <div className="ob-grid">
+        {items.map((item, index) => {
+          const value = typeof item === "string" ? item : item.value ?? item.years;
+          const label = typeof item === "string" ? item : item.label;
+          const active = selected === value;
+          return (
+            <button key={label} type="button" className={`ob-option ${active ? "is-active" : ""}`} onClick={() => onSelect(value)} aria-pressed={active}>
+              <span className="ob-option-icon">
+                <UiIcon name={(icons && icons[index]) || item.icon || "check"} />
+              </span>
+              <span className="ob-option-text">
+                <strong>{label}</strong>
+                {item.hint ? <small>{item.hint}</small> : null}
+              </span>
+              {active ? (
+                <span className="ob-option-check" aria-hidden="true">
+                  <UiIcon name="check" />
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    );
+  }
+
+  function otherInput(value, other, setOther, placeholder) {
+    if (value !== otherLabel) return null;
+    const tooShort = other.trim().length > 0 && other.trim().length < MIN_OTHER_LENGTH;
+    return (
+      <div className="ob-other">
+        <input
+          className={tooShort ? "invalid" : ""}
+          value={other}
+          maxLength={80}
+          onChange={(event) => setOther(event.target.value)}
+          placeholder={placeholder}
+          autoFocus
+        />
+        {tooShort ? <small className="field-hint error">{t(`${MIN_OTHER_LENGTH} caractères minimum.`, `At least ${MIN_OTHER_LENGTH} characters.`)}</small> : null}
+      </div>
+    );
   }
 
   return (
-    <div className="modal-overlay">
-      <div className="role-quiz-modal">
-        <button type="button" className="modal-close" onClick={() => onComplete("", "")} aria-label="Close">
-          ×
-        </button>
-        <div className="role-quiz-icon">
-          <UiIcon name="briefcase" />
-        </div>
-        <h2>{step === 1 ? copy.step1Title : copy.step2Title}</h2>
-        <p className="muted">{step === 1 ? copy.step1Text : copy.step2Text}</p>
+    <div className="modal-overlay ob-overlay">
+      <div className="ob-modal" role="dialog" aria-modal="true" aria-labelledby="ob-title">
+        <aside className="ob-aside">
+          <OnboardingArt />
+          <h3>{t("Personnalisons votre espace", "Let's personalise your space")}</h3>
+          <p>{t("Quatre questions rapides pour des analyses et des conseils adaptés à votre profil.", "Four quick questions for analyses and advice tailored to your profile.")}</p>
+          <ol className="ob-steps">
+            {STEPS.map((item, index) => (
+              <li key={item.key} className={index < step ? "is-done" : index === step ? "is-current" : ""}>
+                <span>{index < step ? <UiIcon name="check" /> : index + 1}</span>
+                {item.label}
+              </li>
+            ))}
+          </ol>
+        </aside>
 
-        <div className="role-quiz-progress">
-          <div className="role-quiz-progress-bar" style={{ width: step === 1 ? "50%" : "100%" }} />
-        </div>
+        <section className="ob-main">
+          <div className="ob-top">
+            <span className="ob-count">
+              {t("Étape", "Step")} {step + 1} / {STEPS.length}
+            </span>
+            <button type="button" className="ob-close" onClick={() => finish(true)} aria-label={t("Fermer", "Close")}>
+              <svg viewBox="0 0 20 20" aria-hidden="true">
+                <path d="M5 5l10 10M15 5L5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+              </svg>
+            </button>
+          </div>
+          <div className="ob-progress" aria-hidden="true">
+            <i style={{ width: `${((step + 1) / STEPS.length) * 100}%` }} />
+          </div>
 
-        {step === 1 ? (
-          <>
-            <div className="role-quiz-grid">
-              {copy.roles.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={`role-quiz-option ${role === item ? "active" : ""}`}
-                  onClick={() => setRole(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-            {isRoleOther ? (
+          <h2 id="ob-title">{current.title}</h2>
+          <p className="ob-text">{current.text}</p>
+
+          <div className="ob-body">
+            {current.key === "role" ? (
               <>
-                <input
-                  className={`role-quiz-other-input ${roleOtherTooShort ? "invalid" : ""}`}
-                  value={roleOther}
-                  onChange={(event) => setRoleOther(event.target.value)}
-                  placeholder={language === "en" ? "Tell us your target role..." : "Précisez le poste que vous visez..."}
-                  minLength={MIN_OTHER_LENGTH}
-                  autoFocus
-                />
-                {roleOtherTooShort ? (
-                  <p className="field-hint error">
-                    {language === "en"
-                      ? `At least ${MIN_OTHER_LENGTH} characters required.`
-                      : `${MIN_OTHER_LENGTH} caractères minimum requis.`}
-                  </p>
-                ) : null}
+                {optionGrid(copy.roles, role, setRole, ONBOARDING_ROLE_ICONS)}
+                {otherInput(role, roleOther, setRoleOther, t("Précisez le poste que vous visez…", "Tell us your target role…"))}
               </>
             ) : null}
-            <button
-              type="button"
-              className="btn-main ready role-quiz-submit"
-              disabled={!role || (isRoleOther && roleOther.trim().length < MIN_OTHER_LENGTH)}
-              onClick={handleRoleContinue}
-            >
-              {copy.continue} <UiIcon name="chevron" className="btn-chevron" />
-            </button>
-          </>
-        ) : (
-          <>
-            <div className="role-quiz-grid">
-              {copy.sectors.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  className={`role-quiz-option ${sector === item ? "active" : ""}`}
-                  onClick={() => setSector(item)}
-                >
-                  {item}
-                </button>
-              ))}
-            </div>
-            {isSectorOther ? (
+            {current.key === "sector" ? (
               <>
-                <input
-                  className={`role-quiz-other-input ${sectorOtherTooShort ? "invalid" : ""}`}
-                  value={sectorOther}
-                  onChange={(event) => setSectorOther(event.target.value)}
-                  placeholder={language === "en" ? "Tell us your industry..." : "Précisez votre secteur..."}
-                  minLength={MIN_OTHER_LENGTH}
-                  autoFocus
-                />
-                {sectorOtherTooShort ? (
-                  <p className="field-hint error">
-                    {language === "en"
-                      ? `At least ${MIN_OTHER_LENGTH} characters required.`
-                      : `${MIN_OTHER_LENGTH} caractères minimum requis.`}
-                  </p>
-                ) : null}
+                {optionGrid(copy.sectors, sector, setSector, ONBOARDING_SECTOR_ICONS)}
+                {otherInput(sector, sectorOther, setSectorOther, t("Précisez votre secteur…", "Tell us your industry…"))}
               </>
             ) : null}
-            <button
-              type="button"
-              className="btn-main ready role-quiz-submit"
-              disabled={isSectorOther && sectorOther.trim().length < MIN_OTHER_LENGTH}
-              onClick={() => handleFinish(sector, sectorOther)}
-            >
-              {copy.start} <UiIcon name="chevron" className="btn-chevron" />
-            </button>
-            <button type="button" className="role-quiz-skip" onClick={() => handleFinish("", "")}>
-              {copy.skip}
-            </button>
-          </>
-        )}
+            {current.key === "experience" ? optionGrid(EXPERIENCES, experience, setExperience) : null}
+            {current.key === "education" ? optionGrid(EDUCATIONS, education, setEducation, EDUCATIONS.map(() => "docClassic")) : null}
+          </div>
+
+          <div className="ob-actions">
+            {step > 0 ? (
+              <button type="button" className="btn-secondary" onClick={() => setStep(step - 1)}>
+                {t("Retour", "Back")}
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="ob-actions-right">
+              <button type="button" className="ob-skip" onClick={skip}>
+                {t("Passer", "Skip")}
+              </button>
+              <button type="button" className="btn-main ready" disabled={!canContinue} onClick={next}>
+                {step === STEPS.length - 1 ? t("Terminer", "Finish") : copy.continue}
+                <UiIcon name={step === STEPS.length - 1 ? "check" : "chevron"} />
+              </button>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );
 }
-
 
 export function GoogleLogo() {
   return (
