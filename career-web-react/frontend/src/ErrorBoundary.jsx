@@ -3,11 +3,11 @@ import React from "react";
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false };
   }
 
-  static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
 
   componentDidCatch(error, info) {
@@ -31,32 +31,35 @@ export default class ErrorBoundary extends React.Component {
       >
         <div
           style={{
-            maxWidth: "920px",
+            maxWidth: "640px",
             margin: "0 auto",
             background: "#fff",
             border: "1px solid #dfd8cc",
-            borderRadius: "12px",
-            padding: "16px"
+            borderRadius: "16px",
+            padding: "22px"
           }}
         >
           <h1 style={{ margin: "0 0 8px", fontFamily: "Cabinet Grotesk, sans-serif" }}>
-            Erreur d'affichage détectée
+            Une erreur d'affichage est survenue
           </h1>
-          <p style={{ marginTop: 0 }}>
-            L'application a rencontré une erreur runtime. Ouvre la console navigateur pour la stack complète.
+          <p style={{ marginTop: 0, color: "#5f5651", lineHeight: 1.55 }}>
+            La page n'a pas pu s'afficher correctement. Rechargez l'application pour reprendre votre navigation.
           </p>
-          <pre
+          <button
+            type="button"
+            onClick={() => window.location.reload()}
             style={{
-              whiteSpace: "pre-wrap",
-              overflowX: "auto",
-              background: "#f8f4ec",
-              border: "1px solid #e9e2d4",
-              borderRadius: "8px",
-              padding: "12px"
+              border: 0,
+              borderRadius: "999px",
+              padding: "11px 18px",
+              background: "#b83309",
+              color: "#fff",
+              fontWeight: 800,
+              cursor: "pointer"
             }}
           >
-            {String(this.state.error?.message || this.state.error || "Erreur inconnue")}
-          </pre>
+            Recharger
+          </button>
         </div>
       </div>
     );

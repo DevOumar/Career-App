@@ -20,6 +20,47 @@ export function getFriendlyErrorMessage(error, language = "fr") {
     return networkFallback;
   }
 
+  const duplicateEmailPatterns = [
+    /user_email_addresses_email/i,
+    /duplicate key value violates unique constraint/i,
+    /violates unique constraint/i,
+    /23505/i,
+    /duplicate/i
+  ];
+  if (duplicateEmailPatterns.some((pattern) => pattern.test(message)) && /email|mail|user_email_addresses/i.test(message)) {
+    return language === "en" ? "An account already exists with this email address." : "Un compte existe deja avec cet email.";
+  }
+
+  const duplicateUsernamePatterns = [/username/i, /nom d'utilisateur/i];
+  if (duplicateEmailPatterns.some((pattern) => pattern.test(message)) && duplicateUsernamePatterns.some((pattern) => pattern.test(message))) {
+    return language === "en" ? "This username is already taken." : "Ce nom d'utilisateur est deja utilise.";
+  }
+
+  const smtpPatterns = [/smtp/i, /nodemailer/i, /eauth/i, /etimedout/i, /econnrefused/i, /greeting timeout/i];
+  if (smtpPatterns.some((pattern) => pattern.test(message))) {
+    return language === "en"
+      ? "The email could not be sent. Please try again in a moment."
+      : "L'email n'a pas pu etre envoye. Reessayez dans quelques instants.";
+  }
+
+  const databasePatterns = [
+    /postgres/i,
+    /postgresql/i,
+    /supabase/i,
+    /sql/i,
+    /relation .* does not exist/i,
+    /column .* does not exist/i,
+    /syntax error at or near/i,
+    /violates foreign key constraint/i,
+    /violates not-null constraint/i,
+    /invalid input syntax/i,
+    /deadlock detected/i,
+    /database/i
+  ];
+  if (databasePatterns.some((pattern) => pattern.test(message))) {
+    return fallback;
+  }
+
   const technicalPatterns = [
     /is not defined/i,
     /cannot read properties/i,
@@ -29,7 +70,15 @@ export function getFriendlyErrorMessage(error, language = "fr") {
     /syntaxerror/i,
     /referenceerror/i,
     /typeerror/i,
-    /json/i
+    /json/i,
+    /constraint/i,
+    /errno/i,
+    /code:\s*['"]?[a-z0-9_]+/i,
+    /enotfound/i,
+    /econnreset/i,
+    /timeout/i,
+    /failed with status/i,
+    /internal server error/i
   ];
 
   if (technicalPatterns.some((pattern) => pattern.test(message))) {
