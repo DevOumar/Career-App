@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { CodeEntry } from "./components/CodeEntry.jsx";
 import Swal from "sweetalert2";
 import "sweetalert2/dist/sweetalert2.min.css";
 import { UiIcon } from "./components/UiIcon.jsx";
@@ -6,23 +7,27 @@ import { AvatarCircle, getAvatarSource } from "./components/AvatarCircle.jsx";
 import { LanguageSwitch } from "./components/LanguageSwitch.jsx";
 import MfaLoginStep from "./features/account/mfa/MfaLoginStep.jsx";
 import { askLogoutConfirmation } from "./features/account/LogoutConfirmHost.jsx";
-import SalaryNegotiationPage from "./features/negotiation/SalaryNegotiationPage.jsx";
-import ApplicationsPage from "./features/applications/ApplicationsPage.jsx";
-import { AdminApp, adminNotifRelativeLabel } from "./features/admin/AdminApp.jsx";
-import SchoolApp, { SchoolEmptyState } from "./features/school/SchoolApp.jsx";
-import CabinetApp from "./features/cabinet/CabinetApp.jsx";
-import { ImportPage, AnalysisPage, OffersPage, CvHistoryPage } from "./features/cv/CvPages.jsx";
+const AdminApp = lazy(() => import("./features/admin/AdminApp.jsx").then((module) => ({ default: module.AdminApp })));
+const SchoolApp = lazy(() => import("./features/school/SchoolApp.jsx"));
+const CabinetApp = lazy(() => import("./features/cabinet/CabinetApp.jsx"));
+const SalaryNegotiationPage = lazy(() => import("./features/negotiation/SalaryNegotiationPage.jsx"));
+const ApplicationsPage = lazy(() => import("./features/applications/ApplicationsPage.jsx"));
+const ImportPage = lazy(() => import("./features/cv/CvPages.jsx").then((module) => ({ default: module.ImportPage })));
+const AnalysisPage = lazy(() => import("./features/cv/CvPages.jsx").then((module) => ({ default: module.AnalysisPage })));
+const OffersPage = lazy(() => import("./features/cv/CvPages.jsx").then((module) => ({ default: module.OffersPage })));
+const CvHistoryPage = lazy(() => import("./features/cv/CvPages.jsx").then((module) => ({ default: module.CvHistoryPage })));
 import { APPLICATIONS_COPY } from "./features/applications/applicationsCopy.js";
 import { SatisfactionSurveyModal, satisfactionTierFor } from "./features/satisfaction/SatisfactionSurveyModal.jsx";
 import AccountDrawer from "./features/account/AccountDrawer.jsx";
 import { LandingPage, PRODUCT_SECTION_IDS, InfoPage, AboutPage, ContactPage, FooterColumn } from "./features/landing/LandingPage.jsx";
 import { LegalDocPage, PrivacyPolicyPage, TermsOfServicePage } from "./features/legal/LegalPages.jsx";
-import { PublicPricingPage, PricingPage, PRICING_SEGMENTS, allowedPricingSegmentsForRole } from "./features/pricing/PricingPage.jsx";
+const PublicPricingPage = lazy(() => import("./features/pricing/PricingPage.jsx").then((module) => ({ default: module.PublicPricingPage })));
+const PricingPage = lazy(() => import("./features/pricing/PricingPage.jsx").then((module) => ({ default: module.PricingPage })));
 import HomePage from "./features/home/HomePage.jsx";
-import ProfilePage from "./features/profile/ProfilePage.jsx";
-import CoverLetterPage from "./features/coverLetter/CoverLetterPage.jsx";
-import EmailFinderPage from "./features/emailScout/EmailFinderPage.jsx";
-import InterviewHub from "./features/interviews/InterviewHub.jsx";
+const ProfilePage = lazy(() => import("./features/profile/ProfilePage.jsx"));
+const CoverLetterPage = lazy(() => import("./features/coverLetter/CoverLetterPage.jsx"));
+const EmailFinderPage = lazy(() => import("./features/emailScout/EmailFinderPage.jsx"));
+const InterviewHub = lazy(() => import("./features/interviews/InterviewHub.jsx"));
 import {
   CURRENCY_OPTIONS,
   getCurrencyOption,
@@ -154,6 +159,28 @@ import {
 import { createCvRecord, fileToBase64, parseCvText, readFileAsText } from "./lib/cvService";
 import { alignMatchScores, extractOfferSummary, runMatching } from "./lib/matchingService";
 import { PLANS, PLAN_SEGMENTS, getPlanById } from "./data/plans";
+
+function notifRelativeLabel(value, language) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const en = language === "en";
+  const time = date.toLocaleTimeString(en ? "en-GB" : "fr-FR", { hour: "2-digit", minute: "2-digit" });
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(new Date()) - startOfDay(date)) / 86400000);
+  if (diffDays <= 0) return `${en ? "Today" : "Aujourd'hui"} ${time}`;
+  if (diffDays === 1) return `${en ? "Yesterday" : "Hier"} ${time}`;
+  if (diffDays < 7) return `${en ? `${diffDays} days ago` : `Il y a ${diffDays} jours`} · ${time}`;
+  return date.toLocaleDateString(en ? "en-GB" : "fr-FR", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function LazyAppFallback() {
+  return (
+    <div className="app-boot" aria-busy="true">
+      <img src="/favicon.png" alt="" className="app-boot-icon" />
+      <p>Chargement...</p>
+    </div>
+  );
+}
 
 const NAV_ITEMS = [
   { id: "home", label: { fr: "Accueil", en: "Home" }, always: true, icon: "home" },
@@ -1082,7 +1109,7 @@ export default function App() {
         <span className="cn-notif-body">
           <strong>{text.title}</strong>
           {text.detail ? <span>{text.detail}</span> : null}
-          <small>{item.createdAt ? adminNotifRelativeLabel(item.createdAt, language) : language === "en" ? "Needs attention" : "À traiter"}</small>
+          <small>{item.createdAt ? notifRelativeLabel(item.createdAt, language) : language === "en" ? "Needs attention" : "À traiter"}</small>
         </span>
         {unread ? <span className="cn-notif-dot" aria-label={language === "en" ? "Unread" : "Non lue"} /> : null}
       </button>
@@ -2310,126 +2337,138 @@ export default function App() {
     if (legalPage === "terms") return <TermsOfServicePage {...sharedLegalProps} />;
     if (legalPage === "about") return <AboutPage {...sharedLegalProps} />;
     if (legalPage === "contact") return <ContactPage {...sharedLegalProps} />;
-    if (legalPage === "pricing") return <PublicPricingPage {...sharedLegalProps} currency={currency} />;
+    if (legalPage === "pricing") {
+      return (
+        <Suspense fallback={<LazyAppFallback />}>
+          <PublicPricingPage {...sharedLegalProps} currency={currency} />
+        </Suspense>
+      );
+    }
   }
 
   if (user.roleType === "admin") {
     return (
-      <AdminApp
-        user={user}
-        language={language}
-        setLanguage={setLanguage}
-        currency={currency}
-        setCurrency={setCurrency}
-        theme={theme}
-        setTheme={setTheme}
-        mode={mode}
-        setMode={setMode}
-        density={density}
-        setDensity={setDensity}
-        onLogout={requestLogout}
-        landingCopy={landingCopy}
-        onSaveAccount={handleAccountSave}
-        onAvatarUpload={handleAvatarUpload}
-        avatarUploading={avatarUploading}
-        onRequestSecondaryEmail={handleSecondaryEmailRequest}
-        onVerifySecondaryEmail={handleSecondaryEmailVerify}
-        onSetPrimaryEmail={handlePrimaryEmail}
-        onRemoveEmail={handleRemoveEmail}
-        onRemoveConnectedAccount={handleRemoveConnectedAccount}
-        onLinkGoogleAccount={handleLinkGoogleAccount}
-        securityForm={securityForm}
-        setSecurityForm={setSecurityForm}
-        securitySaving={securitySaving}
-        onSubmitPassword={submitPasswordChange}
-        onRevokeSession={handleRevokeSession}
-        onRevokeOtherSessions={handleRevokeOtherSessions}
-        currentSessionId={session?.currentSessionId}
-        onExportData={handleExportAccountData}
-        onExportSummary={handleExportSummary}
-        onDeleteAccount={handleDeleteAccount}
-        onNavigateLegal={setLegalPage}
-      />
+      <Suspense fallback={<LazyAppFallback />}>
+        <AdminApp
+          user={user}
+          language={language}
+          setLanguage={setLanguage}
+          currency={currency}
+          setCurrency={setCurrency}
+          theme={theme}
+          setTheme={setTheme}
+          mode={mode}
+          setMode={setMode}
+          density={density}
+          setDensity={setDensity}
+          onLogout={requestLogout}
+          landingCopy={landingCopy}
+          onSaveAccount={handleAccountSave}
+          onAvatarUpload={handleAvatarUpload}
+          avatarUploading={avatarUploading}
+          onRequestSecondaryEmail={handleSecondaryEmailRequest}
+          onVerifySecondaryEmail={handleSecondaryEmailVerify}
+          onSetPrimaryEmail={handlePrimaryEmail}
+          onRemoveEmail={handleRemoveEmail}
+          onRemoveConnectedAccount={handleRemoveConnectedAccount}
+          onLinkGoogleAccount={handleLinkGoogleAccount}
+          securityForm={securityForm}
+          setSecurityForm={setSecurityForm}
+          securitySaving={securitySaving}
+          onSubmitPassword={submitPasswordChange}
+          onRevokeSession={handleRevokeSession}
+          onRevokeOtherSessions={handleRevokeOtherSessions}
+          currentSessionId={session?.currentSessionId}
+          onExportData={handleExportAccountData}
+          onExportSummary={handleExportSummary}
+          onDeleteAccount={handleDeleteAccount}
+          onNavigateLegal={setLegalPage}
+        />
+      </Suspense>
     );
   }
 
   if (user.roleType === "school") {
     return (
-      <SchoolApp
-        user={user}
-        language={language}
-        setLanguage={setLanguage}
-        currency={currency}
-        setCurrency={setCurrency}
-        theme={theme}
-        setTheme={setTheme}
-        mode={mode}
-        setMode={setMode}
-        density={density}
-        setDensity={setDensity}
-        onLogout={requestLogout}
-        landingCopy={landingCopy}
-        onSaveAccount={handleAccountSave}
-        onAvatarUpload={handleAvatarUpload}
-        avatarUploading={avatarUploading}
-        onRequestSecondaryEmail={handleSecondaryEmailRequest}
-        onVerifySecondaryEmail={handleSecondaryEmailVerify}
-        onSetPrimaryEmail={handlePrimaryEmail}
-        onRemoveEmail={handleRemoveEmail}
-        onRemoveConnectedAccount={handleRemoveConnectedAccount}
-        onLinkGoogleAccount={handleLinkGoogleAccount}
-        securityForm={securityForm}
-        setSecurityForm={setSecurityForm}
-        securitySaving={securitySaving}
-        onSubmitPassword={submitPasswordChange}
-        onRevokeSession={handleRevokeSession}
-        onRevokeOtherSessions={handleRevokeOtherSessions}
-        currentSessionId={session?.currentSessionId}
-        onExportData={handleExportAccountData}
-        onExportSummary={handleExportSummary}
-        onDeleteAccount={handleDeleteAccount}
-        onNavigateLegal={setLegalPage}
-      />
+      <Suspense fallback={<LazyAppFallback />}>
+        <SchoolApp
+          user={user}
+          language={language}
+          setLanguage={setLanguage}
+          currency={currency}
+          setCurrency={setCurrency}
+          theme={theme}
+          setTheme={setTheme}
+          mode={mode}
+          setMode={setMode}
+          density={density}
+          setDensity={setDensity}
+          onLogout={requestLogout}
+          landingCopy={landingCopy}
+          onSaveAccount={handleAccountSave}
+          onAvatarUpload={handleAvatarUpload}
+          avatarUploading={avatarUploading}
+          onRequestSecondaryEmail={handleSecondaryEmailRequest}
+          onVerifySecondaryEmail={handleSecondaryEmailVerify}
+          onSetPrimaryEmail={handlePrimaryEmail}
+          onRemoveEmail={handleRemoveEmail}
+          onRemoveConnectedAccount={handleRemoveConnectedAccount}
+          onLinkGoogleAccount={handleLinkGoogleAccount}
+          securityForm={securityForm}
+          setSecurityForm={setSecurityForm}
+          securitySaving={securitySaving}
+          onSubmitPassword={submitPasswordChange}
+          onRevokeSession={handleRevokeSession}
+          onRevokeOtherSessions={handleRevokeOtherSessions}
+          currentSessionId={session?.currentSessionId}
+          onExportData={handleExportAccountData}
+          onExportSummary={handleExportSummary}
+          onDeleteAccount={handleDeleteAccount}
+          onNavigateLegal={setLegalPage}
+        />
+      </Suspense>
     );
   }
 
   if (user.roleType === "recruiter_firm" || user.roleType === "recruiter_internal") {
     return (
-      <CabinetApp
-        user={user}
-        language={language}
-        setLanguage={setLanguage}
-        currency={currency}
-        setCurrency={setCurrency}
-        theme={theme}
-        setTheme={setTheme}
-        mode={mode}
-        setMode={setMode}
-        density={density}
-        setDensity={setDensity}
-        onLogout={requestLogout}
-        landingCopy={landingCopy}
-        onSaveAccount={handleAccountSave}
-        onAvatarUpload={handleAvatarUpload}
-        avatarUploading={avatarUploading}
-        onRequestSecondaryEmail={handleSecondaryEmailRequest}
-        onVerifySecondaryEmail={handleSecondaryEmailVerify}
-        onSetPrimaryEmail={handlePrimaryEmail}
-        onRemoveEmail={handleRemoveEmail}
-        onRemoveConnectedAccount={handleRemoveConnectedAccount}
-        onLinkGoogleAccount={handleLinkGoogleAccount}
-        securityForm={securityForm}
-        setSecurityForm={setSecurityForm}
-        securitySaving={securitySaving}
-        onSubmitPassword={submitPasswordChange}
-        onRevokeSession={handleRevokeSession}
-        onRevokeOtherSessions={handleRevokeOtherSessions}
-        currentSessionId={session?.currentSessionId}
-        onExportData={handleExportAccountData}
-        onExportSummary={handleExportSummary}
-        onDeleteAccount={handleDeleteAccount}
-        onNavigateLegal={setLegalPage}
-      />
+      <Suspense fallback={<LazyAppFallback />}>
+        <CabinetApp
+          user={user}
+          language={language}
+          setLanguage={setLanguage}
+          currency={currency}
+          setCurrency={setCurrency}
+          theme={theme}
+          setTheme={setTheme}
+          mode={mode}
+          setMode={setMode}
+          density={density}
+          setDensity={setDensity}
+          onLogout={requestLogout}
+          landingCopy={landingCopy}
+          onSaveAccount={handleAccountSave}
+          onAvatarUpload={handleAvatarUpload}
+          avatarUploading={avatarUploading}
+          onRequestSecondaryEmail={handleSecondaryEmailRequest}
+          onVerifySecondaryEmail={handleSecondaryEmailVerify}
+          onSetPrimaryEmail={handlePrimaryEmail}
+          onRemoveEmail={handleRemoveEmail}
+          onRemoveConnectedAccount={handleRemoveConnectedAccount}
+          onLinkGoogleAccount={handleLinkGoogleAccount}
+          securityForm={securityForm}
+          setSecurityForm={setSecurityForm}
+          securitySaving={securitySaving}
+          onSubmitPassword={submitPasswordChange}
+          onRevokeSession={handleRevokeSession}
+          onRevokeOtherSessions={handleRevokeOtherSessions}
+          currentSessionId={session?.currentSessionId}
+          onExportData={handleExportAccountData}
+          onExportSummary={handleExportSummary}
+          onDeleteAccount={handleDeleteAccount}
+          onNavigateLegal={setLegalPage}
+        />
+      </Suspense>
     );
   }
 
@@ -2573,62 +2612,63 @@ export default function App() {
       </header>
 
       <main className={`main-wrap ${activePage === "import" ? "main-wrap-wide" : ""}`}>
-        {activePage === "home" ? (
-          <HomePage
-            onStart={() => goTo("import")}
-            onSeeTarifs={() => goTo("tarifs")}
-            onNavigate={goTo}
-            user={user}
-            premium={premium}
-            profileCompleteness={profileCompleteness}
-            latestMatch={latestMatch}
-            cvCount={cvHistory.length}
-            language={language}
-          />
-        ) : null}
-        {activePage === "import" ? (
-          <ImportPage
-            latestCv={latestCv}
-            offerText={offerText}
-            setOfferText={(value) => {
-              setOfferText(value);
-              setJobReview(null);
-            }}
-            onFileUpload={handleCvFileUpload}
-            onReviewSave={handleCvReviewSave}
-            onReimport={resetCvImport}
-            onAnalyse={handleAnalyse}
-            onJobReview={handleJobReview}
-            jobReview={jobReview}
-            onEditJob={() => setJobReview(null)}
-            onStepClick={handleImportStepClick}
-            canAnalyse={canAnalyse}
-            isReviewingJob={isReviewingJob}
-            isAnalysing={isAnalysing}
-            matchInsights={matchInsights}
-            matchRunId={matchRunId}
-            userId={user?.id}
-            subscription={user?.subscription}
-            onGoToTarifs={() => goTo("tarifs")}
-            language={language}
-            importStep={importStep}
-            isExtractingCv={isExtractingCv}
-            cvReview={cvReview}
-            setCvReview={setCvReview}
-            cvFileName={cvFileName}
-            cvSourceText={cvSourceText}
-            avatarDataUrl={user?.avatarDataUrl}
-            tokensBalance={tokensBalance}
-            onApplyOptimization={(next) => setCvReview((prev) => ({ ...(prev || {}), ...next }))}
-            onSaveCvReview={persistCvReview}
-            onGoToModule={(page) => goTo(page)}
-            onConsumeToken={async () => {
-              const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
-              setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
-              setPremium(tokenUpdate.premium);
-            }}
-          />
-        ) : null}
+        <Suspense fallback={<LazyAppFallback />}>
+          {activePage === "home" ? (
+            <HomePage
+              onStart={() => goTo("import")}
+              onSeeTarifs={() => goTo("tarifs")}
+              onNavigate={goTo}
+              user={user}
+              premium={premium}
+              profileCompleteness={profileCompleteness}
+              latestMatch={latestMatch}
+              cvCount={cvHistory.length}
+              language={language}
+            />
+          ) : null}
+          {activePage === "import" ? (
+            <ImportPage
+              latestCv={latestCv}
+              offerText={offerText}
+              setOfferText={(value) => {
+                setOfferText(value);
+                setJobReview(null);
+              }}
+              onFileUpload={handleCvFileUpload}
+              onReviewSave={handleCvReviewSave}
+              onReimport={resetCvImport}
+              onAnalyse={handleAnalyse}
+              onJobReview={handleJobReview}
+              jobReview={jobReview}
+              onEditJob={() => setJobReview(null)}
+              onStepClick={handleImportStepClick}
+              canAnalyse={canAnalyse}
+              isReviewingJob={isReviewingJob}
+              isAnalysing={isAnalysing}
+              matchInsights={matchInsights}
+              matchRunId={matchRunId}
+              userId={user?.id}
+              subscription={user?.subscription}
+              onGoToTarifs={() => goTo("tarifs")}
+              language={language}
+              importStep={importStep}
+              isExtractingCv={isExtractingCv}
+              cvReview={cvReview}
+              setCvReview={setCvReview}
+              cvFileName={cvFileName}
+              cvSourceText={cvSourceText}
+              avatarDataUrl={user?.avatarDataUrl}
+              tokensBalance={tokensBalance}
+              onApplyOptimization={(next) => setCvReview((prev) => ({ ...(prev || {}), ...next }))}
+              onSaveCvReview={persistCvReview}
+              onGoToModule={(page) => goTo(page)}
+              onConsumeToken={async () => {
+                const tokenUpdate = await consumeTokens({ userId: user.id, amount: 1 });
+                setSession({ user: tokenUpdate.user, premium: tokenUpdate.premium });
+                setPremium(tokenUpdate.premium);
+              }}
+            />
+          ) : null}
 
         {activePage === "profil" ? (
           <ProfilePage
@@ -2723,21 +2763,22 @@ export default function App() {
             onMarkAllRead={markAllNotificationsRead}
           />
         ) : null}
-        {activePage === "tarifs" ? (
-          <PricingPage
-            user={user}
-            premium={premium}
-            language={language}
-            currency={currency}
-            stripeEnabled={stripeEnabled}
-            planOverrides={planOverrides}
-            onActivatePlan={handleActivatePlan}
-            onStripeCheckout={handleStripeCheckout}
-            onRedeemCode={handleRedeemLicenseCode}
-            pendingPlanAction={pendingPlanAction}
-            onContactSales={() => setLegalPage("contact")}
-          />
-        ) : null}
+          {activePage === "tarifs" ? (
+            <PricingPage
+              user={user}
+              premium={premium}
+              language={language}
+              currency={currency}
+              stripeEnabled={stripeEnabled}
+              planOverrides={planOverrides}
+              onActivatePlan={handleActivatePlan}
+              onStripeCheckout={handleStripeCheckout}
+              onRedeemCode={handleRedeemLicenseCode}
+              pendingPlanAction={pendingPlanAction}
+              onContactSales={() => setLegalPage("contact")}
+            />
+          ) : null}
+        </Suspense>
       </main>
 
       <ConnectedFooter
@@ -3603,7 +3644,13 @@ function AuthScreen({
     if (legalPage === "terms") return <TermsOfServicePage {...sharedProps} />;
     if (legalPage === "about") return <AboutPage {...sharedProps} />;
     if (legalPage === "contact") return <ContactPage {...sharedProps} />;
-    if (legalPage === "pricing") return <PublicPricingPage {...sharedProps} />;
+    if (legalPage === "pricing") {
+      return (
+        <Suspense fallback={<LazyAppFallback />}>
+          <PublicPricingPage {...sharedProps} />
+        </Suspense>
+      );
+    }
   }
 
   return (
@@ -3693,8 +3740,8 @@ function AuthScreen({
                         : "Encore une étape : choisissez votre nouveau mot de passe"
                   : mode === "signup" && signupPhase === "code"
                   ? language === "en"
-                    ? "Welcome to Career CV"
-                    : "Bienvenue sur Career CV"
+                    ? "Enter the 6-digit code we sent to confirm your address"
+                    : "Saisissez le code à 6 chiffres envoyé pour confirmer votre adresse"
                   : mode === "login" && loginStep === "mfa"
                   ? language === "en"
                     ? "Confirm your identity to finish signing in."
@@ -3706,23 +3753,10 @@ function AuthScreen({
                   : language === "en"
                     ? "to continue to Career CV"
                     : "pour continuer vers Career CV"}
-                {(mode === "forgot" && forgotStep !== "identifier") ? (
+                {mode === "forgot" && forgotStep === "newPassword" ? (
                   <>
                     <br />
                     <strong>{forgotIdentifier}</strong>
-                    <button type="button" onClick={() => setForgotStep("identifier")} aria-label="Modifier l'adresse">
-                      {language === "en" ? "Change" : "Modifier"}
-                    </button>
-                  </>
-                ) : (loginStep === "verify" && mode === "login") || (signupPhase === "code" && mode === "signup") ? (
-                  <>
-                    <br />
-                    <strong>{verificationEmail}</strong>
-                    {mode === "login" ? (
-                      <button type="button" onClick={() => setLoginStep("credentials")} aria-label="Modifier l'adresse">
-                        {language === "en" ? "Change" : "Modifier"}
-                      </button>
-                    ) : null}
                   </>
                 ) : null}
               </p>
@@ -3762,38 +3796,18 @@ function AuthScreen({
                 />
               </label>
             ) : forgotStep === "code" ? (
-              <div className="code-verification-block">
-                <div className="code-input-row" aria-label="Code de vérification">
-                  {forgotCode.map((digit, index) => (
-                    <input
-                      key={index}
-                      data-forgot-code-index={index}
-                      value={digit}
-                      onChange={(event) => {
-                        onClearError();
-                        updateForgotCodeDigit(index, event.target.value);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Backspace" && !forgotCode[index] && index > 0) {
-                          document.querySelector(`[data-forgot-code-index="${index - 1}"]`)?.focus();
-                        }
-                      }}
-                      inputMode="numeric"
-                      maxLength={1}
-                      autoFocus={index === 0}
-                    />
-                  ))}
-                </div>
-                <button className="resend-code-btn" type="button" onClick={resendForgotCode} disabled={forgotResendSeconds > 0}>
-                  {forgotResendSeconds > 0
-                    ? language === "en"
-                      ? `Resend code (${forgotResendSeconds})`
-                      : `Renvoyer le code (${forgotResendSeconds})`
-                    : language === "en"
-                      ? "Resend code"
-                      : "Renvoyer le code"}
-                </button>
-              </div>
+              <CodeEntry
+                language={language}
+                email={forgotIdentifier}
+                onChangeEmail={() => setForgotStep("identifier")}
+                value={forgotCode.join("")}
+                onChange={(value) => {
+                  onClearError();
+                  setForgotCode(Array.from({ length: 6 }, (_, i) => value[i] || ""));
+                }}
+                onResend={resendForgotCode}
+                resendSeconds={forgotResendSeconds}
+              />
             ) : (
               <>
                 <div className="auth-identity-chip">
@@ -3840,38 +3854,18 @@ function AuthScreen({
         ) : mode === "login" ? (
           <>
             {loginStep === "verify" ? (
-              <div className="code-verification-block">
-                <div className="code-input-row" aria-label="Code de vérification">
-                  {loginCode.map((digit, index) => (
-                    <input
-                      key={index}
-                      data-code-index={index}
-                      value={digit}
-                      onChange={(event) => {
-                        onClearError();
-                        updateCodeDigit(index, event.target.value);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Backspace" && !loginCode[index] && index > 0) {
-                          document.querySelector(`[data-code-index="${index - 1}"]`)?.focus();
-                        }
-                      }}
-                      inputMode="numeric"
-                      maxLength={1}
-                      autoFocus={index === 0}
-                    />
-                  ))}
-                </div>
-                <button className="resend-code-btn" type="button" onClick={resendCode} disabled={resendSeconds > 0}>
-                  {resendSeconds > 0
-                    ? language === "en"
-                      ? `Resend code (${resendSeconds})`
-                      : `Renvoyer le code (${resendSeconds})`
-                    : language === "en"
-                      ? "Resend code"
-                      : "Renvoyer le code"}
-                </button>
-              </div>
+              <CodeEntry
+                language={language}
+                email={verificationEmail}
+                onChangeEmail={() => setLoginStep("credentials")}
+                value={loginCode.join("")}
+                onChange={(value) => {
+                  onClearError();
+                  setLoginCode(Array.from({ length: 6 }, (_, i) => value[i] || ""));
+                }}
+                onResend={resendCode}
+                resendSeconds={resendSeconds}
+              />
             ) : (
               <>
                 <div className="google-btn-wrap-relative">
@@ -3939,35 +3933,17 @@ function AuthScreen({
             )}
           </>
         ) : signupPhase === "code" ? (
-          <div className="code-verification-block">
-            <div className="code-input-row" aria-label="Code de vérification">
-              {loginCode.map((digit, index) => (
-                <input
-                  key={index}
-                  data-code-index={index}
-                  value={digit}
-                  onChange={(event) => updateCodeDigit(index, event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Backspace" && !loginCode[index] && index > 0) {
-                      document.querySelector(`[data-code-index="${index - 1}"]`)?.focus();
-                    }
-                  }}
-                  inputMode="numeric"
-                  maxLength={1}
-                  autoFocus={index === 0}
-                />
-              ))}
-            </div>
-            <button className="resend-code-btn" type="button" onClick={resendCode} disabled={resendSeconds > 0}>
-              {resendSeconds > 0
-                ? language === "en"
-                  ? `Resend code (${resendSeconds})`
-                  : `Renvoyer le code (${resendSeconds})`
-                : language === "en"
-                  ? "Resend code"
-                  : "Renvoyer le code"}
-            </button>
-          </div>
+          <CodeEntry
+            language={language}
+            email={verificationEmail}
+            value={loginCode.join("")}
+            onChange={(value) => {
+              onClearError();
+              setLoginCode(Array.from({ length: 6 }, (_, i) => value[i] || ""));
+            }}
+            onResend={resendCode}
+            resendSeconds={resendSeconds}
+          />
         ) : (
           <>
             <div className="google-btn-wrap-relative">

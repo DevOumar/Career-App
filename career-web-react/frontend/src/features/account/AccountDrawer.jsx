@@ -9,6 +9,7 @@ import { getFriendlyErrorMessage } from "../../lib/errors.js";
 import { formatDate, CURRENCY_OPTIONS } from "../../lib/format.js";
 import { getUsernameValidation } from "../../lib/accounts.js";
 import MfaSection from "./mfa/MfaSection.jsx";
+import { CodeEntry } from "../../components/CodeEntry.jsx";
 import ActiveDevices from "./ActiveDevices.jsx";
 import { PasswordInput } from "../../components/PasswordInput.jsx";
 import { resizeImageFileToDataUrl } from "../../lib/images.js";
@@ -79,6 +80,12 @@ export function AccountDrawer({
   const [emailForm, setEmailForm] = useState("");
   const [pendingEmail, setPendingEmail] = useState("");
   const [emailCode, setEmailCode] = useState("");
+  const [emailResendSeconds, setEmailResendSeconds] = useState(0);
+  useEffect(() => {
+    if (emailResendSeconds <= 0) return undefined;
+    const timer = setTimeout(() => setEmailResendSeconds((value) => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [emailResendSeconds]);
   const [emailSaving, setEmailSaving] = useState(false);
   const [localError, setLocalError] = useState("");
   const [profileAvatarPreview, setProfileAvatarPreview] = useState(() => getAvatarSource(user));
@@ -155,13 +162,14 @@ export function AccountDrawer({
   }
 
   async function requestEmail(event) {
-    event.preventDefault();
+    event?.preventDefault?.();
     setLocalError("");
     try {
       setEmailSaving(true);
       await onRequestSecondaryEmail(emailForm);
       setPendingEmail(emailForm.trim());
       setEmailCode("");
+      setEmailResendSeconds(30);
     } catch (error) {
       setLocalError(getFriendlyErrorMessage(error, language));
     } finally {
@@ -556,10 +564,17 @@ export function AccountDrawer({
                         </form>
                       ) : (
                         <form onSubmit={verifyEmail}>
-                          <label>
-                            {copy.code}
-                            <input inputMode="numeric" maxLength={6} value={emailCode} onChange={(event) => setEmailCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="000000" required />
-                          </label>
+                          <CodeEntry
+                            language={language}
+                            email={pendingEmail}
+                            onChangeEmail={() => setPendingEmail("")}
+                            value={emailCode}
+                            onChange={setEmailCode}
+                            onResend={() => requestEmail()}
+                            resendSeconds={emailResendSeconds}
+                            disabled={emailSaving}
+                            compact
+                          />
                           <div className="account-form-actions">
                             <button type="button" className="btn-secondary" onClick={() => setPendingEmail("")}>{copy.cancel}</button>
                             <button className="btn-main" disabled={emailSaving || emailCode.length !== 6}>{emailSaving ? "..." : copy.verify}</button>
