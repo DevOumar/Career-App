@@ -157,7 +157,11 @@ function CoverLetterPage({ language, userId, candidate, offer: latestOffer, toke
   }
 
   function handleDownload() {
+    document.body.classList.add("print-cover-letter-only");
+    const cleanup = () => document.body.classList.remove("print-cover-letter-only");
+    window.addEventListener("afterprint", cleanup, { once: true });
     window.print();
+    setTimeout(cleanup, 1200);
   }
 
   function startEditing() {
