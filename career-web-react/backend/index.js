@@ -1837,33 +1837,56 @@ async function sendVerificationEmail({ to, code, firstName, purpose = "login" })
     return { sent: false, reason: "missing_smtp_config" };
   }
 
-  const transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT,
-    secure: SMTP_SECURE,
-    family: 4,
-    connectionTimeout: SMTP_TIMEOUT_MS,
-    greetingTimeout: SMTP_TIMEOUT_MS,
-    socketTimeout: SMTP_TIMEOUT_MS,
-    auth: {
-      user: SMTP_USER,
-      pass: SMTP_PASS
-    }
-  });
-
-  try {
-    await transporter.sendMail({
-      from: MAIL_FROM || `"${MAIL_FROM_NAME}" <${MAIL_FROM_ADDRESS || SMTP_USER}>`,
-      to: recipient,
-      subject: message.subject,
-      text: message.text,
-      html: message.html
+  const primary = { host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE };
+  const candidates = [primary];
+  if (SMTP_HOST === "smtp.resend.com") {
+    [
+      { host: SMTP_HOST, port: 587, secure: false },
+      { host: SMTP_HOST, port: 2587, secure: false },
+      { host: SMTP_HOST, port: 2465, secure: true }
+    ].forEach((candidate) => {
+      if (!candidates.some((item) => item.host === candidate.host && item.port === candidate.port && item.secure === candidate.secure)) {
+        candidates.push(candidate);
+      }
     });
-    return { sent: true, recipient };
-  } catch (error) {
-    console.warn(`[Career CV] Echec d'envoi d'email SMTP (${error.message}). Code disponible dans la console ci-dessus.`);
-    return { sent: false, reason: "smtp_send_error", error: error.message };
   }
+
+  let lastError = null;
+  for (const candidate of candidates) {
+    const transporter = nodemailer.createTransport({
+      host: candidate.host,
+      port: candidate.port,
+      secure: candidate.secure,
+      family: 4,
+      connectionTimeout: SMTP_TIMEOUT_MS,
+      greetingTimeout: SMTP_TIMEOUT_MS,
+      socketTimeout: SMTP_TIMEOUT_MS,
+      auth: {
+        user: SMTP_USER,
+        pass: SMTP_PASS
+      }
+    });
+
+    try {
+      await transporter.sendMail({
+        from: MAIL_FROM || `"${MAIL_FROM_NAME}" <${MAIL_FROM_ADDRESS || SMTP_USER}>`,
+        to: recipient,
+        subject: message.subject,
+        text: message.text,
+        html: message.html
+      });
+      if (candidate.port !== SMTP_PORT || candidate.secure !== SMTP_SECURE) {
+        console.warn(`[Career CV] SMTP principal indisponible, envoi reussi via ${candidate.host}:${candidate.port}.`);
+      }
+      return { sent: true, recipient };
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Career CV] Echec SMTP ${candidate.host}:${candidate.port} (${error.message}).`);
+    }
+  }
+
+  console.warn("[Career CV] Tous les essais SMTP ont echoue. Code disponible dans les logs serveur.");
+  return { sent: false, reason: "smtp_send_error", error: lastError?.message || "smtp_send_error" };
 }
 
 async function createEmailVerificationCode(user, purpose = "login", targetEmail = "") {
@@ -1882,7 +1905,7 @@ async function createEmailVerificationCode(user, purpose = "login", targetEmail 
   );
 
   const delivery = await sendVerificationEmail({ to: email, code, firstName: user.first_name, purpose });
-  console.log(`[Career CV] Code ${purpose} pour ${email}: ${code} (expire dans 10 min, email=${delivery.sent ? "envoye" : "non_configure"})`);
+  console.log(`[Career CV] Code ${purpose} pour ${email}: ${code} (expire dans 10 min, email=${delivery.sent ? "envoye" : "echec"})`);
   return { id, email, expiresAt, code };
 }
 
