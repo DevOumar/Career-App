@@ -734,7 +734,7 @@ async function adjustUserTokens(userId, delta) {
     const user = await getUserRowById(userId);
     if (!user) return { ok: false, reason: "not_found" };
     const subscription = parseJsonField(user.subscription_json, {});
-    const credits = typeof subscription.credits === "number" ? subscription.credits : getPlanById("candidate_discovery")?.credits ?? 0;
+    const credits = resolveSubscriptionCredits(subscription);
     if (credits >= 999) return { ok: true, unlimited: true, charged: 0, credits };
     if (delta < 0 && credits < -delta) return { ok: false, reason: "no_tokens", credits };
     const next = { ...subscription, credits: credits + delta };
@@ -4098,6 +4098,7 @@ function toPublicUser(userRow, relations) {
     startedAt: userRow.created_at,
     renewalAt: null
   });
+  subscription.credits = resolveSubscriptionCredits(subscription);
 
   const avatarDataUrl = userRow.avatar_data_url || accountRow?.avatar_data_url || "";
   const emailRows = (relations.emails || []).length
@@ -4631,11 +4632,23 @@ async function releaseStripeEventClaim(eventId) {
   }
 }
 
+// Solde réel d'un compte : tant qu'aucun débit n'a eu lieu, le champ credits
+// n'existe pas encore et le compte dispose des jetons offerts du plan gratuit.
+// Règle unique pour l'affichage, les notifications, les débits et les achats.
+function resolveSubscriptionCredits(subscription) {
+  if (typeof subscription?.credits === "number") return subscription.credits;
+  const parsed = Number(subscription?.credits);
+  if (subscription?.credits !== undefined && subscription?.credits !== null && subscription?.credits !== "" && Number.isFinite(parsed)) {
+    return parsed;
+  }
+  return getPlanById("candidate_discovery")?.credits ?? 0;
+}
+
 async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeIds = null, source = "instant") {
   const { rows: userRows } = await db.query("SELECT subscription_json FROM users WHERE id = $1", [userId]);
   const currentSubscription = parseJsonField(userRows[0]?.subscription_json, {});
   const wasPremium = currentSubscription.plan === "premium";
-  const currentCredits = Number(currentSubscription.credits) || 0;
+  const currentCredits = resolveSubscriptionCredits(currentSubscription);
 
   // Un plan gratuit ne doit jamais pouvoir "écraser" un plan payant déjà
   // actif (ça effacerait des jetons réellement payés). Une fois premium, on
@@ -5759,6 +5772,7 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  resolveSubscriptionCredits,
   requireMatchingSession,
   mfa,
   cors,

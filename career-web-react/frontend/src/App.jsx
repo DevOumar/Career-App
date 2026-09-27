@@ -843,14 +843,17 @@ function candidateNotificationText(item, language) {
     case "balance_empty":
       return {
         icon: "alert",
-        title: language === "en" ? "Token balance empty" : "Solde de jetons épuisé",
-        detail: language === "en" ? "Top up to keep using the AI modules." : "Rechargez pour continuer à utiliser les modules IA."
+        title: language === "en" ? "No tokens left" : "Plus de jetons disponibles",
+        detail: language === "en" ? "Choose a plan in Pricing to keep using the AI modules." : "Choisissez une offre dans Tarifs pour continuer à utiliser les modules IA."
       };
     case "balance_low":
       return {
         icon: "alert",
-        title: language === "en" ? "Token balance running low" : "Solde de jetons bas",
-        detail: language === "en" ? `${item.data?.credits} token(s) left.` : `Il reste ${item.data?.credits} jeton(s).`
+        title: language === "en" ? "Only a few tokens left" : "Plus que quelques jetons",
+        detail:
+          language === "en"
+            ? `${item.data?.credits} token${Number(item.data?.credits) > 1 ? "s" : ""} left. Top up in Pricing to avoid being blocked.`
+            : `Il vous reste ${item.data?.credits} jeton${Number(item.data?.credits) > 1 ? "s" : ""}. Rechargez depuis Tarifs pour ne pas être bloqué.`
       };
     case "application_stale":
       return {

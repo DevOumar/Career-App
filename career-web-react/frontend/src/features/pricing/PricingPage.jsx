@@ -375,7 +375,7 @@ function PricingPage({
             <p>{copy.balanceEmptyText}</p>
           </div>
         </div>
-      ) : currentBalance <= 5 ? (
+      ) : currentBalance <= 2 ? (
         <div className="pricing-balance-banner warning">
           <UiIcon name="alert" />
           <div>

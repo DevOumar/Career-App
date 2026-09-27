@@ -244,7 +244,8 @@ export function registerApplicationsRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    resolveSubscriptionCredits
   } = app.locals.ctx;
 
 // Contrôles serveur du formulaire de candidature (mêmes règles que le front).
@@ -571,11 +572,11 @@ app.get("/api/notifications", async (req, res) => {
 
     if (userRow) {
       const subscription = parseJsonField(userRow.subscription_json, {});
-      const credits = Number(subscription.credits) || 0;
+      const credits = resolveSubscriptionCredits(subscription);
       if (credits < 999) {
         if (credits <= 0) {
           items.push({ id: "balance-empty", type: "balance_empty", createdAt: null, data: {} });
-        } else if (credits <= 5) {
+        } else if (credits <= 2) {
           items.push({ id: "balance-low", type: "balance_low", createdAt: null, data: { credits } });
         }
       }

@@ -93,7 +93,8 @@ export function registerInterviewRoutes(app) {
     adjustUserTokens,
     getPublicUserById,
     computePremiumAccess,
-    affectedRowCount
+    affectedRowCount,
+    resolveSubscriptionCredits
   } = app.locals.ctx;
 
   // Le simulateur d'entretiens n'est inclus que dans le plan Trajectoire Pro
@@ -203,7 +204,7 @@ export function registerInterviewRoutes(app) {
       if (!requireMatchingSession(req, res, userId)) return;
       const user = await getUserRowById(userId);
       const subscription = parseJsonField(user?.subscription_json, {});
-      const credits = typeof subscription.credits === "number" ? subscription.credits : 0;
+      const credits = resolveSubscriptionCredits(subscription);
       res.json({
         interview: { used: await getDailyQuotaUsage(userId, "interview_session"), limit: INTERVIEW_DAILY_LIMIT, maxAnswers: INTERVIEW_MAX_ANSWERS },
         coding: { used: await getDailyQuotaUsage(userId, "coding_generate"), limit: CODING_DAILY_LIMIT },
