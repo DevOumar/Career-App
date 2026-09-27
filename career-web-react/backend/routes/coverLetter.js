@@ -247,10 +247,8 @@ export function registerCoverLetterRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     currentAiProvider,
-    consumeDailyQuota,
     releaseDailyQuota,
-    sendDailyQuotaReached,
-    DAILY_MODULE_LIMITS
+    takeModuleAllowance
   } = app.locals.ctx;
 
 app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
@@ -259,9 +257,9 @@ app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
     if (!req.sessionUserId) {
       return res.status(401).json({ error: "Authentification requise." });
     }
-    const quota = DAILY_MODULE_LIMITS.cover_letter;
-    if (!(await consumeDailyQuota(req.sessionUserId, "cover_letter", quota.limit))) return sendDailyQuotaReached(res, quota);
-    quotaTaken = true;
+    const allowance = await takeModuleAllowance(res, req.sessionUserId, "cover_letter");
+    if (!allowance) return;
+    quotaTaken = allowance.quotaTaken;
     const candidate = req.body?.candidate && typeof req.body.candidate === "object" ? req.body.candidate : {};
     const offer = req.body?.offer && typeof req.body.offer === "object" ? req.body.offer : {};
     const tone = coerceString(req.body?.tone) || "formal";
@@ -279,7 +277,7 @@ app.post("/api/coverletter/generate", aiActionRateLimiter, async (req, res) => {
 
     // Pas de lettre modèle présentée comme générée : sans IA, erreur explicite.
     if (!letterResult) {
-      await releaseDailyQuota(req.sessionUserId, "cover_letter").catch(() => {});
+      if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "cover_letter").catch(() => {});
       return res.status(503).json({ error: "Le service d'IA est momentanément indisponible. Réessayez dans un instant : aucun jeton n'a été débité." });
     }
     return res.json({ letter: letterResult.letter, subject: letterResult.subject, provider });

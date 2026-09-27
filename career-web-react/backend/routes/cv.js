@@ -250,10 +250,8 @@ export function registerCvRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     currentAiProvider,
-    consumeDailyQuota,
     releaseDailyQuota,
-    sendDailyQuotaReached,
-    DAILY_MODULE_LIMITS
+    takeModuleAllowance
   } = app.locals.ctx;
 
 app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
@@ -282,10 +280,10 @@ app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
       });
     }
 
-    // Quota quotidien, compté seulement pour un fichier lisible.
-    const quota = DAILY_MODULE_LIMITS.cv_import;
-    if (!(await consumeDailyQuota(req.sessionUserId, "cv_import", quota.limit))) return sendDailyQuotaReached(res, quota);
-    quotaTaken = true;
+    // Jetons ou quota quotidien, vérifiés seulement pour un fichier lisible.
+    const allowance = await takeModuleAllowance(res, req.sessionUserId, "cv_import");
+    if (!allowance) return;
+    quotaTaken = allowance.quotaTaken;
 
     let parsed = null;
     let extractionProvider = "local";

@@ -248,10 +248,8 @@ export function registerNegotiationRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     currentAiProvider,
-    consumeDailyQuota,
     releaseDailyQuota,
-    sendDailyQuotaReached,
-    DAILY_MODULE_LIMITS
+    takeModuleAllowance
   } = app.locals.ctx;
 
 app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) => {
@@ -268,11 +266,11 @@ app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) =
     const language = req.body?.language === "en" ? "en" : "fr";
     const currencyLabel = req.body?.currencyLabel;
 
-    // Quota quotidien : une unité par nouvelle séance (premier échange).
+    // Jetons ou quota quotidien, vérifiés à chaque nouvelle séance (premier échange).
     if (!history.length && !finish) {
-      const quota = DAILY_MODULE_LIMITS.negotiation;
-      if (!(await consumeDailyQuota(req.sessionUserId, "negotiation", quota.limit))) return sendDailyQuotaReached(res, quota);
-      quotaTaken = true;
+      const allowance = await takeModuleAllowance(res, req.sessionUserId, "negotiation");
+      if (!allowance) return;
+      quotaTaken = allowance.quotaTaken;
     }
 
     let salaryReference = req.body?.salaryReference && typeof req.body.salaryReference === "object"

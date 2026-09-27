@@ -643,8 +643,9 @@ const INTERVIEW_MAX_ANSWERS = 10;
 // Coût d'un entretien pour les comptes individuels (Élan, Trajectoire Pro).
 const INTERVIEW_TOKEN_COST = 2;
 const CODING_DAILY_LIMIT = 30;
-// Quotas quotidiens par module (tous les comptes, licences école et cabinet
-// comprises), remis à zéro à minuit heure de Paris.
+// Quotas quotidiens par module des comptes à jetons illimités (licences
+// école et cabinet), remis à zéro à minuit heure de Paris. Les candidats non
+// rattachés sont limités par leurs jetons (voir takeModuleAllowance).
 const DAILY_MODULE_LIMITS = {
   cv_import: { limit: 10, what: "imports de CV" },
   cover_letter: { limit: 10, what: "lettres de motivation" },
@@ -725,6 +726,30 @@ async function getDailyQuotaUsage(userId, quotaKey) {
     quotaDay()
   ]);
   return Number(rows[0]?.count || 0);
+}
+
+// Droit d'utiliser un module IA avant l'appel :
+// - compte à jetons illimités (licence école ou cabinet) : quota quotidien
+//   du module (DAILY_MODULE_LIMITS), seule limite de ces comptes ;
+// - candidat non rattaché : ses jetons sont sa limite, sans quota
+//   quotidien ; le serveur vérifie qu'il en reste avant d'appeler l'IA.
+// Renvoie null si la réponse (refus) est déjà envoyée, sinon { quotaTaken }.
+async function takeModuleAllowance(res, userId, quotaKey) {
+  const user = await getUserRowById(userId);
+  const credits = resolveSubscriptionCredits(parseJsonField(user?.subscription_json, {}));
+  if (credits < 999) {
+    if (credits <= 0) {
+      res.status(402).json({ code: "NO_TOKENS", error: "Vous n'avez plus de jetons. Rechargez depuis la page Tarifs pour continuer." });
+      return null;
+    }
+    return { quotaTaken: false };
+  }
+  const quota = DAILY_MODULE_LIMITS[quotaKey];
+  if (!(await consumeDailyQuota(userId, quotaKey, quota.limit))) {
+    sendDailyQuotaReached(res, quota);
+    return null;
+  }
+  return { quotaTaken: true };
 }
 
 function sendDailyQuotaReached(res, { limit, what }) {
@@ -5908,6 +5933,7 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  takeModuleAllowance,
   DAILY_MODULE_LIMITS,
   callAiChat,
   currentAiProvider,

@@ -247,10 +247,8 @@ export function registerEmailFinderRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     callAiChat,
-    consumeDailyQuota,
     releaseDailyQuota,
-    sendDailyQuotaReached,
-    DAILY_MODULE_LIMITS
+    takeModuleAllowance
   } = app.locals.ctx;
 
 // Domaine e-mail officiel d'une entreprise : l'IA propose (ex. « Vinci
@@ -313,9 +311,9 @@ app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
 
-    const quota = DAILY_MODULE_LIMITS.email_scout;
-    if (!(await consumeDailyQuota(userId, "email_scout", quota.limit))) return sendDailyQuotaReached(res, quota);
-    quotaTaken = true;
+    const allowance = await takeModuleAllowance(res, userId, "email_scout");
+    if (!allowance) return;
+    quotaTaken = allowance.quotaTaken;
 
     const resolved = domainOverride ? { domain: domainOverride, source: "user" } : await resolveCompanyDomain(companyName);
     const domain = resolved.domain;
