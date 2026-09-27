@@ -174,7 +174,7 @@ export const PLANS = [
     badge: null,
     features: {
       fr: [
-        "Accès illimité aux modules IA pour chaque étudiant (analyse CV, lettre de motivation, négociation salariale, Email Scout)",
+        "Modules IA sans jeton pour chaque étudiant, chaque jour : 10 imports de CV, 10 lettres de motivation, 5 négociations salariales et 20 recherches Email Scout",
         "Simulateur d'entretiens sans jeton (chat et appel vocal, 5 séances par jour) et test technique de code (30 exercices par jour) pour chaque étudiant",
         "Historique CV et candidatures, export CV en PDF pour chaque étudiant",
         "Codes de licence à distribuer",
@@ -182,7 +182,7 @@ export const PLANS = [
         "Support standard (72h)"
       ],
       en: [
-        "Unlimited AI modules for every student (CV analysis, cover letter, salary negotiation, Email Scout)",
+        "Token-free AI modules for every student, every day: 10 CV imports, 10 cover letters, 5 salary negotiations and 20 Email Scout searches",
         "Token-free interview simulator (chat and voice, 5 sessions a day) and coding test (30 exercises a day) for every student",
         "CV and application history, CV export to PDF for every student",
         "License codes to distribute",

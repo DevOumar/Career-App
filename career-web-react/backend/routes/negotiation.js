@@ -247,10 +247,15 @@ export function registerNegotiationRoutes(app) {
     probeSmtp,
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
-    currentAiProvider
+    currentAiProvider,
+    consumeDailyQuota,
+    releaseDailyQuota,
+    sendDailyQuotaReached,
+    DAILY_MODULE_LIMITS
   } = app.locals.ctx;
 
 app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) => {
+  let quotaTaken = false;
   try {
     if (!req.sessionUserId) {
       return res.status(401).json({ error: "Authentification requise." });
@@ -262,6 +267,13 @@ app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) =
     const finish = Boolean(req.body?.finish);
     const language = req.body?.language === "en" ? "en" : "fr";
     const currencyLabel = req.body?.currencyLabel;
+
+    // Quota quotidien : une unité par nouvelle séance (premier échange).
+    if (!history.length && !finish) {
+      const quota = DAILY_MODULE_LIMITS.negotiation;
+      if (!(await consumeDailyQuota(req.sessionUserId, "negotiation", quota.limit))) return sendDailyQuotaReached(res, quota);
+      quotaTaken = true;
+    }
 
     let salaryReference = req.body?.salaryReference && typeof req.body.salaryReference === "object"
       ? req.body.salaryReference
@@ -291,9 +303,13 @@ app.post("/api/negotiation/reply", aiConversationRateLimiter, async (req, res) =
     }
 
     // Pas de réplique ni de synthèse génériques : sans IA, erreur explicite.
-    if (!result) return res.status(503).json({ error: "Le service d'IA est momentanément indisponible. Réessayez dans un instant : aucun jeton n'a été débité." });
+    if (!result) {
+      if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "negotiation").catch(() => {});
+      return res.status(503).json({ error: "Le service d'IA est momentanément indisponible. Réessayez dans un instant : aucun jeton n'a été débité." });
+    }
     return res.json({ ...result, provider, salaryReference });
   } catch (error) {
+    if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "negotiation").catch(() => {});
     return res.status(400).json({ error: error.message || "Reponse de negociation impossible." });
   }
 });

@@ -249,10 +249,15 @@ export function registerCvRoutes(app) {
     probeSmtp,
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
-    currentAiProvider
+    currentAiProvider,
+    consumeDailyQuota,
+    releaseDailyQuota,
+    sendDailyQuotaReached,
+    DAILY_MODULE_LIMITS
   } = app.locals.ctx;
 
 app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
+  let quotaTaken = false;
   try {
     if (!req.sessionUserId) {
       return res.status(401).json({ error: "Authentification requise." });
@@ -276,6 +281,11 @@ app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
           : "Impossible d'extraire assez de texte depuis ce fichier. Importez un PDF texte ou un DOCX."
       });
     }
+
+    // Quota quotidien, compté seulement pour un fichier lisible.
+    const quota = DAILY_MODULE_LIMITS.cv_import;
+    if (!(await consumeDailyQuota(req.sessionUserId, "cv_import", quota.limit))) return sendDailyQuotaReached(res, quota);
+    quotaTaken = true;
 
     let parsed = null;
     let extractionProvider = "local";
@@ -303,6 +313,7 @@ app.post("/api/cv/extract", aiActionRateLimiter, async (req, res) => {
       extractionProvider
     });
   } catch (error) {
+    if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "cv_import").catch(() => {});
     return res.status(400).json({ error: error.message || "Extraction du CV impossible." });
   }
 });

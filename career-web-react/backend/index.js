@@ -470,9 +470,11 @@ function makeAiRateLimiter({ windowMs, limit, envFlag, message }) {
 
 const aiActionRateLimiter = makeAiRateLimiter({
   windowMs: 24 * 60 * 60 * 1000,
-  limit: 20,
+  // Filet anti-abus global (les vrais quotas par module sont en base,
+  // voir DAILY_MODULE_LIMITS).
+  limit: 80,
   envFlag: "DISABLE_AI_RATE_LIMIT",
-  message: "Limite quotidienne d'actions IA atteinte (20/jour). Réessayez demain."
+  message: "Trop d'actions IA en peu de temps. Réessayez un peu plus tard."
 });
 
 const aiConversationRateLimiter = makeAiRateLimiter({
@@ -641,6 +643,14 @@ const INTERVIEW_MAX_ANSWERS = 10;
 // Coût d'un entretien pour les comptes individuels (Élan, Trajectoire Pro).
 const INTERVIEW_TOKEN_COST = 2;
 const CODING_DAILY_LIMIT = 30;
+// Quotas quotidiens par module (tous les comptes, licences école et cabinet
+// comprises), remis à zéro à minuit heure de Paris.
+const DAILY_MODULE_LIMITS = {
+  cv_import: { limit: 10, what: "imports de CV" },
+  cover_letter: { limit: 10, what: "lettres de motivation" },
+  email_scout: { limit: 20, what: "recherches Email Scout" },
+  negotiation: { limit: 5, what: "négociations" }
+};
 const QUOTA_TIME_ZONE = "Europe/Paris";
 
 function parisParts(date = new Date()) {
@@ -5898,6 +5908,7 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  DAILY_MODULE_LIMITS,
   callAiChat,
   currentAiProvider,
   aiConfigCandidates,

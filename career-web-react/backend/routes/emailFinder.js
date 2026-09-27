@@ -246,7 +246,11 @@ export function registerEmailFinderRoutes(app) {
     probeSmtp,
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
-    callAiChat
+    callAiChat,
+    consumeDailyQuota,
+    releaseDailyQuota,
+    sendDailyQuotaReached,
+    DAILY_MODULE_LIMITS
   } = app.locals.ctx;
 
 // Domaine e-mail officiel d'une entreprise : l'IA propose (ex. « Vinci
@@ -288,6 +292,7 @@ async function resolveCompanyDomain(companyName) {
 }
 
 app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
+  let quotaTaken = false;
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
@@ -307,6 +312,10 @@ app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: "Utilisateur introuvable." });
     }
+
+    const quota = DAILY_MODULE_LIMITS.email_scout;
+    if (!(await consumeDailyQuota(userId, "email_scout", quota.limit))) return sendDailyQuotaReached(res, quota);
+    quotaTaken = true;
 
     const resolved = domainOverride ? { domain: domainOverride, source: "user" } : await resolveCompanyDomain(companyName);
     const domain = resolved.domain;
@@ -350,6 +359,7 @@ app.post("/api/email-finder/search", aiActionRateLimiter, async (req, res) => {
 
     return res.json({ domain, domainSource: resolved.source, domainHasMx, best, items: ranked });
   } catch (error) {
+    if (quotaTaken) await releaseDailyQuota(req.sessionUserId, "email_scout").catch(() => {});
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
 });
