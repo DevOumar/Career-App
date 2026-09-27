@@ -40,6 +40,54 @@ async function transcribeInterviewAudio(audioBlob, { userId, sessionId } = {}) {
 const DISCLAIMER =
   "Cet assistant propose des conseils génériques de préparation et ne remplace pas un accompagnement RH ou un coach carrière personnalisé.";
 
+// Texte de l'IA -> Markdown propre : mention retirée (avec ses soulignés),
+// balises HTML converties ou supprimées, entités décodées.
+function normalizeAiText(text) {
+  return String(text || "")
+    .split(DISCLAIMER).join("")
+    .replace(/\r\n/g, "\n")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/?(p|div)[^>]*>/gi, "\n")
+    .replace(/<\/?(strong|b)>/gi, "**")
+    .replace(/<\/?(em|i)>/gi, "_")
+    .replace(/<li[^>]*>/gi, "\n- ")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/(^|\n)\s*_{1,2}\s*_{0,2}\s*$/g, "$1")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// Texte destiné à la lecture vocale : aucun symbole Markdown lu à voix haute.
+function toSpeechText(text) {
+  return normalizeAiText(text)
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/^[ \t]*\|?[ \t]*:?-{2,}.*$/gm, "")
+    .replace(/^[ \t]*\|[ \t]*|[ \t]*\|[ \t]*$/gm, "")
+    .replace(/\s*\|\s*/g, ", ")
+    .replace(/^#{1,6}\s*/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/^\s*([-*•]|\d+[.)])\s+/gm, "")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/(\*\*|__|\*|_|`)/g, "")
+    .replace(/^\s*-{2,}\s*$/gm, "")
+    // Filet de sécurité : aucun symbole ne doit être prononcé.
+    .replace(/\s*&\s*/g, " et ")
+    .replace(/[#*_`~|<>[\]{}\\/^=+•]/g, " ")
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE0F}]/gu, "")
+    .replace(/\s+([,.;:!?])/g, "$1")
+    .replace(/([,;:])\s*(?=[,;:.])/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\s*\n\s*/g, ". ")
+    .replace(/\.\s*\./g, ".")
+    .trim();
+}
+
 const END_INTERVIEW_MESSAGE =
   "[Le candidat souhaite clore l'entretien. Conclus l'entretien et fournis le bilan complet et la correction finale en détaillant ses points forts et ses axes d'amélioration.]";
 
@@ -277,7 +325,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
       return;
     }
     window.speechSynthesis.cancel();
-    const cleanText = text.replace(DISCLAIMER, "").trim();
+    const cleanText = toSpeechText(text);
     if (!cleanText) {
       if (onEnd) onEnd();
       return;
@@ -593,7 +641,22 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
   // --- Render formatted text with disclaimer handling ---
   // Convertit le markdown **gras** minimal utilisé par le LLM en <strong>.
   function parseBold(str) {
-    return str.split(/\*\*(.+?)\*\*/g).map((part, i) => (i % 2 === 1 ? <strong key={i}>{part}</strong> : part));
+    const parts = [];
+    const pattern = /(`[^`]+`|\*\*[^*]+\*\*|__[^_]+__|\*[^*\s][^*]*\*|_[^_\s][^_]*_)/g;
+    let last = 0;
+    let match;
+    let index = 0;
+    const source = String(str || "");
+    while ((match = pattern.exec(source))) {
+      if (match.index > last) parts.push(source.slice(last, match.index));
+      const token = match[0];
+      if (token.startsWith("`")) parts.push(<code key={index++}>{token.slice(1, -1)}</code>);
+      else if (token.startsWith("**") || token.startsWith("__")) parts.push(<strong key={index++}>{token.slice(2, -2)}</strong>);
+      else parts.push(<em key={index++}>{token.slice(1, -1)}</em>);
+      last = match.index + token.length;
+    }
+    if (last < source.length) parts.push(source.slice(last));
+    return parts;
   }
 
   const BILAN_PATTERN = /1\.\s*\*\*(.+?)\*\*\s*:?\s*([\s\S]*?)\n2\.\s*\*\*(.+?)\*\*\s*:?\s*([\s\S]*?)\n3\.\s*\*\*(.+?)\*\*\s*:?\s*([\s\S]*)/;
@@ -603,9 +666,9 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
     if (!match) return null;
     const intro = cleanText.slice(0, match.index).trim();
     const sections = [
-      { title: match[1].trim(), body: match[2].trim(), icon: "thumbUp", tone: "strengths" },
-      { title: match[3].trim(), body: match[4].trim(), icon: "chart", tone: "improvements" },
-      { title: match[5].trim(), body: match[6].trim(), icon: "check", tone: "summary" }
+      { title: match[1].replace(/[#*_]/g, "").trim(), body: match[2].trim(), icon: "thumbUp", tone: "strengths" },
+      { title: match[3].replace(/[#*_]/g, "").trim(), body: match[4].trim(), icon: "chart", tone: "improvements" },
+      { title: match[5].replace(/[#*_]/g, "").trim(), body: match[6].trim(), icon: "check", tone: "summary" }
     ];
 
     return (
@@ -622,7 +685,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
                 <UiIcon name={section.icon} />
                 {section.title}
               </h5>
-              <p>{parseBold(section.body)}</p>
+              <div className="interview-bilan-body">{renderMarkdown(section.body)}</div>
             </div>
           ))}
         </div>
@@ -725,6 +788,24 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
         continue;
       }
 
+      if (/^\s*([-*•]|\d+[.)])\s+/.test(line)) {
+        const ordered = /^\s*\d+[.)]\s+/.test(line);
+        const items = [];
+        while (i < lines.length && /^\s*([-*•]|\d+[.)])\s+/.test(lines[i])) {
+          items.push(lines[i].replace(/^\s*([-*•]|\d+[.)])\s+/, ""));
+          i++;
+        }
+        const ListTag = ordered ? "ol" : "ul";
+        blocks.push(
+          <ListTag className="interview-md-list" key={key++}>
+            {items.map((item, itemIndex) => (
+              <li key={itemIndex}>{parseBold(item)}</li>
+            ))}
+          </ListTag>
+        );
+        continue;
+      }
+
       const paraLines = [];
       while (
         i < lines.length &&
@@ -732,7 +813,8 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
         !/^#{1,6}\s+/.test(lines[i]) &&
         !/^\s*>\s?/.test(lines[i]) &&
         !(lines[i].includes("|") && i + 1 < lines.length && isTableSeparatorLine(lines[i + 1])) &&
-        !/^\s*-{2,}\s*$/.test(lines[i])
+        !/^\s*-{2,}\s*$/.test(lines[i]) &&
+        !/^\s*([-*•]|\d+[.)])\s+/.test(lines[i])
       ) {
         paraLines.push(lines[i]);
         i++;
@@ -753,7 +835,7 @@ function InterviewPage({ language = "fr", subscription, onGoToTarifs, userId, av
   }
 
   function renderMessageText(text) {
-    const cleanText = text.replace(DISCLAIMER, "").trim();
+    const cleanText = normalizeAiText(text);
     const hasDisclaimer = text.includes(DISCLAIMER);
     const bilanCard = renderBilanCard(cleanText);
 

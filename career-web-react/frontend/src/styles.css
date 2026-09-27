@@ -21496,3 +21496,33 @@ input[aria-invalid="true"] {
     animation: none;
   }
 }
+
+
+/* ===================== Entretien : rendu Markdown des réponses et du bilan ===================== */
+.interview-md-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin: 0.2rem 0 0.6rem;
+  padding-left: 1.2rem;
+  line-height: 1.55;
+}
+.interview-md-list li::marker {
+  color: var(--primary);
+  font-weight: 700;
+}
+.interview-bilan-body > :last-child {
+  margin-bottom: 0;
+}
+.interview-bilan-body .interview-message-paragraph {
+  margin: 0 0 0.5rem;
+}
+.interview-message-bubble code,
+.interview-bilan code {
+  padding: 0.05rem 0.35rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86em;
+}
