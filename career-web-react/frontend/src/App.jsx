@@ -1023,6 +1023,8 @@ export default function App() {
   const [pendingPlanAction, setPendingPlanAction] = useState(null);
 
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  // Menu des modules sur mobile (bouton ☰), comme sur la landing page.
+  const [navMenuOpen, setNavMenuOpen] = useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState("account");
   const [securitySaving, setSecuritySaving] = useState(false);
@@ -1324,6 +1326,15 @@ export default function App() {
       window.history.replaceState(null, "", nextHash);
     }
   }, [user, activePage]);
+
+  useEffect(() => {
+    if (!navMenuOpen) return undefined;
+    const onKey = (event) => {
+      if (event.key === "Escape") setNavMenuOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [navMenuOpen]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -2272,6 +2283,7 @@ export default function App() {
     setPageMessage("");
     setProcessingError("");
     setUserMenuOpen(false);
+    setNavMenuOpen(false);
   }
 
   if (sessionLoading) {
@@ -2463,7 +2475,7 @@ export default function App() {
 
   return (
     <div className="app-shell">
-      <header className="topbar">
+      <header className={`topbar ${navMenuOpen ? "is-nav-open" : ""}`}>
         <button type="button" className="brand brand-link" onClick={() => goTo("home")}>
           <img src="/logo-career-cv.png" alt="Career CV" className="brand-logo" />
         </button>
@@ -2542,7 +2554,9 @@ export default function App() {
               </div>
             ) : null}
           </div>
-          <LanguageSwitch language={language} setLanguage={setLanguage} variant="menu" />
+          <div className="topbar-lang-desktop">
+            <LanguageSwitch language={language} setLanguage={setLanguage} variant="menu" />
+          </div>
           <button type="button" className="topbar-tokens" onClick={() => goTo("tarifs")} title={language === "en" ? "Tokens balance" : "Solde de jetons"}>
             <UiIcon name="pricetag" />
             <span>{tokensDisplay}</span>
@@ -2598,7 +2612,59 @@ export default function App() {
             </div>
           ) : null}
         </div>
+        <button
+          type="button"
+          className="topbar-burger"
+          aria-expanded={navMenuOpen}
+          aria-controls="app-mobile-menu"
+          aria-label={navMenuOpen ? (language === "en" ? "Close menu" : "Fermer le menu") : language === "en" ? "Open menu" : "Ouvrir le menu"}
+          onClick={() => setNavMenuOpen((open) => !open)}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            {navMenuOpen ? (
+              <path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            ) : (
+              <path d="M4 7h16M4 12h16M4 17h16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            )}
+          </svg>
+        </button>
+
+        <nav id="app-mobile-menu" className="topbar-mobile-menu" hidden={!navMenuOpen} aria-label={language === "en" ? "Modules" : "Modules"}>
+          <div className="tmm-list">
+            {NAV_ITEMS.map((item) => {
+              const isLocked = !item.always && !analysisUnlocked;
+              const isActive = activePage === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className={`tmm-item ${isActive ? "is-active" : ""}`}
+                  onClick={() => goTo(item.id)}
+                  disabled={isLocked}
+                  aria-current={isActive ? "page" : undefined}
+                >
+                  <span className="tmm-icon">
+                    <UiIcon name={item.icon} />
+                  </span>
+                  <span className="tmm-label">{item.label[language] || item.label.fr}</span>
+                  {isLocked ? (
+                    <small className="tmm-hint">{language === "en" ? "After a first analysis" : "Après une 1re analyse"}</small>
+                  ) : (
+                    <span className="tmm-chevron" aria-hidden="true">
+                      <UiIcon name="chevron" />
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <div className="tmm-footer">
+            <span>{language === "en" ? "Language" : "Langue"}</span>
+            <LanguageSwitch language={language} setLanguage={setLanguage} variant="menu" />
+          </div>
+        </nav>
       </header>
+      {navMenuOpen ? <div className="topbar-mobile-backdrop" onClick={() => setNavMenuOpen(false)} aria-hidden="true" /> : null}
 
       <main className={`main-wrap ${activePage === "import" ? "main-wrap-wide" : ""}`}>
         <Suspense fallback={<LazyAppFallback />}>
