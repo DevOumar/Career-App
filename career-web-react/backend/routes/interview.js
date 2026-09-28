@@ -96,7 +96,8 @@ export function registerInterviewRoutes(app) {
     affectedRowCount,
     resolveSubscriptionCredits,
     callAiChat,
-    LICENSE_SUSPENDED_ERROR
+    LICENSE_SUSPENDED_ERROR,
+    licenseAccessError
   } = app.locals.ctx;
 
   // Le simulateur d'entretiens n'est inclus que dans le plan Trajectoire Pro
@@ -112,8 +113,9 @@ export function registerInterviewRoutes(app) {
       res.status(404).json({ error: "Utilisateur introuvable." });
       return false;
     }
-    if (parseJsonField(user.subscription_json, {}).licenseSuspended) {
-      res.status(403).json(LICENSE_SUSPENDED_ERROR);
+    const accessError = licenseAccessError(parseJsonField(user.subscription_json, {}));
+    if (accessError) {
+      res.status(403).json(accessError);
       return false;
     }
     const subscription = parseJsonField(user.subscription_json, {});

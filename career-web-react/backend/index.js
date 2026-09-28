@@ -746,8 +746,9 @@ const LICENSE_SUSPENDED_ERROR = {
 async function takeModuleAllowance(res, userId, quotaKey, { tokenCost = 1 } = {}) {
   const user = await getUserRowById(userId);
   const accountSubscription = parseJsonField(user?.subscription_json, {});
-  if (accountSubscription.licenseSuspended) {
-    res.status(403).json(LICENSE_SUSPENDED_ERROR);
+  const accessError = licenseAccessError(accountSubscription);
+  if (accessError) {
+    res.status(403).json(accessError);
     return null;
   }
   const credits = resolveSubscriptionCredits(accountSubscription);
@@ -1321,6 +1322,11 @@ await db.exec(`
   ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS revoked INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS revoked_at TEXT NOT NULL DEFAULT '';
   ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS seat_price NUMERIC;
+  ALTER TABLE transactions ADD COLUMN IF NOT EXISTS invoice_number TEXT;
+  CREATE TABLE IF NOT EXISTS invoice_counters (
+    year INTEGER PRIMARY KEY,
+    last_number INTEGER NOT NULL DEFAULT 0
+  );
   ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_modules_json TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS logo_data_url TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '';
@@ -5050,7 +5056,16 @@ async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeId
   const seatQuantity = plan.pricedPerSeat ? Math.max(1, Number(purchase.quantity) || Number(plan.seats) || 1) : 1;
   const listedAmount = Math.round(unitAmount * seatQuantity * 100) / 100;
   const stripeTotal = Number(purchase.amountTotal);
-  const amountCollected = source === "stripe" ? (Number.isFinite(stripeTotal) && stripeTotal >= 0 ? stripeTotal : listedAmount) : 0;
+  // Stripe : montant réellement débité. Création/modification par l'admin :
+  // le client a réglé hors application (virement...), le montant est encaissé.
+  const amountCollected =
+    source === "stripe"
+      ? Number.isFinite(stripeTotal) && stripeTotal >= 0
+        ? stripeTotal
+        : listedAmount
+      : source === "admin_created" || source === "admin_manual"
+      ? listedAmount
+      : 0;
   await db.query(
     `INSERT INTO transactions (
       id, user_id, plan_id, billing_cycle, listed_amount, amount_collected, currency, source,
@@ -5374,6 +5389,290 @@ function reserveSchoolSeat(availability) {
   slot.free -= 1;
   availability.available -= 1;
   return slot.code;
+}
+
+// ---------------------------------------------------------------- licences : accès, échéance, factures
+// Refus d'accès d'un compte rattaché à une licence école ou cabinet :
+// suspension décidée par l'établissement, ou licence arrivée à échéance.
+const LICENSE_EXPIRED_ERROR = {
+  code: "LICENSE_EXPIRED",
+  error: "La licence de votre établissement a expiré. Votre accès sera rétabli dès son renouvellement : contactez votre établissement."
+};
+function licenseAccessError(subscription) {
+  if (subscription?.licenseSuspended) return LICENSE_SUSPENDED_ERROR;
+  if (subscription?.licenseExpired) return LICENSE_EXPIRED_ERROR;
+  return null;
+}
+
+// Licence d'un établissement (école ou cabinet titulaire) échue ?
+function orgLicenseExpired(subscription) {
+  return subscription?.status === "expired";
+}
+
+// Cabinet : les outils IA s'arrêtent si la licence du titulaire a expiré.
+async function assertCabinetLicenseActive(cabinet) {
+  const rootId = cabinet.cabinetRootId || cabinet.id;
+  const owner = rootId === cabinet.id ? cabinet : await getUserRowById(rootId);
+  if (owner && orgLicenseExpired(parseJsonField(owner.subscription_json, {}))) {
+    const error = new Error("La licence de votre cabinet a expiré. Contactez Career CV pour la renouveler.");
+    error.statusCode = 403;
+    error.code = "LICENSE_EXPIRED";
+    throw error;
+  }
+}
+
+async function attachedAccountIdsForOwner(ownerUserId) {
+  const { rows: codes } = await db.query("SELECT code FROM license_codes WHERE owner_user_id = $1", [ownerUserId]);
+  const ids = new Set();
+  for (const { code } of codes) {
+    const clean = String(code).replace(/[^A-Za-z0-9-]/g, "");
+    const { rows } = await db.query("SELECT id FROM users WHERE subscription_json LIKE $1 AND id <> $2", [`%"licenseCode":"${clean}"%`, ownerUserId]);
+    rows.forEach((row) => ids.add(row.id));
+  }
+  return [...ids];
+}
+
+// Pose ou retire l'indicateur « licence expirée » sur les comptes rattachés
+// (ils gardent compte, données et siège ; l'accès revient au renouvellement).
+async function setAttachedLicenseExpired(ownerUserId, expired) {
+  for (const id of await attachedAccountIdsForOwner(ownerUserId)) {
+    const row = await getUserRowById(id);
+    const sub = parseJsonField(row?.subscription_json, {});
+    if (Boolean(sub.licenseExpired) === expired) continue;
+    if (expired) sub.licenseExpired = true;
+    else delete sub.licenseExpired;
+    await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [JSON.stringify(sub), nowIso(), id]);
+  }
+}
+
+function formatDateFr(value) {
+  return new Date(value).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+function buildLicenseReminderEmail({ firstName, organizationName, planName, renewalAt, daysLeft, expired }) {
+  const safe = (value) => escapeHtml(value || "");
+  const when = formatDateFr(renewalAt);
+  const subject = expired
+    ? `Votre licence Career CV a expiré le ${when}`
+    : `Votre licence Career CV arrive à échéance le ${when}`;
+  const lead = expired
+    ? `La licence ${safe(planName)} de ${safe(organizationName)} a expiré le ${when}. Vos utilisateurs rattachés gardent leurs comptes et leurs données, mais leur accès est suspendu jusqu'au renouvellement.`
+    : `La licence ${safe(planName)} de ${safe(organizationName)} arrive à échéance dans ${daysLeft} jour${daysLeft > 1 ? "s" : ""}, le ${when}. Pour éviter toute interruption pour vos utilisateurs, pensez à la renouveler.`;
+  const html = `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${safe(subject)}</title></head>
+<body style="margin:0;background:#f6f2ec;font-family:Arial,Helvetica,sans-serif;color:#171317;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f2ec;padding:34px 12px;"><tr><td align="center">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:590px;background:#ffffff;border:1px solid #eadfd3;border-radius:24px;overflow:hidden;box-shadow:0 18px 45px rgba(92,26,6,0.10);">
+      <tr><td style="padding:28px 30px 22px;background:linear-gradient(135deg,#5c1a06 0%,#b83309 100%);">
+        <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:#ffffff;color:#b83309;text-align:center;line-height:42px;font-size:22px;font-weight:900;vertical-align:middle;">CV</div>
+        <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#ffffff;vertical-align:middle;">Career CV</span>
+      </td></tr>
+      <tr><td style="padding:30px 30px 10px;">
+        <p style="margin:0 0 8px;color:#7b6d63;font-size:14px;">Bonjour ${safe(firstName)},</p>
+        <h1 style="margin:0;font-size:25px;line-height:1.25;color:#171317;">${expired ? "Votre licence a expiré" : "Votre licence arrive à échéance"}</h1>
+        <p style="margin:13px 0 0;color:#5f5651;font-size:15px;line-height:1.65;">${lead}</p>
+        <p style="margin:13px 0 0;color:#5f5651;font-size:15px;line-height:1.65;">Pour la renouveler, répondez à cet e-mail ou écrivez à contact@careercv.fr.</p>
+      </td></tr>
+      <tr><td style="padding:18px 30px 28px;"><a href="${safe(APP_URL.replace(/\/$/, ""))}/#/login" style="display:inline-block;padding:14px 26px;border-radius:999px;background:#b83309;color:#ffffff;font-weight:800;font-size:15px;text-decoration:none;">Accéder à mon espace</a></td></tr>
+      <tr><td style="padding:18px 30px;background:#fbf8f4;border-top:1px solid #eadfd3;color:#7b6d63;font-size:12px;line-height:1.5;">&copy; ${new Date().getFullYear()} Career CV.</td></tr>
+    </table>
+  </td></tr></table>
+</body></html>`;
+  const text = `Bonjour ${firstName || ""},\n\n${lead.replace(/<[^>]+>/g, "")}\n\nPour la renouveler, écrivez à contact@careercv.fr.\n\nL'équipe Career CV`;
+  return { subject, html, text };
+}
+
+// Cycle de vie des licences école/cabinet : rappels à J-30 et J-7, puis
+// expiration à l'échéance (tourne toutes les heures, idempotent).
+async function runLicenseLifecycle() {
+  try {
+    const { rows } = await db.query(
+      "SELECT id, first_name, email, role_type, subscription_json FROM users WHERE role_type IN ('school', 'recruiter_firm')"
+    );
+    const now = Date.now();
+    for (const row of rows) {
+      const sub = parseJsonField(row.subscription_json, {});
+      if (sub.plan !== "premium" || !sub.renewalAt || !sub.planId) continue;
+      const plan = getPlanById(sub.planId);
+      if (!plan?.seats) continue;
+      const renewalMs = new Date(sub.renewalAt).getTime();
+      if (!Number.isFinite(renewalMs)) continue;
+      const daysLeft = Math.ceil((renewalMs - now) / (24 * 60 * 60 * 1000));
+      const { rows: orgRows } = await db.query("SELECT organization_name FROM user_org_profiles WHERE user_id = $1", [row.id]);
+      const organizationName = orgRows[0]?.organization_name || row.first_name;
+      const mailBase = { firstName: row.first_name, organizationName, planName: plan.name?.fr || plan.id, renewalAt: sub.renewalAt };
+      let changed = false;
+
+      if (renewalMs <= now && sub.status !== "expired") {
+        sub.status = "expired";
+        sub.licenseExpiredAt = nowIso();
+        changed = true;
+        await setAttachedLicenseExpired(row.id, true);
+        await sendAppEmail({ to: row.email, ...buildLicenseReminderEmail({ ...mailBase, expired: true }) }).catch(() => {});
+      } else if (renewalMs > now && sub.status !== "expired") {
+        for (const threshold of [30, 7]) {
+          const flag = `renewalReminder${threshold}At`;
+          if (daysLeft <= threshold && !sub[flag]) {
+            sub[flag] = nowIso();
+            if (threshold === 30) sub.renewalReminder7At = daysLeft <= 7 ? sub.renewalReminder7At || nowIso() : sub.renewalReminder7At;
+            changed = true;
+            await sendAppEmail({ to: row.email, ...buildLicenseReminderEmail({ ...mailBase, daysLeft }) }).catch(() => {});
+            break;
+          }
+        }
+      }
+      if (changed) {
+        await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [JSON.stringify(sub), nowIso(), row.id]);
+      }
+    }
+  } catch (error) {
+    console.warn(`Cycle de vie des licences : ${error.message}`);
+  }
+}
+
+// Renouvellement (admin) : +1 période à partir de l'échéance (ou d'aujourd'hui
+// si elle est passée), paiement encaissé hors application et facturé.
+async function renewOrgLicense(ownerUserId) {
+  const owner = await getUserRowById(ownerUserId);
+  if (!owner || !["school", "recruiter_firm"].includes(owner.role_type)) {
+    const error = new Error("Seuls les comptes école et cabinet ont une licence à renouveler.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const sub = parseJsonField(owner.subscription_json, {});
+  const plan = await getEffectivePlanById(sub.planId);
+  if (!plan?.seats) {
+    const error = new Error("Aucune licence active à renouveler sur ce compte.");
+    error.statusCode = 400;
+    throw error;
+  }
+  const cycle = plan.monthlyPrice == null ? "annual" : sub.billingCycle === "annual" ? "annual" : "monthly";
+  const days = cycle === "annual" ? 365 : 30;
+  const base = Math.max(Date.now(), new Date(sub.renewalAt || 0).getTime() || 0);
+  const renewalAt = new Date(base + days * 24 * 60 * 60 * 1000).toISOString();
+  const { rows: codes } = await db.query("SELECT seats_total, seat_price FROM license_codes WHERE owner_user_id = $1 AND COALESCE(revoked, 0) = 0", [ownerUserId]);
+  const seats = codes.reduce((sum, row) => sum + Number(row.seats_total || 0), 0) || Number(plan.seats) || 1;
+  const unit = cycle === "annual" ? Number(plan.annualPrice || 0) : Number(plan.monthlyPrice || 0);
+  const amount = Math.round((plan.pricedPerSeat ? unit * seats : unit) * 100) / 100;
+
+  const next = { ...sub, plan: "premium", status: "active", billingCycle: cycle, renewalAt };
+  delete next.licenseExpiredAt;
+  delete next.renewalReminder30At;
+  delete next.renewalReminder7At;
+  await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [JSON.stringify(next), nowIso(), ownerUserId]);
+  if (plan.pricedPerSeat) {
+    await db.query("UPDATE license_codes SET seat_price = $1 WHERE owner_user_id = $2", [Number(plan.annualPrice) || null, ownerUserId]);
+  }
+  await setAttachedLicenseExpired(ownerUserId, false);
+  await db.query(
+    `INSERT INTO transactions (
+      id, user_id, plan_id, billing_cycle, listed_amount, amount_collected, currency, source,
+      license_code, stripe_customer_id, stripe_subscription_id, stripe_payment_intent_id, created_at
+    ) VALUES ($1,$2,$3,$4,$5,$5,'EUR','admin_created',NULL,NULL,NULL,NULL,$6)`,
+    [`txn-${crypto.randomUUID()}`, ownerUserId, plan.id, cycle, amount, nowIso()]
+  );
+  return { renewalAt, amount, seats, cycle };
+}
+
+// ---------------------------------------------------------------- factures
+const INVOICE_SELLER_KEY = "invoice_seller";
+function getInvoiceSeller() {
+  let stored = {};
+  try {
+    stored = JSON.parse(getPlatformSetting(INVOICE_SELLER_KEY) || "{}") || {};
+  } catch (_error) {
+    stored = {};
+  }
+  return {
+    name: stored.name || "Career CV",
+    address: stored.address || "",
+    siret: stored.siret || "",
+    vatMention: stored.vatMention || "",
+    email: stored.email || "contact@careercv.fr"
+  };
+}
+
+// Numéro de facture unique et séquentiel par année (CCV-2026-00001),
+// attribué à la première consultation et conservé ensuite.
+async function ensureInvoiceNumber(tx) {
+  if (tx.invoice_number) return tx.invoice_number;
+  const year = new Date(tx.created_at).getFullYear();
+  const { rows } = await db.query(
+    `INSERT INTO invoice_counters (year, last_number) VALUES ($1, 1)
+     ON CONFLICT (year) DO UPDATE SET last_number = invoice_counters.last_number + 1
+     RETURNING last_number`,
+    [year]
+  );
+  const number = `CCV-${year}-${String(rows[0].last_number).padStart(5, "0")}`;
+  const { rows: updated } = await db.query(
+    "UPDATE transactions SET invoice_number = $1 WHERE id = $2 AND (invoice_number IS NULL OR invoice_number = '') RETURNING invoice_number",
+    [number, tx.id]
+  );
+  if (updated[0]) return updated[0].invoice_number;
+  const { rows: current } = await db.query("SELECT invoice_number FROM transactions WHERE id = $1", [tx.id]);
+  return current[0]?.invoice_number || number;
+}
+
+const INVOICE_METHODS = {
+  stripe: "Carte bancaire (Stripe)",
+  admin_created: "Règlement hors application (virement ou autre)",
+  admin_manual: "Règlement hors application (virement ou autre)"
+};
+
+async function buildInvoiceData(txId) {
+  const { rows } = await db.query("SELECT * FROM transactions WHERE id = $1", [txId]);
+  const tx = rows[0];
+  if (!tx) return null;
+  if (!INVOICE_METHODS[tx.source] || !(Number(tx.listed_amount) > 0)) {
+    const error = new Error("Aucune facture pour cette opération (incluse dans une licence ou non facturée).");
+    error.statusCode = 404;
+    throw error;
+  }
+  const number = await ensureInvoiceNumber(tx);
+  const buyerRow = await getUserRowById(tx.user_id);
+  const { rows: orgRows } = await db.query("SELECT organization_name, website FROM user_org_profiles WHERE user_id = $1", [tx.user_id]);
+  const plan = getPlanById(tx.plan_id);
+  const cycle = tx.billing_cycle === "annual" ? "annual" : tx.billing_cycle === "monthly" ? "monthly" : "annual";
+  const total = Number(tx.listed_amount) || 0;
+  let quantity = 1;
+  let unitPrice = total;
+  if (plan?.pricedPerSeat) {
+    const unit = Number(plan.annualPrice) || 0;
+    const guess = unit ? Math.round(total / unit) : 0;
+    if (guess >= 1 && Math.abs(guess * unit - total) < 0.02) {
+      quantity = guess;
+      unitPrice = unit;
+    }
+  }
+  const start = new Date(tx.created_at);
+  const oneShot = plan && plan.monthlyPrice == null && !plan.seats;
+  const end = oneShot ? null : new Date(start.getTime() + (cycle === "annual" ? 365 : 30) * 24 * 60 * 60 * 1000);
+  return {
+    id: tx.id,
+    number,
+    issuedAt: tx.created_at,
+    seller: getInvoiceSeller(),
+    buyer: {
+      name: orgRows[0]?.organization_name || [buyerRow?.first_name, buyerRow?.last_name].filter(Boolean).join(" ") || "Compte supprimé",
+      contact: [buyerRow?.first_name, buyerRow?.last_name].filter(Boolean).join(" "),
+      email: buyerRow?.email || ""
+    },
+    line: {
+      label: `Career CV — offre ${plan?.name?.fr || tx.plan_id}${plan?.pricedPerSeat ? ` (${quantity} place${quantity > 1 ? "s" : ""} étudiant${quantity > 1 ? "s" : ""})` : plan?.seats ? ` (${plan.seats} sièges recruteurs)` : ""}`,
+      period: end ? { from: start.toISOString(), to: end.toISOString() } : null,
+      cycle: oneShot ? "one_time" : cycle,
+      quantity,
+      unitPrice,
+      total
+    },
+    currency: tx.currency || "EUR",
+    payment: {
+      method: INVOICE_METHODS[tx.source],
+      paid: Number(tx.amount_collected) || 0,
+      status: Number(tx.refunded) ? "refunded" : Number(tx.amount_collected) > 0 ? "paid" : "due",
+      refundedAt: tx.refunded_at || null
+    }
+  };
 }
 
 async function getSchoolStudentRows(schoolUserId) {
@@ -6268,6 +6567,14 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  licenseAccessError,
+  orgLicenseExpired,
+  assertCabinetLicenseActive,
+  renewOrgLicense,
+  buildInvoiceData,
+  getInvoiceSeller,
+  INVOICE_SELLER_KEY,
+  runLicenseLifecycle,
   buildSchoolInvitationEmail,
   getSchoolSeatAvailability,
   reserveSchoolSeat,
@@ -6600,6 +6907,8 @@ if (serverStart.status === "existing") {
   setTimeout(() => runSchoolWeeklyDigests(), 60_000);
   setInterval(() => runSchoolWeeklyDigests(), 6 * 60 * 60 * 1000);
   setTimeout(() => runCabinetWeeklyDigests(), 90_000);
+  setTimeout(() => runLicenseLifecycle(), 60_000);
+  setInterval(() => runLicenseLifecycle(), 60 * 60 * 1000);
   setInterval(() => runCabinetWeeklyDigests(), 6 * 60 * 60 * 1000);
   // RGPD : anonymisation automatique des candidats au-delà de la durée de
   // conservation (cabinets qui l'ont activée), et fiches clients créées à

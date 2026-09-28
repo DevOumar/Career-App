@@ -78,7 +78,8 @@ import {
   sendSchoolInvitation,
   removeSchoolStudent,
   markSchoolNotificationsRead,
-  generateSchoolReport
+  generateSchoolReport,
+  renewOrgLicense
 } from "../../../lib/inMemoryDb.js";
 import AdminAccountFormModal, { announceAccountResult, affiliationLabel } from "./AdminAccountFormModal.jsx";
 import { AdminLineIcon, JyDrawer, AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
@@ -224,6 +225,38 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
   const [editTarget, setEditTarget] = useState(null);
 
   const isOrgTab = subTab === "school" || subTab === "recruiter_firm";
+  // Renouvellement d'une licence école/cabinet réglée hors application :
+  // nouvelle échéance, transaction encaissée et facture disponible.
+  async function handleRenewLicense(target) {
+    const monthly = target.billingCycle === "monthly";
+    const confirm = await Swal.fire({
+      icon: "question",
+      title: language === "en" ? "Renew this license?" : "Renouveler cette licence ?",
+      html: `<p style="text-align:left">${
+        language === "en"
+          ? `The license of <strong>${target.organizationName || target.email}</strong> is extended by ${monthly ? "one month" : "one year"} from its due date. The payment is recorded as collected offline and the invoice becomes available.`
+          : `La licence de <strong>${target.organizationName || target.email}</strong> est prolongée ${monthly ? "d'un mois" : "d'un an"} à partir de son échéance. Le paiement est enregistré comme encaissé hors application et la facture devient disponible.`
+      }</p>`,
+      showCancelButton: true,
+      confirmButtonText: language === "en" ? "Renew" : "Renouveler",
+      cancelButtonText: language === "en" ? "Cancel" : "Annuler",
+      confirmButtonColor: "#b83309"
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+      const result = await renewOrgLicense(user.id, target.id);
+      appToast(
+        "success",
+        language === "en"
+          ? `License renewed until ${formatDateTime(result.renewalAt, language).split(" ")[0]}.`
+          : `Licence renouvelée jusqu'au ${formatDateTime(result.renewalAt, language).split(" ")[0]}.`
+      );
+      reload();
+    } catch (err) {
+      appToast("error", getFriendlyErrorMessage(err, language));
+    }
+  }
+
   function reload() {
     if (isOrgTab) loadOrgAccounts();
     else loadUsers();
@@ -642,7 +675,13 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
                           title: language === "en" ? "Subscription" : "Abonnement",
                           rows: [
                             [copy.colPlan, selectedUser.planId ? getPlanById(selectedUser.planId)?.name?.[language] || selectedUser.planId : copy.noPlan],
-                            [copy.colPrice, planPriceLabel(selectedUser.planId, selectedUser.billingCycle, copy.free, currency)]
+                            [copy.colPrice, planPriceLabel(selectedUser.planId, selectedUser.billingCycle, copy.free, currency)],
+                            [
+                              language === "en" ? "License valid until" : "Licence valable jusqu'au",
+                              selectedUser.licenseRenewalAt
+                                ? `${formatDateTime(selectedUser.licenseRenewalAt, language).split(" ")[0]}${selectedUser.licenseExpired ? (language === "en" ? " · expired" : " · expirée") : ""}`
+                                : ""
+                            ]
                           ]
                         }
                       : null,
@@ -685,6 +724,22 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
                   >
                     <AdminLineIcon name="edit" /> {copy.edit}
                   </button>
+                  {selectedUser.licenseRenewalAt ? (
+                    <button
+                      type="button"
+                      className="admin-row-action"
+                      onClick={() => {
+                        const target = selectedUser;
+                        setSelectedUser(null);
+                        handleRenewLicense(target);
+                      }}
+                    >
+                      <AdminLineIcon name="calendar" />{" "}
+                      {selectedUser.billingCycle === "monthly"
+                        ? language === "en" ? "Renew (+1 month)" : "Renouveler (+1 mois)"
+                        : language === "en" ? "Renew (+1 year)" : "Prolonger d'un an"}
+                    </button>
+                  ) : null}
                   {selectedUser.roleType !== "admin" ? (
                     <>
                       <button

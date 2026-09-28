@@ -2681,6 +2681,19 @@ export default function App() {
       {navMenuOpen ? <div className="topbar-mobile-backdrop" onClick={() => setNavMenuOpen(false)} aria-hidden="true" /> : null}
 
       <main className={`main-wrap ${activePage === "import" ? "main-wrap-wide" : ""}`}>
+        {user?.subscription?.licenseExpired && !user?.subscription?.licenseSuspended ? (
+          <div className="license-suspended-banner" role="status">
+            <UiIcon name="alert" />
+            <div>
+              <strong>{language === "en" ? "Your school's license has expired" : "La licence de votre établissement a expiré"}</strong>
+              <span>
+                {language === "en"
+                  ? "CV import and analysis, ATS optimisation, AI letter, negotiation, Email Scout, interviews and coding test are unavailable until it is renewed. Your CVs, history and applications remain available."
+                  : "Import et analyse de CV, optimisation ATS, Lettre IA, négociation, Email Scout, entretiens et test technique sont indisponibles jusqu'à son renouvellement. Vos CV, votre historique et vos candidatures restent consultables."}
+              </span>
+            </div>
+          </div>
+        ) : null}
         {user?.subscription?.licenseSuspended ? (
           <div className="license-suspended-banner" role="status">
             <UiIcon name="alert" />

@@ -6,7 +6,8 @@ import { AdminPageLoader } from "../../../components/AdminPageLoader.jsx";
 import { getPlanById } from "../../../data/plans.js";
 import { getFriendlyErrorMessage } from "../../../lib/errors.js";
 import { formatDateTime } from "../../../lib/format.js";
-import { listBillingTransactions } from "../../../lib/inMemoryDb.js";
+import { getBillingInvoice, listBillingTransactions } from "../../../lib/inMemoryDb.js";
+import { downloadInvoicePdf, hasInvoice, transactionStatus } from "../../../lib/invoices.js";
 import { AdminLineIcon, JyDrawer, formatEur } from "../../admin/AdminApp.jsx";
 import { AdminExportMenu } from "../../admin/AdminListTools.jsx";
 
@@ -15,7 +16,8 @@ const SOURCE = {
   stripe: { fr: "Carte bancaire (Stripe)", en: "Card (Stripe)", icon: "card" },
   instant: { fr: "Activation instantanée", en: "Instant activation", icon: "trend" },
   license_redeem: { fr: "Code de licence", en: "License code", icon: "licenses" },
-  admin_created: { fr: "Créé par Career CV", en: "Created by Career CV", icon: "settings" }
+  admin_created: { fr: "Réglé hors application", en: "Paid offline", icon: "finance" },
+  admin_manual: { fr: "Réglé hors application", en: "Paid offline", icon: "finance" }
 };
 
 export default function SchoolBillingPage({ user, language, currency }) {
@@ -26,6 +28,20 @@ export default function SchoolBillingPage({ user, language, currency }) {
   const [status, setStatus] = useState("all");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(null);
+  const [downloadingId, setDownloadingId] = useState(null);
+  const [invoiceError, setInvoiceError] = useState("");
+
+  async function openInvoice(item) {
+    setDownloadingId(item.id);
+    setInvoiceError("");
+    try {
+      await downloadInvoicePdf(await getBillingInvoice(user.id, item.id));
+    } catch (err) {
+      setInvoiceError(getFriendlyErrorMessage(err, language));
+    } finally {
+      setDownloadingId(null);
+    }
+  }
 
   useEffect(() => {
     listBillingTransactions(user.id, { page: 1, pageSize: 50 })
@@ -37,12 +53,7 @@ export default function SchoolBillingPage({ user, language, currency }) {
   if (error) return <p className="field-error">{error}</p>;
   if (!items) return <AdminPageLoader language={language} />;
 
-  const statusOf = (item) =>
-    item.refunded
-      ? { id: "refunded", label: t("Remboursé", "Refunded"), tone: "tag-danger" }
-      : Number(item.amountCollected || 0) > 0
-      ? { id: "paid", label: t("Payé", "Paid"), tone: "tag-success" }
-      : { id: "free", label: t("Offert", "Free"), tone: "tag-warning" };
+  const statusOf = (item) => transactionStatus(item, t);
   const planName = (item) => getPlanById(item.planId)?.name?.[lang] || item.planName || item.planId;
   const money = (value, item) => formatEur(Number(value || 0), item?.currency || currency);
 
@@ -95,13 +106,27 @@ export default function SchoolBillingPage({ user, language, currency }) {
         ))}
       </div>
 
+      {invoiceError ? <p className="field-error">{invoiceError}</p> : null}
+      {items.find(hasInvoice) ? (
+        <div className="jy-invoice-callout">
+          <AdminLineIcon name="fileText" />
+          <span>
+            {t("Votre dernière facture est disponible : ", "Your latest invoice is available: ")}
+            <strong>{planName(items.find(hasInvoice))}</strong> · {money(items.find(hasInvoice).listedAmount, items.find(hasInvoice))}
+          </span>
+          <button type="button" className="jy-btn jy-btn-primary jy-btn-sm" onClick={() => openInvoice(items.find(hasInvoice))} disabled={Boolean(downloadingId)}>
+            <AdminLineIcon name="download" /> {t("Télécharger la facture (PDF)", "Download invoice (PDF)")}
+          </button>
+        </div>
+      ) : null}
+
       <div className="admin-table-toolbar">
         <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Rechercher une offre, un moyen ou un code…", "Search a plan, a method or a code…")} />
         <div className="jy-seg jy-seg-counts">
           {[
             { id: "all", label: t("Toutes", "All"), n: items.length },
             { id: "paid", label: t("Payées", "Paid"), n: paid.length },
-            { id: "free", label: t("Offertes", "Free"), n: items.filter((item) => statusOf(item).id === "free").length },
+            { id: "unbilled", label: t("Non facturées", "Not billed"), n: items.filter((item) => statusOf(item).id === "unbilled").length },
             { id: "refunded", label: t("Remboursées", "Refunded"), n: refunded.length }
           ].map((item) => (
             <button key={item.id} type="button" className={status === item.id ? "active" : ""} onClick={() => setStatus(item.id)}>
@@ -126,6 +151,7 @@ export default function SchoolBillingPage({ user, language, currency }) {
                 <th>{t("Prix catalogue", "Listed price")}</th>
                 <th>{t("Payé", "Paid")}</th>
                 <th>{t("Statut", "Status")}</th>
+                <th>{t("Facture", "Invoice")}</th>
               </tr>
             </thead>
             <tbody>
@@ -151,12 +177,21 @@ export default function SchoolBillingPage({ user, language, currency }) {
                       <td>
                         <span className={`tag ${itemStatus.tone}`}>{itemStatus.label}</span>
                       </td>
+                      <td onClick={(event) => event.stopPropagation()}>
+                        {hasInvoice(item) ? (
+                          <button type="button" className="admin-row-action" onClick={() => openInvoice(item)} disabled={downloadingId === item.id}>
+                            <AdminLineIcon name="download" /> {downloadingId === item.id ? t("…", "…") : "PDF"}
+                          </button>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })
               ) : (
                 <tr>
-                  <td colSpan={6} className="admin-table-empty muted">
+                  <td colSpan={7} className="admin-table-empty muted">
                     {t("Aucune opération de ce type.", "No transaction of this type.")}
                   </td>
                 </tr>
@@ -188,6 +223,13 @@ export default function SchoolBillingPage({ user, language, currency }) {
         title={selected ? planName(selected) : ""}
         subtitle={selected ? formatDateTime(selected.createdAt, language) : ""}
         badges={selected ? <span className={`tag ${statusOf(selected).tone}`}>{statusOf(selected).label}</span> : null}
+        footer={
+          selected && hasInvoice(selected) ? (
+            <button type="button" className="admin-row-action" onClick={() => openInvoice(selected)} disabled={downloadingId === selected.id}>
+              <AdminLineIcon name="download" /> {t("Télécharger la facture (PDF)", "Download invoice (PDF)")}
+            </button>
+          ) : null
+        }
         sections={
           selected
             ? [

@@ -243,7 +243,10 @@ export function registerAdminFinanceRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    buildInvoiceData,
+    getInvoiceSeller,
+    INVOICE_SELLER_KEY
   } = app.locals.ctx;
 
 app.get("/api/admin/finance", async (req, res) => {
@@ -394,6 +397,51 @@ app.post("/api/admin/transactions/:id/refund", async (req, res) => {
     });
 
     return res.json({ ok: true, refundedAt });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Facture d'une opération (vue admin).
+app.get("/api/admin/finance/invoices/:id", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
+    await requireAdminModule(adminUserId, "finance");
+    return res.json({ invoice: await buildInvoiceData(req.params.id) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Mentions du vendeur imprimées sur les factures (raison sociale, adresse, SIRET, TVA).
+app.get("/api/admin/invoice-settings", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.query?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
+    await requireAdminModule(adminUserId, "finance");
+    return res.json({ seller: getInvoiceSeller() });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+app.put("/api/admin/invoice-settings", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
+    await requireAdminModule(adminUserId, "finance");
+    const clean = (value, max) => coerceString(value).slice(0, max);
+    const seller = {
+      name: clean(req.body?.name, 120) || "Career CV",
+      address: clean(req.body?.address, 300),
+      siret: clean(req.body?.siret, 30),
+      vatMention: clean(req.body?.vatMention, 200),
+      email: clean(req.body?.email, 160) || "contact@careercv.fr"
+    };
+    await setPlatformSetting(INVOICE_SELLER_KEY, JSON.stringify(seller));
+    await logSecurityEvent(req, adminUserId, "admin_invoice_settings_changed", {});
+    return res.json({ seller });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

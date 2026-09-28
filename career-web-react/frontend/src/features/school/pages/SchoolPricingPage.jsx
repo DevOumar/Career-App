@@ -58,7 +58,9 @@ export default function SchoolPricingPage({ user, language, currency = "EUR", on
   // Prix réellement payé pour la licence active (figé à l'achat), jamais le
   // tarif catalogue du moment.
   const perSeat = currentPlan ? (current.seatPrice != null ? Number(current.seatPrice) : annualPriceOf(currentPlan)) : null;
-  const validUntil = current ? new Date(new Date(current.createdAt).getTime() + 365 * 24 * 60 * 60 * 1000) : null;
+  // Échéance réelle de la licence (abonnement de l'école), prolongée à chaque renouvellement.
+  const validUntil = user?.subscription?.renewalAt ? new Date(user.subscription.renewalAt) : current ? new Date(new Date(current.createdAt).getTime() + 365 * 24 * 60 * 60 * 1000) : null;
+  const licenseExpired = user?.subscription?.status === "expired" || (validUntil && validUntil.getTime() < Date.now());
   const yearlyCost = perSeat != null && seatsTotal ? perSeat * seatsTotal : null;
   const currentIndex = currentPlan ? schoolPlans.findIndex((plan) => plan.id === currentPlan.id) : -1;
   const nextPlan = currentIndex >= 0 ? schoolPlans[currentIndex + 1] || null : null;
@@ -83,7 +85,7 @@ export default function SchoolPricingPage({ user, language, currency = "EUR", on
               <strong>{currentPlan.name[language] || currentPlan.name.fr}</strong>
               <span>{currentPlan.tagline[language] || currentPlan.tagline.fr}</span>
             </div>
-            <span className="tag tag-success">{t("Active", "Active")}</span>
+            <span className={`tag ${licenseExpired ? "tag-danger" : "tag-success"}`}>{licenseExpired ? t("Expirée", "Expired") : t("Active", "Active")}</span>
           </div>
 
           <div className="jy-current-plan-facts">

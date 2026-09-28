@@ -18,7 +18,8 @@ export function registerCodingRoutes(app) {
     releaseDailyQuota,
     sendDailyQuotaReached,
     callAiChat,
-    LICENSE_SUSPENDED_ERROR
+    LICENSE_SUSPENDED_ERROR,
+    licenseAccessError
   } = app.locals.ctx;
 
   // Limites des champs envoyés à l'IA (coût et injection de consignes).
@@ -34,8 +35,9 @@ export function registerCodingRoutes(app) {
       res.status(404).json({ error: "Utilisateur introuvable." });
       return false;
     }
-    if (parseJsonField(user.subscription_json, {}).licenseSuspended) {
-      res.status(403).json(LICENSE_SUSPENDED_ERROR);
+    const accessError = licenseAccessError(parseJsonField(user.subscription_json, {}));
+    if (accessError) {
+      res.status(403).json(accessError);
       return false;
     }
     const plan = await getEffectivePlanById(parseJsonField(user.subscription_json, {}).planId);

@@ -246,7 +246,8 @@ export function registerSchoolInvitationsRoutes(app) {
     buildSchoolInvitationEmail,
     getSchoolSeatAvailability,
     reserveSchoolSeat,
-    sendAppEmail
+    sendAppEmail,
+    orgLicenseExpired
   } = app.locals.ctx;
 
 app.get("/api/school/invitations", async (req, res) => {
@@ -280,6 +281,9 @@ app.post("/api/school/invitations/send", async (req, res) => {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
     const school = await requireSchoolOwner(userId);
+    if (orgLicenseExpired(parseJsonField(school.subscription_json, {}))) {
+      return res.status(403).json({ error: "Votre licence a expiré : les invitations sont suspendues jusqu'à son renouvellement.", code: "LICENSE_EXPIRED" });
+    }
 
     const email = normalizeEmail(req.body?.email);
     if (!email.includes("@")) {

@@ -5,6 +5,7 @@ import "../admin/admin-shell.css";
 import { useState, useEffect, useRef } from "react";
 import Swal from "sweetalert2";
 import { promptPasswordChange } from "../../lib/passwordNotice.js";
+import { LicenseStatusBanner } from "../../components/LicenseStatusBanner.jsx";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { AdminPageLoader } from "../../components/AdminPageLoader.jsx";
 import { AdminKpiCard } from "../../components/AdminKpiCard.jsx";
@@ -841,6 +842,7 @@ function SchoolApp({
         </header>
 
         <main className="jy-content">
+          <LicenseStatusBanner user={user} language={language} />
           {tab !== "dashboard" ? (
             <nav className="jy-breadcrumb" aria-label="Breadcrumb">
               <button type="button" onClick={() => setTab("dashboard")}>

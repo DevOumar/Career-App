@@ -1,5 +1,6 @@
 import React from "react";
 import { promptPasswordChange } from "../../lib/passwordNotice.js";
+import { LicenseStatusBanner } from "../../components/LicenseStatusBanner.jsx";
 import "../admin/admin-shell.css";
 // Module Cabinet : espace des cabinets de recrutement / cellules RH, avec la
 // même charpente que l'administration de la plateforme et l'espace École
@@ -832,6 +833,7 @@ export default function CabinetApp({
         </header>
 
         <main className="jy-content">
+          <LicenseStatusBanner user={user} language={language} />
           {tab !== "home" ? (
             <nav className="jy-breadcrumb" aria-label="Breadcrumb">
               <button type="button" onClick={() => goTo("home")}>

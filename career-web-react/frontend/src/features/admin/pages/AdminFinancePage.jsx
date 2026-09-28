@@ -78,8 +78,12 @@ import {
   sendSchoolInvitation,
   removeSchoolStudent,
   markSchoolNotificationsRead,
-  generateSchoolReport
+  generateSchoolReport,
+  getAdminInvoice,
+  getInvoiceSettings,
+  saveInvoiceSettings
 } from "../../../lib/inMemoryDb.js";
+import { downloadInvoicePdf, hasInvoice, transactionStatus } from "../../../lib/invoices.js";
 import { AdminLineIcon, JyDrawer, JyBarChart, AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
 import { appToast } from "../../../lib/appToast.js";
 
@@ -142,7 +146,7 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
           confirmRefundBtn: "Refund",
           cancel: "Cancel",
           disclaimer:
-            "\"Listed price\" is the plan's catalog price at the time of the transaction. \"Amount collected\" is only non-zero for real Stripe payments: instant, admin and license activations are free or already covered by a license seat."
+            "\"Listed price\" is the plan's catalog price at the time of the transaction. \"Amount collected\" is what the customer paid: by card (Stripe) or offline for accounts created by the admin. Students and recruiters who joined with a license code are included in their organization's license."
         }
       : {
           title: "Finance",
@@ -176,7 +180,7 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
           confirmRefundBtn: "Rembourser",
           cancel: "Annuler",
           disclaimer:
-            "Le \"prix catalogue\" est le tarif du plan au moment de la transaction. Le \"montant encaissé\" n'est non nul que pour les vrais paiements Stripe : les activations instantanées, admin ou par licence sont gratuites ou déjà couvertes par un siège de licence."
+            "Le \"prix catalogue\" est le tarif du plan au moment de la transaction. Le \"montant encaissé\" est ce que le client a réglé : par carte (Stripe), ou hors application pour les comptes créés par l'admin. Les étudiants et recruteurs rattachés par code sont inclus dans la licence de leur établissement."
         };
 
   const sourceLabels =
@@ -185,15 +189,15 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
           stripe: "Stripe",
           instant: "Instant activation",
           license_redeem: "License code",
-          admin_created: "Created by admin",
-          admin_manual: "Manual (admin)"
+          admin_created: "Created by admin (paid offline)",
+          admin_manual: "Manual (paid offline)"
         }
       : {
           stripe: "Stripe",
           instant: "Activation instantanée",
           license_redeem: "Code de licence",
-          admin_created: "Créé par l'admin",
-          admin_manual: "Ajout manuel (admin)"
+          admin_created: "Créé par l'admin (réglé hors application)",
+          admin_manual: "Ajout manuel (réglé hors application)"
         };
 
   const [data, setData] = useState(null);
@@ -204,6 +208,47 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
   const [refundingId, setRefundingId] = useState("");
   const [section, setSection] = useState("transactions");
   const [selectedTx, setSelectedTx] = useState(null);
+  const [invoiceBusyId, setInvoiceBusyId] = useState("");
+  const [sellerOpen, setSellerOpen] = useState(false);
+  const [seller, setSeller] = useState(null);
+  const [sellerSaving, setSellerSaving] = useState(false);
+
+  async function openInvoice(item) {
+    setInvoiceBusyId(item.id);
+    try {
+      await downloadInvoicePdf(await getAdminInvoice(user.id, item.id));
+    } catch (err) {
+      appToast("error", getFriendlyErrorMessage(err, language));
+    } finally {
+      setInvoiceBusyId("");
+    }
+  }
+
+  async function toggleSeller() {
+    if (!sellerOpen && !seller) {
+      try {
+        setSeller(await getInvoiceSettings(user.id));
+      } catch (err) {
+        appToast("error", getFriendlyErrorMessage(err, language));
+        return;
+      }
+    }
+    setSellerOpen((open) => !open);
+  }
+
+  async function submitSeller(event) {
+    event.preventDefault();
+    setSellerSaving(true);
+    try {
+      setSeller(await saveInvoiceSettings(user.id, seller));
+      appToast("success", language === "en" ? "Invoice details saved." : "Mentions de facturation enregistrées.");
+      setSellerOpen(false);
+    } catch (err) {
+      appToast("error", getFriendlyErrorMessage(err, language));
+    } finally {
+      setSellerSaving(false);
+    }
+  }
   const [filters, setFilters] = useState(() => ({ status: "", plan: "", cycle: "", dateFrom: "", dateTo: "" }));
   const cols = useAdminColumns("career_app_admin_cols_finance", FINANCE_COLUMN_KEYS);
 
@@ -264,12 +309,7 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
   if (!data) return <AdminPageLoader language={language} />;
 
   const tt = (fr, en) => (language === "en" ? en : fr);
-  const txStatus = (item) =>
-    item.refunded
-      ? { id: "refunded", label: copy.refunded, tone: "tag-danger" }
-      : Number(item.amountCollected || 0) > 0
-      ? { id: "paid", label: tt("Payé", "Paid"), tone: "tag-success" }
-      : { id: "free", label: tt("Offert", "Free"), tone: "tag-warning" };
+  const txStatus = (item) => transactionStatus(item, tt);
   const txPlanName = (planId) => getPlanById(planId)?.name?.[language] || getPlanById(planId)?.name?.fr || planId || "";
   const txUserName = (item) => `${item.userFirstName || ""} ${item.userLastName || ""}`.trim() || tt("Compte supprimé", "Deleted account");
 
@@ -308,7 +348,8 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
       allLabel: tt("Tous les statuts", "All statuses"),
       options: [
         { value: "paid", label: tt("Payé", "Paid") },
-        { value: "free", label: tt("Offert", "Free") },
+        { value: "included", label: tt("Inclus dans la licence", "Included in license") },
+        { value: "unbilled", label: tt("Non facturé", "Not billed") },
         { value: "refunded", label: copy.refunded }
       ]
     },
@@ -376,7 +417,43 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
           <h2>{copy.title}</h2>
           <p>{copy.subtitle}</p>
         </div>
+        <button type="button" className="jy-btn jy-btn-outline jy-btn-sm" onClick={toggleSeller}>
+          <AdminLineIcon name="fileText" /> {t("Mentions de facturation", "Invoice details")}
+        </button>
       </header>
+
+      {sellerOpen && seller ? (
+        <form className="jy-card jy-seller-form" onSubmit={submitSeller}>
+          <p className="muted">
+            {t(
+              "Ces informations sont imprimées sur toutes les factures (écoles, cabinets, candidats). Renseignez les mentions légales de votre structure.",
+              "Printed on every invoice (schools, firms, candidates). Enter your company's legal details."
+            )}
+          </p>
+          <div className="jy-seller-grid">
+            {[
+              ["name", t("Raison sociale", "Company name"), "Career CV"],
+              ["email", t("E-mail de facturation", "Billing email"), "contact@careercv.fr"],
+              ["address", t("Adresse", "Address"), t("12 rue …, 75000 Paris", "12 … street, 75000 Paris")],
+              ["siret", "SIRET", "123 456 789 00012"],
+              ["vatMention", t("Mention TVA", "VAT mention"), t("TVA non applicable, art. 293 B du CGI", "VAT not applicable, art. 293 B CGI")]
+            ].map(([key, label, placeholder]) => (
+              <label key={key} className="jy-field">
+                <span>{label}</span>
+                <input value={seller[key] || ""} placeholder={placeholder} onChange={(event) => setSeller((prev) => ({ ...prev, [key]: event.target.value }))} />
+              </label>
+            ))}
+          </div>
+          <div className="jy-drawer-actions">
+            <button type="button" className="jy-btn jy-btn-outline jy-btn-sm" onClick={() => setSellerOpen(false)}>
+              {t("Annuler", "Cancel")}
+            </button>
+            <button type="submit" className="jy-btn jy-btn-primary jy-btn-sm" disabled={sellerSaving}>
+              {t("Enregistrer", "Save")}
+            </button>
+          </div>
+        </form>
+      ) : null}
 
       <div className="jy-seg" role="tablist">
         {[
@@ -667,9 +744,7 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
             badges={
               selectedTx ? (
                 <>
-                  <span className={`tag ${selectedTx.refunded ? "tag-danger" : Number(selectedTx.amountCollected || 0) > 0 ? "tag-success" : "tag-warning"}`}>
-                    {selectedTx.refunded ? copy.refunded : Number(selectedTx.amountCollected || 0) > 0 ? t("Payé", "Paid") : t("Offert", "Free")}
-                  </span>
+                  <span className={`tag ${txStatus(selectedTx).tone}`}>{txStatus(selectedTx).label}</span>
                   <span className="tag">{sourceLabels[selectedTx.source] || selectedTx.source}</span>
                 </>
               ) : null
@@ -702,7 +777,14 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
                 : []
             }
             footer={
-              selectedTx && !selectedTx.refunded && selectedTx.refundable ? (
+              selectedTx && (hasInvoice(selectedTx) || (!selectedTx.refunded && selectedTx.refundable)) ? (
+                <div className="jy-drawer-actions">
+                  {hasInvoice(selectedTx) ? (
+                    <button type="button" className="admin-row-action" disabled={invoiceBusyId === selectedTx.id} onClick={() => openInvoice(selectedTx)}>
+                      <AdminLineIcon name="download" /> {t("Facture (PDF)", "Invoice (PDF)")}
+                    </button>
+                  ) : null}
+                  {!selectedTx.refunded && selectedTx.refundable ? (
                 <button
                   type="button"
                   className="admin-row-action danger"
@@ -715,6 +797,8 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
                 >
                   <AdminLineIcon name="logout" /> {copy.refund}
                 </button>
+                  ) : null}
+                </div>
               ) : null
             }
           />

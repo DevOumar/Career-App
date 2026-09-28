@@ -244,7 +244,7 @@ export const ADMIN_HELP_ARTICLES = [
     body: {
       fr: [
         "« Valeur catalogue » correspond au prix affiché des plans attribués ; « Encaissé » au montant réellement payé. L'écart vient des activations gratuites : code de licence, activation instantanée ou création par un administrateur.",
-        "L'onglet Transactions liste chaque opération avec sa source et son statut (Payé, Offert, Remboursé) ; l'onglet Analyses montre l'évolution du revenu et sa répartition par source, par plan et par segment."
+        "L'onglet Transactions liste chaque opération avec sa source et son statut (Payé, Payé hors application, Inclus dans la licence, Remboursé) et sa facture PDF ; l'onglet Analyses montre l'évolution du revenu et sa répartition par source, par plan et par segment."
       ],
       en: [
         "“Listed value” is the displayed price of assigned plans; “Collected” is the amount actually paid. The gap comes from free activations: license code, instant activation or creation by an admin.",

@@ -245,7 +245,8 @@ export function registerAdminUsersRoutes(app) {
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
     buildAccountWelcomeEmail,
-    sendAppEmail
+    sendAppEmail,
+    renewOrgLicense
   } = app.locals.ctx;
 
 app.get("/api/admin/users", async (req, res) => {
@@ -357,6 +358,9 @@ app.get("/api/admin/users", async (req, res) => {
           status: row.status || "active",
           planId: subscription.planId || null,
           billingCycle: subscription.billingCycle || null,
+          // Échéance de la licence (écoles et cabinets).
+          licenseRenewalAt: ["school", "recruiter_firm"].includes(row.role_type) && subscription.plan === "premium" ? subscription.renewalAt || null : null,
+          licenseExpired: subscription.status === "expired",
           cvCount: cvCountByUser[row.id] || 0,
           matchCount: matchCountByUser[row.id] || 0,
           lastLoginAt: lastLoginByUser[row.id] || "",
@@ -809,6 +813,20 @@ app.post("/api/admin/users/delete", async (req, res) => {
     await db.query("DELETE FROM users WHERE id = $1", [targetUserId]);
 
     return res.json({ ok: true });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Renouvellement d'une licence école ou cabinet (réglée hors application).
+app.post("/api/admin/users/:id/renew-license", async (req, res) => {
+  try {
+    const adminUserId = coerceString(req.body?.adminUserId);
+    if (!requireMatchingSession(req, res, adminUserId)) return;
+    await requireAdminModule(adminUserId, "accounts");
+    const result = await renewOrgLicense(req.params.id);
+    await logSecurityEvent(req, adminUserId, "admin_license_renewed", { userId: req.params.id, renewalAt: result.renewalAt, amount: result.amount });
+    return res.json({ ...result, user: await getPublicUserById(req.params.id) });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

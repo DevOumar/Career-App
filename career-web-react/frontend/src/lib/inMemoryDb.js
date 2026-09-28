@@ -1450,3 +1450,28 @@ export async function analyzeCabinetMatchWithAi(userId, missionId, candidateId) 
 export async function getPublicCabinetPage(slug) {
   return request(`/public/cabinet/${encodeURIComponent(slug)}`);
 }
+
+// ---------------------------------------------------------------- factures et licences
+export async function getBillingInvoice(userId, transactionId) {
+  const data = await request(`/billing/invoices/${encodeURIComponent(transactionId)}?userId=${encodeURIComponent(userId)}`);
+  return data.invoice;
+}
+
+export async function getAdminInvoice(adminUserId, transactionId) {
+  const data = await request(`/admin/finance/invoices/${encodeURIComponent(transactionId)}?adminUserId=${encodeURIComponent(adminUserId)}`);
+  return data.invoice;
+}
+
+export async function getInvoiceSettings(adminUserId) {
+  const data = await request(`/admin/invoice-settings?adminUserId=${encodeURIComponent(adminUserId)}`);
+  return data.seller;
+}
+
+export async function saveInvoiceSettings(adminUserId, seller) {
+  const data = await request("/admin/invoice-settings", { method: "PUT", body: { adminUserId, ...seller } });
+  return data.seller;
+}
+
+export async function renewOrgLicense(adminUserId, userId) {
+  return request(`/admin/users/${encodeURIComponent(userId)}/renew-license`, { method: "POST", body: { adminUserId } });
+}

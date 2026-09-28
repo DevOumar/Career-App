@@ -247,8 +247,23 @@ export function registerBillingRoutes(app) {
     probeSmtp,
     JOB_APPLICATION_STATUSES,
     toPublicJobApplication,
-    countLicenseSeatsInUse
+    countLicenseSeatsInUse,
+    buildInvoiceData,
+    orgLicenseExpired
   } = app.locals.ctx;
+
+// Facture d'une opération : pour son titulaire uniquement.
+app.get("/api/billing/invoices/:id", async (req, res) => {
+  try {
+    const userId = coerceString(req.query?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    const { rows } = await db.query("SELECT user_id FROM transactions WHERE id = $1", [req.params.id]);
+    if (!rows[0] || rows[0].user_id !== userId) return res.status(404).json({ error: "Facture introuvable." });
+    return res.json({ invoice: await buildInvoiceData(req.params.id) });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
 
 app.get("/api/billing/transactions", async (req, res) => {
   try {
@@ -590,6 +605,10 @@ app.post("/api/plans/redeem", async (req, res) => {
 
     if (!alreadyRedeemed) {
       // Places réellement occupées (comptes rattachés), pas le compteur seul.
+      const codeOwner = await getUserRowById(licenseRow.owner_user_id);
+      if (codeOwner && orgLicenseExpired(parseJsonField(codeOwner.subscription_json, {}))) {
+        return res.status(403).json({ error: "La licence associée à ce code a expiré. Contactez votre établissement.", code: "LICENSE_EXPIRED" });
+      }
       if ((await countLicenseSeatsInUse(code, licenseRow.owner_user_id)) >= Number(licenseRow.seats_total)) {
         return res.status(409).json({ error: "Ce code de licence a atteint son nombre maximum d'utilisateurs." });
       }

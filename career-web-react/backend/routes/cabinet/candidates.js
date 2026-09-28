@@ -252,7 +252,8 @@ export function registerCabinetCandidatesRoutes(app) {
     buildCabinetAlerts,
     resolveAccountSegments,
     aiActionRateLimiter,
-    logCabinetActivity
+    logCabinetActivity,
+    assertCabinetLicenseActive
   } = app.locals.ctx;
 
 const CABINET_CANDIDATE_STATUSES = new Set(["sourced", "contacted", "interviewing", "placed", "rejected"]);
@@ -392,7 +393,8 @@ app.post("/api/cabinet/candidates/extract", aiActionRateLimiter, async (req, res
   try {
     const userId = coerceString(req.body?.userId);
     if (!requireMatchingSession(req, res, userId)) return;
-    await requireCabinetOwner(userId);
+    const extractCabinet = await requireCabinetOwner(userId);
+    await assertCabinetLicenseActive(extractCabinet);
 
     const fileName = coerceString(req.body?.fileName || "cv.txt");
     const mimeType = coerceString(req.body?.mimeType);
