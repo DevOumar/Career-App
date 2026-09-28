@@ -7,7 +7,7 @@ import { LanguageSwitch } from "../../components/LanguageSwitch.jsx";
 import { ConnectedFooter } from "../../App.jsx";
 
 const PRIVACY_CONTACT_EMAIL = "privacy@careercv.fr";
-const PRIVACY_LAST_UPDATED = { fr: "27 juillet 2026", en: "July 27, 2026" };
+const PRIVACY_LAST_UPDATED = { fr: "28 septembre 2026", en: "September 28, 2026" };
 
 function slugify(text) {
   return text
@@ -16,6 +16,17 @@ function slugify(text) {
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+// Texte simple, ou { term, text } pour un intitulé en gras suivi de sa description.
+function LegalText({ item }) {
+  if (typeof item === "string") return item;
+  return (
+    <>
+      <strong>{item.term}</strong>
+      {item.text ? ` ${item.text}` : null}
+    </>
+  );
 }
 
 function LegalDocPage({
@@ -114,15 +125,46 @@ function LegalDocPage({
                 <section key={id} id={id} className="legal-doc-section">
                   <h2>{section.heading}</h2>
                   {section.paragraphs?.map((paragraph) => (
-                    <p key={paragraph}>{paragraph}</p>
+                    <p key={typeof paragraph === "string" ? paragraph : paragraph.term}>
+                      <LegalText item={paragraph} />
+                    </p>
                   ))}
+                  {section.table ? (
+                    <div className="legal-doc-table-wrap">
+                      <table className="legal-doc-table">
+                        <thead>
+                          <tr>
+                            {section.table.head.map((cell) => (
+                              <th key={cell}>{cell}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {section.table.rows.map((row) => (
+                            <tr key={row[0]}>
+                              {row.map((cell) => (
+                                <td key={cell}>{cell}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : null}
                   {section.list ? (
                     <ul className="legal-doc-list">
                       {section.list.map((item) => (
-                        <li key={item}>{item}</li>
+                        <li key={typeof item === "string" ? item : item.term}>
+                          <LegalText item={item} />
+                        </li>
                       ))}
                     </ul>
                   ) : null}
+                  {section.after?.map((paragraph) => (
+                    <p key={typeof paragraph === "string" ? paragraph : paragraph.term}>
+                      <LegalText item={paragraph} />
+                    </p>
+                  ))}
                   {section.note ? <div className="legal-callout">{section.note}</div> : null}
                 </section>
               );
@@ -170,65 +212,111 @@ function PrivacyPolicyPage({
         {
           heading: "What does this policy cover?",
           paragraphs: [
-            "This page explains what personal data Career CV collects when you use the platform, why we collect it, and the choices you have. It applies to every visitor and every registered account (candidates, schools, and recruitment agencies).",
-            "By creating an account, you acknowledge that you have read this page."
+            "This page explains what personal data Career CV collects when you use the platform, why we collect it, and the choices you have. It applies to every visitor and every account holder (candidates, schools and recruitment agencies).",
+            "By creating an account, you acknowledge that you have read this page.",
+            { term: "Data controller:", text: "Career CV, a simplified joint-stock company (SAS). Contact: privacy@careercv.fr" },
+            "The company name, SIRET number and registered address of the data controller will be added here as soon as they are available.",
+            { term: "Data Protection Officer (DPO):", text: "reachable at privacy@careercv.fr" }
           ]
         },
         {
           heading: "What data do we collect?",
           paragraphs: [
-            "When you register, we ask for your first name, last name, email address, and a password, which we store using salted cryptographic hashing, never in plain text.",
-            "When you use the CV analysis or matching tools, we process the content of the CVs you upload and the job offers you submit, purely to generate your results.",
-            "We also automatically record basic technical data (IP address, browser, device) and account security events (logins, password changes), kept for fraud prevention and to let you review your own account activity."
+            "When you register, we ask for your first name, last name, email address and a password, which we store using salted cryptographic hashing, never in plain text.",
+            "When you use the CV analysis or matching tools, we process the content of the CVs you upload and the job offers you submit, solely to produce your results.",
+            "When you use the salary negotiation simulator, we process the job title, the location and the content of your exchanges with the conversational agent, without ever sending identifying data to the external services consulted to establish a salary range.",
+            "If you subscribe to a paid plan, we keep the chosen plan and non-sensitive Stripe identifiers (customer ID, subscription ID); we never receive or store your bank details.",
+            "If you joined through a partner institution (school license) or apply to an offer published by a partner recruitment agency, that partner has access to a dashboard showing the candidates concerned: name, email and compatibility score, as well as aggregated statistics (on the cohort for a school, on the applications received for an agency).",
+            "We also record basic technical data (IP address, browser, device) and account security events (logins, password changes), kept to prevent fraud and to let you review the activity of your own account."
           ]
         },
         {
           heading: "Why do we process it?",
+          table: {
+            head: ["Purpose", "Legal basis"],
+            rows: [
+              ["Create and secure your account, let you sign in", "Performance of the contract"],
+              ["Run the CV/offer matching engine and produce your compatibility score", "Legitimate interest: you can object at any time"],
+              ["Simulate an interview, generate a cover letter or simulate a salary negotiation with a conversational agent", "Consent, given each time you voluntarily use the feature"],
+              ["Manage your subscription and billing", "Performance of the contract / legal obligation"],
+              ["Secure your account and prevent fraud", "Legitimate interest"],
+              ["Send you account notifications and, unless you have objected, occasional service announcements", "Consent / legitimate interest"],
+              ["Allow a partner institution or agency to follow the activity of its cohort or its applications (school license / agency subscription)", "Performance of the contract signed with the partner (school license or agency subscription)"]
+            ]
+          }
+        },
+        {
+          heading: "Who has access to it?",
+          paragraphs: [
+            "We never sell personal data, and we deliberately limit the number of partners who process it on our behalf:"
+          ],
           list: [
-            "To run the CV/offer matching engine and produce your compatibility score and suggestions.",
-            "To generate the cover letters and negotiation guidance you request.",
-            "To keep your account secure and let you sign in.",
-            "To send you account-related notifications, and, only if you have not opted out, occasional service announcements."
+            "An AI inference provider (depending on the feature: Groq, xAI or OpenAI), to analyze the text of your CV and of the submitted offers, and to generate your matching results, simulated interviews, cover letters and salary negotiation exchanges.",
+            "Adzuna and France Travail (API), only for the salary negotiation simulator, to obtain a real salary range from the job title and location alone, without any identifying data.",
+            "Supabase, which hosts our application database (European Union, Frankfurt).",
+            "Stripe, which processes subscription payments; we never see or store your bank details.",
+            "Google, only if you actively choose to sign in with a Google account.",
+            "Our email delivery provider, for verification codes and, if enabled, announcements.",
+            "If you joined through a partner institution or agency, that partner has access to the data described in the previous section, within the limits of its own dashboard."
+          ],
+          after: [
+            {
+              term: "Transfers outside the European Union.",
+              text: "The AI inference provider we use may process your data on servers located in the United States. Depending on the provider used for the feature concerned, this transfer is covered either by the provider's certification under the EU-US Data Privacy Framework (a safeguard recognised as equivalent by the European Commission), or by the European Commission's Standard Contractual Clauses when the provider is not certified."
+            }
           ]
         },
         {
-          heading: "Who else sees it?",
-          paragraphs: [
-            "We do not sell personal data, and we keep the list of parties who process it on our behalf as short as possible:"
-          ],
+          heading: "How long do we keep your data?",
           list: [
-            "An AI inference provider, to analyze the text of your CV and the job offers you submit and generate matching results.",
-            "Supabase, which hosts our application database.",
-            "Stripe, which processes subscription payments, we never see or store your card details.",
-            "Google, only if you actively choose to sign in with a Google account.",
-            "Our email delivery provider, to send verification codes and, if enabled, announcements."
+            { term: "Account and related content", text: "(CV, matching history, exchanges with AI agents, cover letters): kept as long as your account is active. You can delete it at any time from Account > Security; deletion is immediate." },
+            { term: "Inactive account:", text: "after 3 years without any login, we reserve the right to delete the account and its data, in line with the CNIL's recommendations on inactive customer data." },
+            { term: "Login and security logs", text: "(IP address, browser, login history): kept for a rolling 12 months, then deleted." },
+            { term: "Billing data", text: "(transactions, invoices): kept for 10 years from issue, in accordance with the legal obligation to keep accounting records (French Commercial Code, art. L123-22)." },
+            { term: "Data visible to a partner institution or agency", text: "(school license / agency subscription): kept for the duration of the contract, deleted when it ends or at the partner's request." },
+            { term: "Session cookie:", text: "for the duration of your session, deleted when you log out or when the token expires." }
           ]
         },
         {
           heading: "How do we protect it?",
           list: [
             "All traffic between your browser and our servers is encrypted (HTTPS/TLS).",
-            "Passwords are salted and hashed (PBKDF2, 140,000 iterations); they are never recoverable in plain text, by us or anyone else.",
+            "Passwords are salted and hashed (PBKDF2, 140,000 iterations); nobody can recover them in plain text, including us.",
+            "You can enable two-factor authentication (2FA) with an app such as Google Authenticator, from Account > Security, for extra protection.",
             "An account locks temporarily after 5 failed login attempts, and you can reset it yourself by email if you forgot your password.",
             "You can view every device connected to your account and disconnect any of them individually from Account > Security.",
-            "Access to production data is limited and logged."
+            "Access to production data is restricted and logged."
           ]
         },
         {
           heading: "Do we use cookies?",
           paragraphs: [
-            "We use a strictly necessary cookie to keep you signed in. We do not run third-party advertising or cross-site tracking cookies."
+            "We only use one strictly necessary cookie to keep you signed in. We do not use any advertising or third-party tracking cookies."
+          ]
+        },
+        {
+          heading: "Is your data subject to automated decisions?",
+          paragraphs: [
+            "The CV/offer compatibility score you see is calculated by an explicit rules engine (weighting of skills, experience and education): it is not a decision made by generative artificial intelligence.",
+            "For candidates, this score remains an aid to your own decision: nobody else derives an automated decision about you from it.",
+            "If a partner recruitment agency or institution were to rely on this score to guide a decision about you, you would have the right not to be subject to a decision based solely on automated processing, the right to obtain human intervention, and the right to contest that decision (Article 22 GDPR)."
           ]
         },
         {
           heading: "What are your rights?",
-          paragraphs: ["You are always in control of your data, directly from Account > Security:"],
+          paragraphs: ["You stay in control of your data, directly from Account > Security:"],
           list: [
-            "Download all your personal data (\"Download my data\" button, full JSON export or a printable readable PDF summary).",
-            "Correct inaccurate information from your profile.",
-            "View and disconnect each device connected to your account individually.",
-            "Permanently delete your account and the data attached to it.",
-            "For anything else (a correction not possible directly in the app, a specific question), write to us."
+            "Download all your personal data (\"Download my data\" button, full JSON export or a readable summary you can print as PDF): right of access and portability.",
+            "Correct inaccurate information from your profile: right to rectification.",
+            "View and individually disconnect each device connected to your account.",
+            "Permanently delete your account and the data attached to it: right to erasure.",
+            "Object at any time to processing based on our legitimate interest, notably the matching engine: right to object.",
+            "Request the restriction of processing while a dispute is being examined: right to restriction.",
+            "Withdraw your consent at any time for the features that depend on it (interview simulator, salary negotiation, cover letter generation): this does not affect the lawfulness of processing already carried out."
+          ],
+          after: [
+            "For any other request (a correction not possible directly in the app, a question about a specific processing), write to us.",
+            "You also have the right to lodge a complaint with the CNIL (www.cnil.fr) if you believe the processing of your data does not comply with the regulations."
           ]
         }
       ]
@@ -237,7 +325,10 @@ function PrivacyPolicyPage({
           heading: "Que couvre cette politique ?",
           paragraphs: [
             "Cette page explique quelles données personnelles Career CV collecte lorsque vous utilisez la plateforme, pourquoi nous les collectons, et les choix qui sont les vôtres. Elle s'applique à tout visiteur et à tout titulaire de compte (candidats, écoles et cabinets de recrutement).",
-            "En créant un compte, vous reconnaissez avoir pris connaissance de cette page."
+            "En créant un compte, vous reconnaissez avoir pris connaissance de cette page.",
+            { term: "Responsable du traitement :", text: "Career CV, société par actions simplifiée (SAS). Contact : privacy@careercv.fr" },
+            "La raison sociale, le SIRET et l'adresse du siège du responsable de traitement seront complétés ici dès leur disponibilité.",
+            { term: "Délégué à la protection des données (DPO) :", text: "joignable à l'adresse privacy@careercv.fr" }
           ]
         },
         {
@@ -245,17 +336,26 @@ function PrivacyPolicyPage({
           paragraphs: [
             "À l'inscription, nous demandons votre prénom, votre nom, votre adresse email et un mot de passe, que nous stockons via un hachage cryptographique salé, jamais en clair.",
             "Lorsque vous utilisez les outils d'analyse de CV ou de matching, nous traitons le contenu des CV que vous téléchargez et des offres que vous soumettez, uniquement pour produire vos résultats.",
+            "Lorsque vous utilisez le simulateur de négociation salariale, nous traitons l'intitulé du poste, la localisation et le contenu des échanges avec l'agent conversationnel, sans jamais transmettre de donnée identifiante aux services externes consultés pour établir une fourchette salariale.",
+            "Si vous souscrivez un abonnement payant, nous conservons le plan choisi et des identifiants Stripe non sensibles (identifiant client, identifiant d'abonnement) ; nous ne recevons ni ne stockons jamais vos coordonnées bancaires.",
+            "Si vous êtes inscrit via un établissement partenaire (licence école) ou que vous postulez à une offre publiée par un cabinet de recrutement partenaire, celui-ci a accès à un tableau de bord affichant les candidats concernés : nom, email et score de compatibilité, ainsi que des statistiques agrégées (sur la cohorte pour une école, sur les candidatures reçues pour un cabinet).",
             "Nous enregistrons également des données techniques basiques (adresse IP, navigateur, appareil) et des événements de sécurité du compte (connexions, changements de mot de passe), conservés pour prévenir la fraude et vous permettre de consulter l'activité de votre propre compte."
           ]
         },
         {
           heading: "Pourquoi les traitons-nous ?",
-          list: [
-            "Pour faire fonctionner le moteur de matching CV/offre et produire votre score de compatibilité et nos suggestions.",
-            "Pour générer les lettres de motivation et conseils de négociation que vous demandez.",
-            "Pour sécuriser votre compte et permettre votre connexion.",
-            "Pour vous envoyer des notifications liées à votre compte et, seulement si vous n'avez pas refusé, d'occasionnelles annonces de service."
-          ]
+          table: {
+            head: ["Finalité", "Base légale"],
+            rows: [
+              ["Créer et sécuriser votre compte, vous permettre de vous connecter", "Exécution du contrat"],
+              ["Faire fonctionner le moteur de matching CV/offre et produire votre score de compatibilité", "Intérêt légitime : vous pouvez vous y opposer à tout moment"],
+              ["Simuler un entretien, générer une lettre de motivation ou simuler une négociation salariale avec un agent conversationnel", "Consentement, donné à chaque utilisation volontaire de la fonctionnalité"],
+              ["Gérer votre abonnement et la facturation", "Exécution du contrat / obligation légale"],
+              ["Sécuriser votre compte et prévenir la fraude", "Intérêt légitime"],
+              ["Vous envoyer des notifications liées à votre compte et, si vous ne vous y êtes pas opposé, d'occasionnelles annonces de service", "Consentement / intérêt légitime"],
+              ["Permettre à un établissement ou un cabinet partenaire de suivre l'activité de sa cohorte ou de ses candidatures (licence école / abonnement cabinet)", "Exécution du contrat conclu avec le partenaire (licence école ou abonnement cabinet)"]
+            ]
+          }
         },
         {
           heading: "Qui y a accès ?",
@@ -263,11 +363,30 @@ function PrivacyPolicyPage({
             "Nous ne vendons jamais de données personnelles, et nous limitons volontairement le nombre de partenaires qui les traitent pour notre compte :"
           ],
           list: [
-            "Un fournisseur d'inférence IA, pour analyser le texte de votre CV et des offres soumises et générer les résultats de matching.",
-            "Supabase, qui héberge notre base de données applicative.",
-            "Stripe, qui traite les paiements d'abonnement, nous ne voyons ni ne stockons jamais vos données bancaires.",
+            "Un fournisseur d'inférence IA (selon la fonctionnalité : Groq, xAI ou OpenAI), pour analyser le texte de votre CV et des offres soumises, générer vos résultats de matching, vos entretiens simulés, vos lettres de motivation et vos échanges de négociation salariale.",
+            "Adzuna et France Travail (API), uniquement pour le simulateur de négociation salariale, afin d'obtenir une fourchette salariale réelle à partir du seul intitulé de poste et de la localisation, sans aucune donnée identifiante transmise.",
+            "Supabase, qui héberge notre base de données applicative (Union européenne, Francfort).",
+            "Stripe, qui traite les paiements d'abonnement ; nous ne voyons ni ne stockons jamais vos données bancaires.",
             "Google, uniquement si vous choisissez activement de vous connecter avec un compte Google.",
-            "Notre prestataire d'envoi d'emails, pour les codes de vérification et, si activées, les annonces."
+            "Notre prestataire d'envoi d'emails, pour les codes de vérification et, si activées, les annonces.",
+            "Si vous êtes inscrit via un établissement ou un cabinet partenaire, celui-ci a accès aux données décrites dans la section précédente, dans les limites de son propre tableau de bord."
+          ],
+          after: [
+            {
+              term: "Transferts hors Union européenne.",
+              text: "Le fournisseur d'inférence IA que nous utilisons peut traiter vos données depuis des serveurs situés aux États-Unis. Selon le fournisseur retenu pour la fonctionnalité concernée, ce transfert est encadré soit par une certification du fournisseur au titre du Data Privacy Framework UE-États-Unis (garantie de protection reconnue équivalente par la Commission européenne), soit par les Clauses Contractuelles Types de la Commission européenne lorsque le fournisseur n'est pas certifié."
+            }
+          ]
+        },
+        {
+          heading: "Combien de temps conservons-nous vos données ?",
+          list: [
+            { term: "Compte et contenu associé", text: "(CV, historique de matching, échanges avec les agents IA, lettres de motivation) : conservés tant que votre compte reste actif. Vous pouvez le supprimer à tout moment depuis Compte > Sécurité ; la suppression est immédiate." },
+            { term: "Compte inactif :", text: "en l'absence de connexion pendant 3 ans, nous nous réservons le droit de supprimer le compte et les données associées, conformément aux recommandations de la CNIL sur la conservation des données clients inactives." },
+            { term: "Logs de connexion et de sécurité", text: "(adresse IP, navigateur, historique de connexion) : conservés 12 mois glissants, puis supprimés." },
+            { term: "Données de facturation", text: "(transactions, factures) : conservées 10 ans à compter de leur émission, conformément à l'obligation légale de conservation des documents comptables (Code de commerce, art. L123-22)." },
+            { term: "Données visibles par un établissement ou un cabinet partenaire", text: "(licence école / abonnement cabinet) : conservées pour la durée du contrat, supprimées à son terme ou sur demande du partenaire." },
+            { term: "Cookie de session :", text: "le temps de votre session, supprimé à la déconnexion ou à l'expiration du jeton." }
           ]
         },
         {
@@ -275,6 +394,7 @@ function PrivacyPolicyPage({
           list: [
             "Tout le trafic entre votre navigateur et nos serveurs est chiffré (HTTPS/TLS).",
             "Les mots de passe sont salés et hachés (PBKDF2, 140 000 itérations) ; ils ne sont récupérables en clair par personne, y compris nous.",
+            "Vous pouvez activer la double authentification (2FA) via une application comme Google Authenticator, depuis Compte > Sécurité, pour une protection supplémentaire de votre compte.",
             "Un compte se verrouille temporairement après 5 tentatives de connexion échouées, et vous pouvez le réinitialiser vous-même par email si vous avez oublié votre mot de passe.",
             "Vous pouvez consulter tous les appareils connectés à votre compte et déconnecter individuellement n'importe lequel depuis Compte > Sécurité.",
             "L'accès aux données de production est restreint et journalisé."
@@ -287,14 +407,28 @@ function PrivacyPolicyPage({
           ]
         },
         {
+          heading: "Vos données font-elles l'objet d'une décision automatisée ?",
+          paragraphs: [
+            "Le score de compatibilité CV/offre que vous consultez est calculé par un moteur de règles explicites (pondération de compétences, d'expérience et de formation) : il ne s'agit pas d'une décision prise par une intelligence artificielle générative.",
+            "Dans l'usage candidat, ce score reste une aide à votre propre décision : personne d'autre que vous n'en fait découler de décision automatique vous concernant.",
+            "Si un cabinet de recrutement ou un établissement partenaire venait à s'appuyer sur ce score pour orienter une décision vous concernant, vous disposeriez du droit de ne pas faire l'objet d'une décision fondée exclusivement sur un traitement automatisé, du droit d'obtenir une intervention humaine, et de contester cette décision (article 22 du RGPD)."
+          ]
+        },
+        {
           heading: "Quels sont vos droits ?",
           paragraphs: ["Vous gardez le contrôle de vos données, directement depuis Compte > Sécurité :"],
           list: [
-            "Télécharger toutes vos données personnelles (bouton « Télécharger mes données », format JSON complet ou résumé lisible imprimable en PDF).",
-            "Corriger une information inexacte depuis votre profil.",
+            "Télécharger toutes vos données personnelles (bouton « Télécharger mes données », format JSON complet ou résumé lisible imprimable en PDF) : droit d'accès et de portabilité.",
+            "Corriger une information inexacte depuis votre profil : droit de rectification.",
             "Consulter et déconnecter individuellement chacun des appareils connectés à votre compte.",
-            "Supprimer définitivement votre compte et les données qui y sont attachées.",
-            "Pour toute autre demande (rectification qui ne serait pas possible directement dans l'interface, question sur un traitement précis), écrivez-nous."
+            "Supprimer définitivement votre compte et les données qui y sont attachées : droit à l'effacement.",
+            "Vous opposer à tout moment au traitement de vos données fondé sur notre intérêt légitime, notamment le moteur de matching : droit d'opposition.",
+            "Demander la limitation d'un traitement le temps qu'une contestation soit examinée : droit à la limitation.",
+            "Retirer à tout moment votre consentement pour les fonctionnalités qui en dépendent (simulateur d'entretien, de négociation salariale, génération de lettre de motivation) : cela n'affecte pas la licéité des traitements déjà effectués."
+          ],
+          after: [
+            "Pour toute autre demande (rectification qui ne serait pas possible directement dans l'interface, question sur un traitement précis), écrivez-nous.",
+            "Vous avez également le droit d'introduire une réclamation auprès de la CNIL (www.cnil.fr) si vous estimez que le traitement de vos données ne respecte pas la réglementation."
           ]
         }
       ];
@@ -323,7 +457,7 @@ function PrivacyPolicyPage({
       onContactClick={() => onNavigateLegal?.("contact")}
       onPricingClick={() => onNavigateLegal?.("pricing")}
       onSecurityClick={() => onNavigateLegal?.("security")}
-      initialSectionIndex={focusCookies ? 5 : focusSecurity ? 4 : undefined}
+      initialSectionIndex={focusCookies ? 6 : focusSecurity ? 5 : undefined}
     />
   );
 }

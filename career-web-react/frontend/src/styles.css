@@ -13021,6 +13021,48 @@ input[aria-invalid="true"] {
   margin-bottom: 0.5rem;
 }
 
+.legal-doc-list li strong,
+.legal-doc-section p strong {
+  color: var(--text-1);
+}
+
+.legal-doc-table-wrap {
+  margin: 0.2rem 0 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.legal-doc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+  line-height: 1.55;
+  color: var(--text-2);
+}
+
+.legal-doc-table th,
+.legal-doc-table td {
+  padding: 0.7rem 0.9rem;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--border);
+}
+
+.legal-doc-table th {
+  background: var(--bg-accent);
+  color: var(--text-1);
+  font-weight: 600;
+}
+
+.legal-doc-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.legal-doc-table td:first-child {
+  width: 55%;
+}
+
 .legal-callout {
   border-left: 3px solid var(--primary-2);
   background: var(--bg-accent);
