@@ -1307,6 +1307,7 @@ await db.exec(`
   ALTER TABLE users ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'active';
   ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS revoked INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS revoked_at TEXT NOT NULL DEFAULT '';
+  ALTER TABLE license_codes ADD COLUMN IF NOT EXISTS seat_price NUMERIC;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS admin_modules_json TEXT NOT NULL DEFAULT '[]';
   ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS logo_data_url TEXT NOT NULL DEFAULT '';
   ALTER TABLE user_org_profiles ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT '';
@@ -4761,8 +4762,10 @@ async function generateLicenseCodeForPlan(userId, plan, seatsOverride = null) {
   const code = generateLicenseCode();
   const seatsTotal = seatsOverride && seatsOverride > 0 ? seatsOverride : plan.seats;
   await db.query(
-    "INSERT INTO license_codes (code, owner_user_id, plan_id, seats_total, seats_used, created_at) VALUES ($1,$2,$3,$4,0,$5)",
-    [code, userId, plan.id, seatsTotal, nowIso()]
+    // seat_price : prix par étudiant et par an au moment de l'achat, pour
+    // afficher ce que l'établissement a réellement payé même si le tarif change.
+    "INSERT INTO license_codes (code, owner_user_id, plan_id, seats_total, seats_used, created_at, seat_price) VALUES ($1,$2,$3,$4,0,$5,$6)",
+    [code, userId, plan.id, seatsTotal, nowIso(), plan.pricedPerSeat ? Number(plan.annualPrice) || null : null]
   );
   return code;
 }
@@ -4823,7 +4826,7 @@ function resolveSubscriptionCredits(subscription) {
   return getPlanById("candidate_discovery")?.credits ?? 0;
 }
 
-async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeIds = null, source = "instant") {
+async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeIds = null, source = "instant", purchase = {}) {
   const { rows: userRows } = await db.query("SELECT subscription_json FROM users WHERE id = $1", [userId]);
   const currentSubscription = parseJsonField(userRows[0]?.subscription_json, {});
   const wasPremium = currentSubscription.plan === "premium";
@@ -4883,8 +4886,13 @@ async function applyPlanToUser(userId, plan, billingCycle, licenseCode, stripeId
     userId
   ]);
 
-  const listedAmount = cycle === "annual" ? plan.annualPrice || 0 : plan.monthlyPrice || 0;
-  const amountCollected = source === "stripe" ? listedAmount : 0;
+  // Offres par étudiant : montant = prix par étudiant × nombre de places.
+  // Encaissé : le montant réellement débité par Stripe quand il est connu.
+  const unitAmount = cycle === "annual" ? plan.annualPrice || 0 : plan.monthlyPrice || 0;
+  const seatQuantity = plan.pricedPerSeat ? Math.max(1, Number(purchase.quantity) || Number(plan.seats) || 1) : 1;
+  const listedAmount = Math.round(unitAmount * seatQuantity * 100) / 100;
+  const stripeTotal = Number(purchase.amountTotal);
+  const amountCollected = source === "stripe" ? (Number.isFinite(stripeTotal) && stripeTotal >= 0 ? stripeTotal : listedAmount) : 0;
   await db.query(
     `INSERT INTO transactions (
       id, user_id, plan_id, billing_cycle, listed_amount, amount_collected, currency, source,

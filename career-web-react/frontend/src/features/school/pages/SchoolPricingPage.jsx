@@ -29,7 +29,7 @@ export default function SchoolPricingPage({ user, language, currency = "EUR", on
           title: "Pricing",
           subtitle: "Plans available for your school or institution.",
           features: "Included",
-          annualLabel: "Per student / year",
+          annualLabel: "Per student / month, billed yearly",
           contactSales: "Contact sales",
           seatsHint: (min, max) => (max ? `${min} to ${max} students` : `${min}+ students`)
         }
@@ -37,7 +37,7 @@ export default function SchoolPricingPage({ user, language, currency = "EUR", on
           title: "Tarifs",
           subtitle: "Grilles disponibles pour votre école ou établissement.",
           features: "Inclus",
-          annualLabel: "Par étudiant / an",
+          annualLabel: "Par étudiant / mois, facturé à l'année",
           contactSales: "Nous contacter",
           seatsHint: (min, max) => (max ? `${min} à ${max} étudiants` : `${min}+ étudiants`)
         };
@@ -55,7 +55,10 @@ export default function SchoolPricingPage({ user, language, currency = "EUR", on
   const seatsTotal = activeLicenses.reduce((sum, item) => sum + Number(item.seatsTotal || 0), 0);
   const seatsUsed = activeLicenses.reduce((sum, item) => sum + Number(item.seatsUsed || 0), 0);
   const usage = seatsTotal ? Math.min(100, Math.round((seatsUsed / seatsTotal) * 100)) : 0;
-  const perSeat = currentPlan ? annualPriceOf(currentPlan) : null;
+  // Prix réellement payé pour la licence active (figé à l'achat), jamais le
+  // tarif catalogue du moment.
+  const perSeat = currentPlan ? (current.seatPrice != null ? Number(current.seatPrice) : annualPriceOf(currentPlan)) : null;
+  const validUntil = current ? new Date(new Date(current.createdAt).getTime() + 365 * 24 * 60 * 60 * 1000) : null;
   const yearlyCost = perSeat != null && seatsTotal ? perSeat * seatsTotal : null;
   const currentIndex = currentPlan ? schoolPlans.findIndex((plan) => plan.id === currentPlan.id) : -1;
   const nextPlan = currentIndex >= 0 ? schoolPlans[currentIndex + 1] || null : null;
@@ -85,16 +88,19 @@ export default function SchoolPricingPage({ user, language, currency = "EUR", on
 
           <div className="jy-current-plan-facts">
             <span>
-              <small>{t("Tarif", "Price")}</small>
+              <small>{t("Tarif de votre licence", "Your license price")}</small>
               <strong>{perSeat != null ? `${formatEur(perSeat, currency)} ${t("/ étudiant / an", "/ student / year")}` : t("Sur devis", "On quote")}</strong>
+              {perSeat != null ? <em className="jy-fact-sub">{t(`soit ${formatEur(perSeat / 12, currency)} / étudiant / mois`, `i.e. ${formatEur(perSeat / 12, currency)} / student / month`)}</em> : null}
             </span>
             <span>
               <small>{t("Coût annuel de la licence", "Annual license cost")}</small>
               <strong>{yearlyCost != null ? formatEur(yearlyCost, currency) : "-"}</strong>
+              {yearlyCost != null ? <em className="jy-fact-sub">{t(`${seatsTotal} places, paiement unique`, `${seatsTotal} seats, one-time payment`)}</em> : null}
             </span>
             <span>
-              <small>{t("Active depuis", "Active since")}</small>
-              <strong>{formatDateTime(current.createdAt, language)}</strong>
+              <small>{t("Valable jusqu'au", "Valid until")}</small>
+              <strong>{validUntil ? validUntil.toLocaleDateString(language === "en" ? "en-GB" : "fr-FR") : "-"}</strong>
+              <em className="jy-fact-sub">{t(`active depuis le ${new Date(current.createdAt).toLocaleDateString("fr-FR")}`, `active since ${new Date(current.createdAt).toLocaleDateString("en-GB")}`)}</em>
             </span>
             <span className="jy-current-plan-seats">
               <small>
@@ -188,6 +194,9 @@ export default function SchoolPricingPage({ user, language, currency = "EUR", on
                   <div className="admin-pricing-price">
                     <strong>{price.amount}</strong>
                     <small>{copy.annualLabel}</small>
+                    <small className="admin-pricing-yearly">
+                      {t(`soit ${formatEur(Number(effective.annualPrice || 0), currency)} / étudiant / an`, `i.e. ${formatEur(Number(effective.annualPrice || 0), currency)} / student / year`)}
+                    </small>
                   </div>
                 </div>
               )}

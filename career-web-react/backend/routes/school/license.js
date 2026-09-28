@@ -253,16 +253,28 @@ app.get("/api/school/license", async (req, res) => {
 
     const codeRows = await getSchoolLicenseCodeRows(userId);
 
-    return res.json({
-      items: codeRows.map((row) => ({
+    const items = [];
+    for (const row of codeRows) {
+      let seatPrice = row.seat_price != null ? Number(row.seat_price) : null;
+      if (seatPrice == null) {
+        const { rows: txRows } = await db.query(
+          "SELECT listed_amount FROM transactions WHERE user_id = $1 AND plan_id = $2 AND created_at <= $3 ORDER BY created_at DESC LIMIT 1",
+          [userId, row.plan_id, row.created_at]
+        );
+        seatPrice = txRows[0] ? Number(txRows[0].listed_amount) || null : null;
+      }
+      items.push({
         code: row.code,
         planId: row.plan_id,
         seatsTotal: row.seats_total,
         seatsUsed: row.seats_used,
+        seatPrice,
         revoked: Boolean(Number(row.revoked)),
         createdAt: row.created_at
-      }))
-    });
+      });
+    }
+
+    return res.json({ items });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

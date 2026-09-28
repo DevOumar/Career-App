@@ -108,7 +108,12 @@ export async function applyStripeWebhookEvent(
           // direct ici ; le remboursement n'est pas proposé pour ceux-là.
           stripePaymentIntentId: session.payment_intent || null
         },
-        "stripe"
+        "stripe",
+        {
+          quantity,
+          // Montant réellement payé (centimes Stripe → euros).
+          amountTotal: Number.isFinite(Number(session.amount_total)) ? Number(session.amount_total) / 100 : null
+        }
       );
 
       let licenseCode = null;

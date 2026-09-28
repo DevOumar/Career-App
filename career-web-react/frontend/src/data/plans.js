@@ -156,8 +156,9 @@ export const PLANS = [
       en: "For institutes and small schools."
     },
     monthlyPrice: null,
-    annualPrice: 4.9,
-    annualPriceUnit: { fr: "/ étudiant / an (30 à 199 étudiants)", en: "/ student / year (30 to 199 students)" },
+    // Prix facturé par étudiant et par an (22,80 €), affiché au mois : 1,90 €.
+    annualPrice: 22.8,
+    annualPriceUnit: { fr: "/ étudiant / mois, facturé à l'année (30 à 199 étudiants)", en: "/ student / month, billed yearly (30 to 199 students)" },
     credits: 999,
     seats: 30,
     // Borne haute du palier : au-delà, l'établissement doit passer au
@@ -200,8 +201,8 @@ export const PLANS = [
       en: "For growing schools and campuses."
     },
     monthlyPrice: null,
-    annualPrice: 3.2,
-    annualPriceUnit: { fr: "/ étudiant / an (200 à 999 étudiants)", en: "/ student / year (200 to 999 students)" },
+    annualPrice: 18,
+    annualPriceUnit: { fr: "/ étudiant / mois, facturé à l'année (200 à 999 étudiants)", en: "/ student / month, billed yearly (200 to 999 students)" },
     credits: 999,
     seats: 200,
     seatsMax: 999,
@@ -234,8 +235,8 @@ export const PLANS = [
       en: "For large institutions, several thousand students."
     },
     monthlyPrice: null,
-    annualPrice: 1.9,
-    annualPriceUnit: { fr: "/ étudiant / an (1 000+ étudiants)", en: "/ student / year (1,000+ students)" },
+    annualPrice: 11.88,
+    annualPriceUnit: { fr: "/ étudiant / mois, facturé à l'année (1 000+ étudiants)", en: "/ student / month, billed yearly (1,000+ students)" },
     credits: 999,
     seats: 1000,
     seatsMax: null,

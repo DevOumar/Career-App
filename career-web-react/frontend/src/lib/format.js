@@ -38,8 +38,10 @@ export function formatPlanPrice(plan, billingCycle, language, copy, currency = "
   }
 
   if (plan.monthlyPrice == null) {
-    const unit = plan.annualPriceUnit?.[language] || plan.annualPriceUnit?.fr || copy.perYear;
-    return { amount: formatAmountInCurrency(plan.annualPrice, currency), unit };
+    const unit = plan.annualPriceUnit?.[language] || plan.annualPriceUnit?.fr || copy?.perYear;
+    // Offres école : facturées par étudiant et par an, affichées au mois.
+    const amount = plan.pricedPerSeat ? Number(plan.annualPrice || 0) / 12 : plan.annualPrice;
+    return { amount: formatAmountInCurrency(amount, currency), unit };
   }
 
   const amount = billingCycle === "annual" ? plan.annualPrice : plan.monthlyPrice;

@@ -22151,3 +22151,18 @@ div.cf-logo {
     animation: none;
   }
 }
+
+/* Tarifs école : sous-lignes explicatives (prix mensuel, validité) */
+.jy-current-plan-facts .jy-fact-sub {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.74rem;
+  font-style: normal;
+  font-weight: 500;
+  color: var(--text-3, #8a8790);
+}
+.admin-pricing-price .admin-pricing-yearly {
+  display: block;
+  margin-top: 0.1rem;
+  font-weight: 600;
+}
