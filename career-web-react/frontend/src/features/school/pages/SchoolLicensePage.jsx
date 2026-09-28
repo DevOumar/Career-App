@@ -183,7 +183,7 @@ export default function SchoolLicensePage({ user, language, currency, onGoToTab 
             <span>1</span>
             <div>
               <strong>{t("Partagez le code", "Share the code")}</strong>
-              <small>{t("Envoyez-le depuis « Invitations » (un siège est réservé à chaque invitation) ou diffusez-le à vos étudiants.", "Send it from “Invitations” (a seat is reserved for each invitation) or share it with your students.")}</small>
+              <small>{t("Envoyez-le depuis « Invitations » (une place est réservée par invitation en attente, occupée seulement quand l'étudiant active le code) ou diffusez-le à vos étudiants.", "Send it from “Invitations” (a seat is reserved per pending invitation, only taken when the student activates the code) or share it with your students.")}</small>
             </div>
           </li>
           <li>

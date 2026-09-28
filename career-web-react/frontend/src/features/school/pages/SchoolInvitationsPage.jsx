@@ -161,7 +161,7 @@ export default function SchoolInvitationsPage({ user, language }) {
       <header className="module-header admin-accounts-header">
         <div>
           <h2>{t("Invitations", "Invitations")}</h2>
-          <p>{t("Invitez vos étudiants par e-mail : un siège de votre licence leur est réservé automatiquement.", "Invite your students by email: a seat on your license is reserved automatically.")}</p>
+          <p>{t("Invitez vos étudiants par e-mail : une place est réservée pour chaque invitation en attente ; elle n'est occupée qu'une fois le code activé par l'étudiant.", "Invite your students by email: a seat is reserved for each pending invitation; it is only taken once the student activates the code.")}</p>
         </div>
         <div className="admin-header-actions">
           <button type="button" className="jy-btn jy-btn-outline" onClick={() => openInvite("bulk")}>
@@ -336,7 +336,7 @@ export default function SchoolInvitationsPage({ user, language }) {
         description={
           seatsLeft != null
             ? t(`${seatsLeft} siège(s) disponible(s) sur votre licence.`, `${seatsLeft} seat(s) available on your license.`)
-            : t("Un siège de licence est réservé pour chaque invitation.", "A license seat is reserved for each invitation.")
+            : t("Une place est réservée pour chaque invitation en attente, et occupée seulement quand l'étudiant active le code.", "A seat is reserved for each pending invitation, and only taken when the student activates the code.")
         }
         width={560}
         footer={
