@@ -5268,6 +5268,114 @@ async function getSchoolLicenseCodeRows(schoolUserId) {
   return syncLicenseSeatUsage(rows);
 }
 
+// Invitation d'un étudiant par son école : procédure pas à pas, différente
+// selon qu'il a déjà un compte Career CV ou non, avec le code d'activation.
+function buildSchoolInvitationEmail({ organizationName, code, email, hasAccount, siteUrl }) {
+  const safe = (value) => escapeHtml(value || "");
+  const site = String(siteUrl || "https://careercv.fr").replace(/\/$/, "");
+  const org = organizationName || "Votre établissement";
+  const subject = `${org} vous invite sur Career CV`;
+  const activation = `Dans l'encadré « Vous avez reçu un code de licence ? », saisissez le code ${code}, puis cliquez sur « Activer ».`;
+  const steps = hasAccount
+    ? [
+        `Connectez-vous sur ${site} avec votre compte habituel (${email}).`,
+        "Ouvrez la page « Tarifs » depuis le menu.",
+        activation,
+        "C'est fait : votre accès est débloqué, sans jeton, pour toute la durée de la licence de votre établissement."
+      ]
+    : [
+        `Rendez-vous sur ${site} et cliquez sur « Créer un compte ».`,
+        `Inscrivez-vous avec cette adresse (${email}), puis confirmez-la avec le code à 6 chiffres reçu par e-mail.`,
+        "Une fois connecté, ouvrez la page « Tarifs » depuis le menu.",
+        activation,
+        "C'est fait : votre accès est débloqué, sans jeton, pour toute la durée de la licence de votre établissement."
+      ];
+  const buttonUrl = hasAccount ? `${site}/#/login` : site;
+  const buttonLabel = hasAccount ? "Se connecter" : "Créer mon compte";
+  const stepsHtml = steps
+    .map(
+      (step, index) =>
+        `<tr><td style="width:34px;vertical-align:top;padding:0 0 12px;"><div style="width:26px;height:26px;border-radius:999px;background:#b83309;color:#ffffff;font-size:13px;font-weight:800;text-align:center;line-height:26px;">${index + 1}</div></td><td style="vertical-align:top;padding:3px 0 12px;color:#3d3531;font-size:14px;line-height:1.55;">${safe(step)}</td></tr>`
+    )
+    .join("");
+  const html = `<!doctype html>
+<html lang="fr">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${safe(subject)}</title></head>
+  <body style="margin:0;background:#f6f2ec;font-family:Arial,Helvetica,sans-serif;color:#171317;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Votre code d'activation : ${safe(code)}</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f2ec;padding:34px 12px;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:590px;background:#ffffff;border:1px solid #eadfd3;border-radius:24px;overflow:hidden;box-shadow:0 18px 45px rgba(92,26,6,0.10);">
+          <tr><td style="padding:28px 30px 22px;background:linear-gradient(135deg,#5c1a06 0%,#b83309 100%);">
+            <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:#ffffff;color:#b83309;text-align:center;line-height:42px;font-size:22px;font-weight:900;vertical-align:middle;">CV</div>
+            <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#ffffff;vertical-align:middle;">Career CV</span>
+          </td></tr>
+          <tr><td style="padding:30px 30px 6px;">
+            <p style="margin:0 0 8px;color:#7b6d63;font-size:14px;">Bonjour,</p>
+            <h1 style="margin:0;font-size:26px;line-height:1.25;color:#171317;">Invitation de ${safe(org)}</h1>
+            <p style="margin:13px 0 0;color:#5f5651;font-size:15px;line-height:1.65;"><strong>${safe(org)}</strong> vous offre un accès à Career CV : analyse de CV, lettres de motivation, simulateur d'entretiens et suivi de vos candidatures, sans jeton à acheter.</p>
+          </td></tr>
+          <tr><td style="padding:20px 30px;">
+            <div style="background:#fff7f0;border:1px solid #f0d7c7;border-radius:18px;padding:22px;text-align:center;">
+              <p style="margin:0 0 12px;color:#9a4318;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;">Votre code d'activation</p>
+              <div style="font-size:28px;line-height:1.2;font-weight:900;letter-spacing:2px;color:#171317;">${safe(code)}</div>
+            </div>
+          </td></tr>
+          <tr><td style="padding:4px 30px 6px;">
+            <h2 style="margin:0 0 14px;font-size:17px;color:#171317;">${hasAccount ? "Vous avez déjà un compte : activez votre code" : "Comment activer votre accès"}</h2>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">${stepsHtml}</table>
+          </td></tr>
+          <tr><td style="padding:0 30px 28px;">
+            <a href="${safe(buttonUrl)}" style="display:inline-block;padding:14px 26px;border-radius:999px;background:#b83309;color:#ffffff;font-weight:800;font-size:15px;text-decoration:none;">${buttonLabel}</a>
+          </td></tr>
+          <tr><td style="padding:18px 30px;background:#fbf8f4;border-top:1px solid #eadfd3;color:#7b6d63;font-size:12px;line-height:1.5;">&copy; ${new Date().getFullYear()} Career CV. Invitation envoyée à la demande de ${safe(org)}. Si vous n'êtes pas concerné, ignorez cet e-mail.</td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+  const text = [
+    "Bonjour,",
+    "",
+    `${org} vous offre un accès à Career CV.`,
+    `Votre code d'activation : ${code}`,
+    "",
+    hasAccount ? "Vous avez déjà un compte : activez votre code" : "Comment activer votre accès :",
+    ...steps.map((step, index) => `${index + 1}. ${step}`),
+    "",
+    `${buttonLabel} : ${buttonUrl}`,
+    "",
+    "L'équipe Career CV"
+  ].join("\n");
+  return { subject, html, text };
+}
+
+// Places libres d'une école = places achetées − étudiants rattachés −
+// invitations en attente (chaque invitation réserve une place).
+async function getSchoolSeatAvailability(schoolUserId) {
+  const codeRows = await getSchoolLicenseCodeRows(schoolUserId);
+  const { rows } = await db.query(
+    "SELECT license_code, COUNT(*)::int AS n FROM school_invitations WHERE school_user_id = $1 AND status = 'pending' GROUP BY license_code",
+    [schoolUserId]
+  );
+  const pendingByCode = Object.fromEntries(rows.map((row) => [row.license_code, Number(row.n) || 0]));
+  const codes = codeRows
+    .filter((row) => !Number(row.revoked))
+    .map((row) => ({
+      code: row.code,
+      free: Math.max(0, Number(row.seats_total) - Number(row.seats_used) - (pendingByCode[row.code] || 0))
+    }));
+  return { codes, codeSet: new Set(codeRows.map((row) => row.code)), available: codes.reduce((sum, item) => sum + item.free, 0) };
+}
+
+function reserveSchoolSeat(availability) {
+  const slot = availability.codes.find((item) => item.free > 0);
+  if (!slot) return null;
+  slot.free -= 1;
+  availability.available -= 1;
+  return slot.code;
+}
+
 async function getSchoolStudentRows(schoolUserId) {
   const codeRows = await getSchoolLicenseCodeRows(schoolUserId);
   const codeSet = new Set(codeRows.map((row) => row.code));
@@ -6160,6 +6268,9 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  buildSchoolInvitationEmail,
+  getSchoolSeatAvailability,
+  reserveSchoolSeat,
   LICENSE_SUSPENDED_ERROR,
   buildAccountWelcomeEmail,
   sendAppEmail,

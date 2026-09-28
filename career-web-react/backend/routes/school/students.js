@@ -242,7 +242,11 @@ export function registerSchoolStudentsRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    buildSchoolInvitationEmail,
+    getSchoolSeatAvailability,
+    reserveSchoolSeat,
+    sendAppEmail
   } = app.locals.ctx;
 
 app.get("/api/school/students", async (req, res) => {
@@ -448,15 +452,13 @@ app.post("/api/school/students/bulk-invite", async (req, res) => {
       return res.status(400).json({ error: "Aucun email valide fourni." });
     }
 
-    const codeRows = await getSchoolLicenseCodeRows(userId);
-    let activeCode = codeRows.find((row) => !Number(row.revoked) && Number(row.seats_used) < Number(row.seats_total));
+    const availability = await getSchoolSeatAvailability(userId);
 
     const { rows: orgProfileRows } = await db.query(
       "SELECT organization_name FROM user_org_profiles WHERE user_id = $1",
       [userId]
     );
     const organizationName = orgProfileRows[0]?.organization_name || school.first_name;
-    const transporter = getMailTransporter();
 
     // Idempotence : une adresse déjà invitée (invitation en attente) n'est ni
     // réinvitée ni recomptée — réimporter le même fichier ne change rien.
@@ -466,51 +468,36 @@ app.post("/api/school/students/bulk-invite", async (req, res) => {
     );
     const pendingEmails = new Set(pendingRows.map((row) => normalizeEmail(row.email)));
 
-    const results = { sent: [], skippedExisting: [], skippedPending: [], skippedNoSeat: [] };
+    // skippedExisting : déjà rattachés à cet établissement. Un compte Career CV
+    // existant non rattaché est invité (e-mail « activez votre code »).
+    const results = { sent: [], invitedExisting: [], skippedExisting: [], skippedPending: [], skippedNoSeat: [], emailFailed: [] };
     for (const email of emails) {
       if (pendingEmails.has(email)) {
         results.skippedPending.push(email);
         continue;
       }
-      if (!activeCode || Number(activeCode.seats_used) >= Number(activeCode.seats_total)) {
-        results.skippedNoSeat.push(email);
+      const existingUser = await getUserRowByAnyEmail(email);
+      if (existingUser && availability.codeSet.has(parseJsonField(existingUser.subscription_json, {}).licenseCode)) {
+        results.skippedExisting.push(email);
         continue;
       }
-      const existingUser = await getUserRowByAnyEmail(email);
-      if (existingUser) {
-        results.skippedExisting.push(email);
+      const licenseCode = reserveSchoolSeat(availability);
+      if (!licenseCode) {
+        results.skippedNoSeat.push(email);
         continue;
       }
       const id = `inv-${crypto.randomUUID()}`;
       await db.query(
         `INSERT INTO school_invitations (id, school_user_id, email, license_code, status, created_at, redeemed_at)
          VALUES ($1,$2,$3,$4,'pending',$5,NULL)`,
-        [id, userId, email, activeCode.code, nowIso()]
+        [id, userId, email, licenseCode, nowIso()]
       );
-      if (transporter) {
-        const html = `
-          <div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;margin:0 auto;">
-            <h2 style="color:#2f5bff;margin:0 0 18px;">Career CV</h2>
-            <p style="margin:0 0 14px;color:#1f2634;">Bonjour,</p>
-            <p style="margin:0 0 14px;line-height:1.6;color:#1f2634;">
-              ${organizationName} vous invite à rejoindre Career CV pour optimiser votre CV et préparer vos candidatures.
-            </p>
-            <p style="margin:0 0 14px;color:#1f2634;">Votre code de licence : <strong>${activeCode.code}</strong></p>
-            <p style="margin:0 0 14px;color:#1f2634;">Créez votre compte puis renseignez ce code depuis la page Tarifs pour activer votre accès gratuitement.</p>
-            <p style="margin:24px 0 0;color:#5b6478;font-size:0.85rem;">L'équipe Career CV</p>
-          </div>`;
-        const text = `Bonjour,\n\n${organizationName} vous invite à rejoindre Career CV.\nVotre code de licence : ${activeCode.code}\nCréez votre compte puis renseignez ce code depuis la page Tarifs.\n\nL'équipe Career CV`;
-        const recipient = AUTH_EMAIL_TO || email;
-        try {
-          await transporter.sendMail({ from: MAIL_FROM, to: recipient, subject: "Invitation Career CV", html, text });
-        } catch (_error) {
-          // L'invitation reste enregistrée même si l'envoi échoue.
-        }
-      }
+      const message = buildSchoolInvitationEmail({ organizationName, code: licenseCode, email, hasAccount: Boolean(existingUser), siteUrl: APP_URL });
+      const mail = await sendAppEmail({ to: email, ...message }).catch(() => ({ sent: false }));
+      if (!mail.sent) results.emailFailed.push(email);
       results.sent.push(email);
-      // Recharger la fraîcheur du siège utilisé pour ne pas dépasser la capacité
-      // sur ce même code au fil de la boucle (mise à jour en mémoire locale).
-      activeCode = { ...activeCode, seats_used: Number(activeCode.seats_used) + 1 };
+      if (existingUser) results.invitedExisting.push(email);
+      pendingEmails.add(email);
     }
 
     await logSecurityEvent(req, userId, "school_invitation_bulk_sent", {

@@ -70,15 +70,22 @@ export default function SchoolInvitationsPage({ user, language }) {
     setInviteOpen(true);
   }
 
-  const seatsLeft = overview ? Math.max(0, Number(overview.seatsTotal || 0) - Number(overview.seatsUsed || 0)) : null;
+  // Chaque invitation en attente réserve une place.
+  const pendingInvites = (invitations || []).filter((invite) => invite.status === "pending").length;
+  const seatsLeft = overview ? Math.max(0, Number(overview.seatsTotal || 0) - Number(overview.seatsUsed || 0) - pendingInvites) : null;
   const emailError = !email.trim() ? t("Saisissez une adresse e-mail.", "Enter an email address.") : !EMAIL_PATTERN.test(email.trim()) ? t("Adresse e-mail invalide.", "Invalid email address.") : "";
   const alreadyInvited = invitations?.some((invite) => invite.email.toLowerCase() === email.trim().toLowerCase());
   const bulkEmails = extractEmails(bulkText);
   const bulkTooMany = bulkEmails.length > MAX_BULK;
+  const bulkOverSeats = seatsLeft != null && bulkEmails.length > seatsLeft;
 
   async function submitSingle() {
     setEmailTouched(true);
     if (emailError) return;
+    if (seatsLeft === 0) {
+      setDialogError(t("Aucune place disponible sur votre licence.", "No seat available on your license."));
+      return;
+    }
     setSending(true);
     setDialogError("");
     try {
@@ -94,7 +101,7 @@ export default function SchoolInvitationsPage({ user, language }) {
   }
 
   async function submitBulk() {
-    if (!bulkEmails.length || bulkTooMany) return;
+    if (!bulkEmails.length || bulkTooMany || bulkOverSeats) return;
     setSending(true);
     setDialogError("");
     setBulkResult(null);
@@ -343,7 +350,7 @@ export default function SchoolInvitationsPage({ user, language }) {
                 {t("Envoyer l'invitation", "Send invitation")}
               </button>
             ) : (
-              <button type="button" className="mfa-btn primary" onClick={submitBulk} disabled={sending || !bulkEmails.length || bulkTooMany}>
+              <button type="button" className="mfa-btn primary" onClick={submitBulk} disabled={sending || !bulkEmails.length || bulkTooMany || bulkOverSeats}>
                 {sending ? <span className="mfa-spinner" /> : null}
                 {t(`Envoyer ${bulkEmails.length} invitation(s)`, `Send ${bulkEmails.length} invitation(s)`)}
               </button>
@@ -391,7 +398,7 @@ export default function SchoolInvitationsPage({ user, language }) {
             </div>
             <div className="jy-bulk-stat">
               <strong>{bulkResult.skippedExisting?.length || 0}</strong>
-              <span>{t("déjà inscrit(s)", "already registered")}</span>
+              <span>{t("déjà rattaché(s) à l'école", "already linked to the school")}</span>
             </div>
             <div className="jy-bulk-stat">
               <strong>{bulkResult.skippedPending?.length || 0}</strong>
@@ -449,8 +456,8 @@ export default function SchoolInvitationsPage({ user, language }) {
                 <AdminLineIcon name="alert" />
                 <span>
                   {t(
-                    `Seuls ${seatsLeft} siège(s) restent : les adresses au-delà seront ignorées.`,
-                    `Only ${seatsLeft} seat(s) left: extra addresses will be skipped.`
+                    `${bulkEmails.length} adresses pour ${seatsLeft} place(s) disponible(s) : retirez ${bulkEmails.length - seatsLeft} adresse(s) pour pouvoir envoyer.`,
+                    `${bulkEmails.length} addresses for ${seatsLeft} available seat(s): remove ${bulkEmails.length - seatsLeft} address(es) to send.`
                   )}
                 </span>
               </div>

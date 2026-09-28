@@ -242,7 +242,11 @@ export function registerSchoolInvitationsRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    buildSchoolInvitationEmail,
+    getSchoolSeatAvailability,
+    reserveSchoolSeat,
+    sendAppEmail
   } = app.locals.ctx;
 
 app.get("/api/school/invitations", async (req, res) => {
@@ -282,15 +286,21 @@ app.post("/api/school/invitations/send", async (req, res) => {
       return res.status(400).json({ error: "Email invalide." });
     }
 
-    const codeRows = await getSchoolLicenseCodeRows(userId);
-    const activeCode = codeRows.find((row) => !Number(row.revoked) && Number(row.seats_used) < Number(row.seats_total));
-    if (!activeCode) {
-      return res.status(400).json({ error: "Aucun siège disponible sur votre licence." });
-    }
-
+    const availability = await getSchoolSeatAvailability(userId);
     const existingUser = await getUserRowByAnyEmail(email);
-    if (existingUser) {
-      return res.status(409).json({ error: "Un compte existe déjà avec cet email." });
+    if (existingUser && availability.codeSet.has(parseJsonField(existingUser.subscription_json, {}).licenseCode)) {
+      return res.status(409).json({ error: "Cet étudiant est déjà rattaché à votre établissement." });
+    }
+    const { rows: pendingRows } = await db.query(
+      "SELECT id FROM school_invitations WHERE school_user_id = $1 AND LOWER(email) = $2 AND status = 'pending' LIMIT 1",
+      [userId, email]
+    );
+    if (pendingRows.length) {
+      return res.status(409).json({ error: "Une invitation est déjà en attente pour cette adresse." });
+    }
+    const licenseCode = reserveSchoolSeat(availability);
+    if (!licenseCode) {
+      return res.status(400).json({ error: "Aucune place disponible sur votre licence (places réservées par des invitations en attente comprises)." });
     }
 
     const { rows: orgProfileRows } = await db.query(
@@ -303,56 +313,17 @@ app.post("/api/school/invitations/send", async (req, res) => {
     await db.query(
       `INSERT INTO school_invitations (id, school_user_id, email, license_code, status, created_at, redeemed_at)
        VALUES ($1,$2,$3,$4,'pending',$5,NULL)`,
-      [id, userId, email, activeCode.code, nowIso()]
+      [id, userId, email, licenseCode, nowIso()]
     );
 
-    const transporter = getMailTransporter();
-    if (transporter) {
-      const safeOrg = escapeHtml(organizationName || "Votre etablissement");
-      const safeCode = escapeHtml(activeCode.code);
-      const html = `<!doctype html>
-<html lang="fr">
-  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Invitation Career CV</title></head>
-  <body style="margin:0;background:#f6f2ec;font-family:Arial,Helvetica,sans-serif;color:#171317;">
-    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f2ec;padding:34px 12px;">
-      <tr><td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:590px;background:#ffffff;border:1px solid #eadfd3;border-radius:24px;overflow:hidden;box-shadow:0 18px 45px rgba(92,26,6,0.10);">
-          <tr><td style="padding:28px 30px 22px;background:linear-gradient(135deg,#5c1a06 0%,#b83309 100%);">
-            <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:#ffffff;color:#b83309;text-align:center;line-height:42px;font-size:22px;font-weight:900;vertical-align:middle;">CV</div>
-            <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#ffffff;vertical-align:middle;">Career CV</span>
-          </td></tr>
-          <tr><td style="padding:30px 30px 8px;">
-            <p style="margin:0 0 8px;color:#7b6d63;font-size:14px;">Bonjour,</p>
-            <h1 style="margin:0;font-size:27px;line-height:1.2;color:#171317;">Invitation etudiante</h1>
-            <p style="margin:13px 0 0;color:#5f5651;font-size:16px;line-height:1.65;"><strong>${safeOrg}</strong> vous invite a rejoindre Career CV pour optimiser votre CV et preparer vos candidatures.</p>
-          </td></tr>
-          <tr><td style="padding:24px 30px;">
-            <div style="background:#fff7f0;border:1px solid #f0d7c7;border-radius:18px;padding:22px;text-align:center;">
-              <p style="margin:0 0 12px;color:#9a4318;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.13em;">Code de licence</p>
-              <div style="font-size:28px;line-height:1.2;font-weight:900;letter-spacing:2px;color:#171317;">${safeCode}</div>
-            </div>
-          </td></tr>
-          <tr><td style="padding:0 30px 30px;color:#5f5651;font-size:15px;line-height:1.65;">
-            Creez votre compte, puis renseignez ce code depuis la page Tarifs pour activer votre acces gratuitement.
-          </td></tr>
-          <tr><td style="padding:18px 30px;background:#fbf8f4;border-top:1px solid #eadfd3;color:#7b6d63;font-size:12px;line-height:1.5;">&copy; ${new Date().getFullYear()} Career CV. Email automatique envoye par noreply@careercv.fr.</td></tr>
-        </table>
-      </td></tr>
-    </table>
-  </body>
-</html>`;
-      const text = `Bonjour,\n\n${organizationName} vous invite a rejoindre Career CV.\nVotre code de licence : ${activeCode.code}\nCreez votre compte puis renseignez ce code depuis la page Tarifs.\n\nL'equipe Career CV`;
-      const recipient = AUTH_EMAIL_TO || email;
-      try {
-        await transporter.sendMail({ from: MAIL_FROM, to: recipient, subject: "Invitation Career CV", html, text });
-      } catch (_error) {
-        // Invitation is still recorded even if the email delivery fails.
-      }
-    }
+    // L'invitation reste enregistrée même si l'envoi de l'e-mail échoue.
+    const message = buildSchoolInvitationEmail({ organizationName, code: licenseCode, email, hasAccount: Boolean(existingUser), siteUrl: APP_URL });
+    const mail = await sendAppEmail({ to: email, ...message }).catch(() => ({ sent: false }));
+    const activeCode = { code: licenseCode };
 
     await logSecurityEvent(req, userId, "school_invitation_sent", { email, licenseCode: activeCode.code });
 
-    return res.status(201).json({ ok: true, licenseCode: activeCode.code });
+    return res.status(201).json({ ok: true, licenseCode: activeCode.code, hasAccount: Boolean(existingUser), emailSent: Boolean(mail.sent) });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }
