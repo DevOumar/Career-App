@@ -22166,3 +22166,42 @@ div.cf-logo {
   margin-top: 0.1rem;
   font-weight: 600;
 }
+
+/* ===================== Suspension de l'accès école ===================== */
+.license-suspended-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  margin: 0 0 1.2rem;
+  padding: 0.9rem 1.1rem;
+  border: 1px solid rgba(184, 51, 9, 0.28);
+  border-radius: 14px;
+  background: #fff4ec;
+  color: #7a2a08;
+}
+.license-suspended-banner svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 0.1rem;
+}
+.license-suspended-banner div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.admin-shell-root.jy-admin .jy-dot-status.is-suspended {
+  color: #b86e00;
+}
+.admin-shell-root.jy-admin .jy-dot-status.is-suspended::before {
+  background: #d48806;
+}
+.jy-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  width: 100%;
+}

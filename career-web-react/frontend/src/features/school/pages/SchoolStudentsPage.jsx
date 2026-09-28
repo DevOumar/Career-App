@@ -30,6 +30,7 @@ import {
   getSchoolReports,
   sendSchoolInvitation,
   removeSchoolStudent,
+  setSchoolStudentSuspended,
   markSchoolNotificationsRead,
   generateSchoolReport
 } from "../../../lib/inMemoryDb.js";
@@ -83,6 +84,11 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
           totalLabel: "Students",
           activeLabel: "Active accounts",
           scoredLabel: "With match score",
+          suspended: "Suspended",
+          suspend: "Suspend",
+          reactivate: "Reactivate",
+          suspendTitle: "Temporarily suspend this student?",
+          suspendWarning: "The student keeps their account, data and seat, but can no longer use the AI modules, interviews or coding test until you reactivate them.",
           remove: "Remove",
           removeTitle: "Remove this student",
           removeWarning: "This frees up a seat on your license. The student switches back to the free plan and keeps their data.",
@@ -107,6 +113,11 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
           totalLabel: "Étudiants",
           activeLabel: "Comptes actifs",
           scoredLabel: "Avec score",
+          suspended: "Suspendu",
+          suspend: "Suspendre",
+          reactivate: "Réactiver",
+          suspendTitle: "Suspendre temporairement cet étudiant ?",
+          suspendWarning: "L'étudiant garde son compte, ses données et son siège, mais ne peut plus utiliser les modules IA, les entretiens ni le test technique jusqu'à sa réactivation.",
           remove: "Retirer",
           removeTitle: "Retirer cet étudiant",
           removeWarning: "Cela libère un siège sur votre licence. L'étudiant repasse au plan gratuit et conserve ses données.",
@@ -148,7 +159,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
   const t = (fr, en) => (language === "en" ? en : fr);
   const fullName = (student) => `${student.firstName || ""} ${student.lastName || ""}`.trim() || student.email;
   const activityText = (student) => (student.lastActivity ? formatDateTime(student.lastActivity, language) : copy.never);
-  const statusText = (student) => (student.active ? copy.active : copy.inactive);
+  const statusText = (student) => (student.suspended ? copy.suspended : student.active ? copy.active : copy.inactive);
   const scoreBand = (student) =>
     student.latestScore == null ? "none" : student.latestScore >= 60 ? "ready" : student.latestScore >= 50 ? "mid" : "low";
 
@@ -234,6 +245,38 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
     { icon: "trend", label: t("Score moyen", "Average score"), value: avgScore == null ? "-" : `${avgScore} %`, tone: "gold" },
     { icon: "quality", label: t("Prêts à l'emploi", "Job-ready"), value: readyCount, tone: "green" }
   ];
+
+  async function handleSuspend(student, suspended) {
+    if (suspended) {
+      const confirm = await Swal.fire({
+        icon: "warning",
+        title: copy.suspendTitle,
+        html: `<p style="text-align:left;margin-bottom:0.6rem;">${copy.suspendWarning}</p><p style="text-align:left;font-weight:700;">${student.firstName} ${student.lastName} · ${student.email}</p>`,
+        showCancelButton: true,
+        confirmButtonText: copy.suspend,
+        cancelButtonText: copy.cancel,
+        confirmButtonColor: "#b83309",
+        focusCancel: true
+      });
+      if (!confirm.isConfirmed) return;
+    }
+    try {
+      await setSchoolStudentSuspended(user.id, student.id, suspended);
+      reload();
+      Swal.fire({
+        toast: true,
+        position: "top-end",
+        icon: "success",
+        title: suspended ? (language === "en" ? "Student suspended." : "Étudiant suspendu.") : language === "en" ? "Student reactivated." : "Étudiant réactivé.",
+        showConfirmButton: false,
+        timer: 2800,
+        timerProgressBar: true,
+        customClass: { popup: "career-toast", title: "career-toast-title" }
+      });
+    } catch (err) {
+      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+    }
+  }
 
   async function handleRemove(student) {
     const result = await Swal.fire({
@@ -338,7 +381,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
                   ) : null}
                   {cols.isVisible("status") ? (
                     <td>
-                      <span className={`jy-dot-status ${student.active ? "on" : ""}`}>{statusText(student)}</span>
+                      <span className={`jy-dot-status ${student.suspended ? "is-suspended" : student.active ? "on" : ""}`}>{statusText(student)}</span>
                     </td>
                   ) : null}
                   {cols.isVisible("license") ? (
@@ -347,6 +390,15 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
                     </td>
                   ) : null}
                   <td className="jy-actions-cell" onClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      className="admin-row-action icon-only"
+                      title={student.suspended ? copy.reactivate : copy.suspend}
+                      aria-label={student.suspended ? copy.reactivate : copy.suspend}
+                      onClick={() => handleSuspend(student, !student.suspended)}
+                    >
+                      <AdminLineIcon name={student.suspended ? "play" : "pause"} />
+                    </button>
                     <button type="button" className="admin-row-action danger icon-only" title={copy.remove} aria-label={copy.remove} onClick={() => handleRemove(student)}>
                       <AdminLineIcon name="trash" />
                     </button>
@@ -376,7 +428,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
         badges={
           selected ? (
             <>
-              <span className={`tag ${selected.active ? "tag-success" : ""}`}>{statusText(selected)}</span>
+              <span className={`tag ${selected.suspended ? "tag-warning" : selected.active ? "tag-success" : ""}`}>{statusText(selected)}</span>
               {selected.latestScore != null ? <span className={`jy-score ${scoreTone(selected.latestScore)}`}>{selected.latestScore} %</span> : null}
             </>
           ) : null
@@ -417,17 +469,30 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
         }
         footer={
           selected ? (
-            <button
-              type="button"
-              className="admin-row-action danger"
-              onClick={() => {
-                const target = selected;
-                setSelected(null);
-                handleRemove(target);
-              }}
-            >
-              <AdminLineIcon name="trash" /> {copy.remove}
-            </button>
+            <div className="jy-drawer-actions">
+              <button
+                type="button"
+                className="admin-row-action"
+                onClick={() => {
+                  const target = selected;
+                  setSelected(null);
+                  handleSuspend(target, !target.suspended);
+                }}
+              >
+                <AdminLineIcon name={selected.suspended ? "play" : "pause"} /> {selected.suspended ? copy.reactivate : copy.suspend}
+              </button>
+              <button
+                type="button"
+                className="admin-row-action danger"
+                onClick={() => {
+                  const target = selected;
+                  setSelected(null);
+                  handleRemove(target);
+                }}
+              >
+                <AdminLineIcon name="trash" /> {copy.remove}
+              </button>
+            </div>
           ) : null
         }
       />

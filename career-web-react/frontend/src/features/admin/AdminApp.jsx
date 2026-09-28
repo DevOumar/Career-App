@@ -317,6 +317,13 @@ export function AdminLineIcon({ name, className = "" }) {
         <path d="M7 13.2a3.6 3.6 0 0 1 6 0M7.5 8h.01M12.5 8h.01" />
       </>
     ),
+    pause: (
+      <>
+        <rect x="5.5" y="4" width="3" height="12" rx="1" />
+        <rect x="11.5" y="4" width="3" height="12" rx="1" />
+      </>
+    ),
+    play: <path d="M6.5 4.5v11l8.5-5.5z" />,
     trash: (
       <>
         <path d="M3.5 5.5h13M8 5.5V4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v1.5" />

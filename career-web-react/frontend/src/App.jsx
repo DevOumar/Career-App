@@ -2681,6 +2681,19 @@ export default function App() {
       {navMenuOpen ? <div className="topbar-mobile-backdrop" onClick={() => setNavMenuOpen(false)} aria-hidden="true" /> : null}
 
       <main className={`main-wrap ${activePage === "import" ? "main-wrap-wide" : ""}`}>
+        {user?.subscription?.licenseSuspended ? (
+          <div className="license-suspended-banner" role="status">
+            <UiIcon name="alert" />
+            <div>
+              <strong>{language === "en" ? "Access suspended by your school" : "Accès suspendu par votre établissement"}</strong>
+              <span>
+                {language === "en"
+                  ? "Your school has temporarily suspended the access it provides: AI modules, interviews and coding test are unavailable. Your CVs and history remain available. Contact your school to reactivate it."
+                  : "Votre école a suspendu temporairement l'accès qu'elle vous fournit : modules IA, entretiens et test technique sont indisponibles. Vos CV et votre historique restent accessibles. Contactez votre établissement pour le réactiver."}
+              </span>
+            </div>
+          </div>
+        ) : null}
         <Suspense fallback={<LazyAppFallback />}>
           {activePage === "home" ? (
             <HomePage

@@ -313,10 +313,44 @@ app.get("/api/school/students", async (req, res) => {
           promotionName: promotionByStudent[row.id] || null,
           lastActivity,
           active: Boolean(lastActivity && new Date(lastActivity).getTime() >= Date.now() - 30 * 24 * 60 * 60 * 1000),
+          suspended: Boolean(subscription.licenseSuspended),
+          suspendedAt: subscription.licenseSuspendedAt || null,
           latestScore: latestScoreByStudent[row.id] ?? null
         };
       })
     });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
+  }
+});
+
+// Suspension temporaire de l'accès fourni par l'école (l'étudiant garde son
+// compte, ses données et son siège) ; réactivation en un clic.
+app.post("/api/school/students/suspend", async (req, res) => {
+  try {
+    const userId = coerceString(req.body?.userId);
+    if (!requireMatchingSession(req, res, userId)) return;
+    await requireSchoolOwner(userId);
+
+    const studentId = coerceString(req.body?.studentId);
+    const suspended = Boolean(req.body?.suspended);
+    const students = await getSchoolStudentRows(userId);
+    const target = students.find((row) => row.id === studentId);
+    if (!target) {
+      return res.status(404).json({ error: "Étudiant introuvable pour cet établissement." });
+    }
+    const subscription = parseJsonField(target.subscription_json, {});
+    const next = { ...subscription };
+    if (suspended) {
+      next.licenseSuspended = true;
+      next.licenseSuspendedAt = nowIso();
+    } else {
+      delete next.licenseSuspended;
+      delete next.licenseSuspendedAt;
+    }
+    await db.query("UPDATE users SET subscription_json = $1, updated_at = $2 WHERE id = $3", [JSON.stringify(next), nowIso(), studentId]);
+    await logSecurityEvent(req, userId, suspended ? "school_student_suspended" : "school_student_reactivated", { studentId });
+    return res.json({ ok: true, suspended });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

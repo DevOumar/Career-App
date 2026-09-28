@@ -95,7 +95,8 @@ export function registerInterviewRoutes(app) {
     computePremiumAccess,
     affectedRowCount,
     resolveSubscriptionCredits,
-    callAiChat
+    callAiChat,
+    LICENSE_SUSPENDED_ERROR
   } = app.locals.ctx;
 
   // Le simulateur d'entretiens n'est inclus que dans le plan Trajectoire Pro
@@ -109,6 +110,10 @@ export function registerInterviewRoutes(app) {
     const user = await getUserRowById(userId);
     if (!user) {
       res.status(404).json({ error: "Utilisateur introuvable." });
+      return false;
+    }
+    if (parseJsonField(user.subscription_json, {}).licenseSuspended) {
+      res.status(403).json(LICENSE_SUSPENDED_ERROR);
       return false;
     }
     const subscription = parseJsonField(user.subscription_json, {});

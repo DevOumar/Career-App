@@ -1049,6 +1049,13 @@ export async function getSchoolStudents(userId, { search = "" } = {}) {
   return data.items;
 }
 
+export async function setSchoolStudentSuspended(userId, studentId, suspended) {
+  return request("/school/students/suspend", {
+    method: "POST",
+    body: { userId, studentId, suspended }
+  });
+}
+
 export async function removeSchoolStudent(userId, studentId) {
   return request("/school/students/remove", {
     method: "POST",

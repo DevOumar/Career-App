@@ -654,6 +654,7 @@ app.post("/api/admin/users", async (req, res) => {
         email,
         password,
         accountLabel: ACCOUNT_LABELS[accountType] || "Compte",
+        accountType,
         organizationName,
         planName: planCheck.plan ? planCheck.plan.name?.fr || planCheck.plan.id : "",
         licenseCode,

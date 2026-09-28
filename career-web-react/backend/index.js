@@ -736,9 +736,21 @@ async function getDailyQuotaUsage(userId, quotaKey) {
 //   du module (DAILY_MODULE_LIMITS), seule limite de ces comptes.
 // Renvoie null si le refus est déjà envoyé, sinon l'autorisation à rendre
 // avec releaseModuleAllowance si l'action échoue.
+// Accès fourni par l'école suspendu temporairement par l'établissement : le
+// compte reste ouvert (CV, historique), les modules IA sont indisponibles.
+const LICENSE_SUSPENDED_ERROR = {
+  code: "LICENSE_SUSPENDED",
+  error: "Votre accès fourni par votre établissement est suspendu temporairement. Contactez votre école pour le réactiver."
+};
+
 async function takeModuleAllowance(res, userId, quotaKey, { tokenCost = 1 } = {}) {
   const user = await getUserRowById(userId);
-  const credits = resolveSubscriptionCredits(parseJsonField(user?.subscription_json, {}));
+  const accountSubscription = parseJsonField(user?.subscription_json, {});
+  if (accountSubscription.licenseSuspended) {
+    res.status(403).json(LICENSE_SUSPENDED_ERROR);
+    return null;
+  }
+  const credits = resolveSubscriptionCredits(accountSubscription);
   if (credits < 999) {
     if (!tokenCost) return { quotaKey, quotaTaken: false, charged: 0 };
     const debit = await adjustUserTokens(userId, -tokenCost);
@@ -1891,8 +1903,34 @@ async function resolveAnnouncementAudience(audience) {
 
 // E-mail de bienvenue d'un compte créé par l'administrateur : identifiants
 // de connexion et invitation à remplacer le mot de passe provisoire.
-function buildAccountWelcomeEmail({ firstName, email, password, accountLabel, organizationName, planName, licenseCode, seats, loginUrl }) {
+function buildAccountWelcomeEmail({ firstName, email, password, accountLabel, accountType, organizationName, planName, licenseCode, seats, loginUrl }) {
   const safe = (value) => escapeHtml(value || "");
+  const siteUrl = String(loginUrl || "").replace(/\/#\/login$/, "") || "https://careercv.fr";
+  // Procédure de première connexion, pas à pas, adaptée au type de compte.
+  const nextStepByType = {
+    school: licenseCode
+      ? `Invitez vos étudiants : menu « Invitations », ou transmettez-leur le code de licence ${licenseCode}, à saisir dans leur page Tarifs.`
+      : "Complétez les informations de votre établissement dans « Paramètres de l'établissement ».",
+    recruiter_firm: licenseCode
+      ? `Ajoutez vos recruteurs : transmettez-leur le code de licence ${licenseCode}, à saisir dans leur page Tarifs.`
+      : "Complétez les informations de votre cabinet dans « Paramètres ».",
+    admin: "Retrouvez les modules d'administration auxquels vous avez accès dans le menu de gauche.",
+    student: "Commencez par « Importer CV » : l'IA analyse votre CV et vous guide vers les bonnes offres.",
+    candidate: "Commencez par « Importer CV » : l'IA analyse votre CV et vous guide vers les bonnes offres."
+  };
+  const steps = [
+    `Rendez-vous sur ${siteUrl} (ou cliquez sur le bouton « Se connecter » ci-dessous).`,
+    "Cliquez sur « Se connecter » en haut de la page.",
+    `Saisissez votre adresse (${email}) et le mot de passe provisoire indiqué ci-dessus, puis validez.`,
+    "Choisissez votre propre mot de passe : cliquez sur votre nom en haut à droite, puis « Gérer son compte » → « Sécurité » → « Mot de passe ». L'application vous le propose aussi dès la première connexion.",
+    nextStepByType[accountType] || null
+  ].filter(Boolean);
+  const stepsHtml = steps
+    .map(
+      (step, index) =>
+        `<tr><td style="width:34px;vertical-align:top;padding:0 0 12px;"><div style="width:26px;height:26px;border-radius:999px;background:#b83309;color:#ffffff;font-size:13px;font-weight:800;text-align:center;line-height:26px;">${index + 1}</div></td><td style="vertical-align:top;padding:3px 0 12px;color:#3d3531;font-size:14px;line-height:1.55;">${safe(step)}</td></tr>`
+    )
+    .join("");
   const rows = [
     ["Adresse de connexion", email],
     ["Mot de passe provisoire", password],
@@ -1928,6 +1966,10 @@ function buildAccountWelcomeEmail({ firstName, email, password, accountLabel, or
           <tr><td style="padding:20px 30px;">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #f0d7c7;border-radius:16px;background:#fffaf6;border-collapse:separate;overflow:hidden;">${rowsHtml}</table>
           </td></tr>
+          <tr><td style="padding:4px 30px 6px;">
+            <h2 style="margin:0 0 14px;font-size:17px;color:#171317;">Comment vous connecter</h2>
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0">${stepsHtml}</table>
+          </td></tr>
           <tr><td style="padding:0 30px 8px;">
             <a href="${safe(loginUrl)}" style="display:inline-block;padding:14px 26px;border-radius:999px;background:#b83309;color:#ffffff;font-weight:800;font-size:15px;text-decoration:none;">Se connecter</a>
           </td></tr>
@@ -1950,9 +1992,10 @@ function buildAccountWelcomeEmail({ firstName, email, password, accountLabel, or
     "L'équipe Career CV a créé votre compte. Vos informations de connexion :",
     ...rows.map(([label, value]) => `- ${label} : ${value}`),
     "",
-    `Se connecter : ${loginUrl}`,
+    "Comment vous connecter :",
+    ...steps.map((step, index) => `${index + 1}. ${step}`),
     "",
-    "Changez votre mot de passe dès votre première connexion : menu de votre profil > Gérer son compte > Sécurité > Mot de passe.",
+    `Se connecter : ${loginUrl}`,
     "",
     "L'équipe Career CV"
   ].join("\n");
@@ -6117,6 +6160,7 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  LICENSE_SUSPENDED_ERROR,
   buildAccountWelcomeEmail,
   sendAppEmail,
   APP_URL,
