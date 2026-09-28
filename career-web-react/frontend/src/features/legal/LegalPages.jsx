@@ -251,7 +251,7 @@ function PrivacyPolicyPage({
             "We never sell personal data, and we deliberately limit the number of partners who process it on our behalf:"
           ],
           list: [
-            "An AI inference provider (depending on the feature: Groq, xAI or OpenAI), to analyze the text of your CV and of the submitted offers, and to generate your matching results, simulated interviews, cover letters and salary negotiation exchanges.",
+            "Our AI inference providers, OpenAI and, as a fallback, Groq, to analyze the text of your CV and of the submitted offers, and to generate your matching results, simulated interviews, cover letters and salary negotiation exchanges.",
             "Adzuna and France Travail (API), only for the salary negotiation simulator, to obtain a real salary range from the job title and location alone, without any identifying data.",
             "Supabase, which hosts our application database (European Union, Frankfurt).",
             "Stripe, which processes subscription payments; we never see or store your bank details.",
@@ -363,7 +363,7 @@ function PrivacyPolicyPage({
             "Nous ne vendons jamais de données personnelles, et nous limitons volontairement le nombre de partenaires qui les traitent pour notre compte :"
           ],
           list: [
-            "Un fournisseur d'inférence IA (selon la fonctionnalité : Groq, xAI ou OpenAI), pour analyser le texte de votre CV et des offres soumises, générer vos résultats de matching, vos entretiens simulés, vos lettres de motivation et vos échanges de négociation salariale.",
+            "Nos fournisseurs d'inférence IA, OpenAI et, en secours, Groq, pour analyser le texte de votre CV et des offres soumises, générer vos résultats de matching, vos entretiens simulés, vos lettres de motivation et vos échanges de négociation salariale.",
             "Adzuna et France Travail (API), uniquement pour le simulateur de négociation salariale, afin d'obtenir une fourchette salariale réelle à partir du seul intitulé de poste et de la localisation, sans aucune donnée identifiante transmise.",
             "Supabase, qui héberge notre base de données applicative (Union européenne, Francfort).",
             "Stripe, qui traite les paiements d'abonnement ; nous ne voyons ni ne stockons jamais vos données bancaires.",
