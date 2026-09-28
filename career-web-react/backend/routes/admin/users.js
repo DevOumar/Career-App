@@ -261,7 +261,7 @@ app.get("/api/admin/users", async (req, res) => {
     const userIds = rows.map((row) => row.id);
     const [{ rows: cvRows }, { rows: matchRows }, { rows: loginRows }] = await Promise.all([
       userIds.length
-        ? db.query("SELECT user_id, COUNT(*)::int AS count FROM cvs WHERE user_id = ANY($1) AND deleted_at IS NULL GROUP BY user_id", [userIds])
+        ? db.query("SELECT user_id, COUNT(*)::int AS count, MAX(created_at) AS last_cv_at FROM cvs WHERE user_id = ANY($1) AND deleted_at IS NULL GROUP BY user_id", [userIds])
         : { rows: [] },
       userIds.length
         ? db.query("SELECT user_id, COUNT(*)::int AS count FROM match_runs WHERE user_id = ANY($1) GROUP BY user_id", [userIds])
@@ -277,6 +277,9 @@ app.get("/api/admin/users", async (req, res) => {
         : { rows: [] }
     ]);
     const cvCountByUser = Object.fromEntries(cvRows.map((row) => [row.user_id, row.count]));
+    // L'école « d'après le CV » est reprise du dernier CV validé : sa date
+    // d'import indique quand elle a été renseignée.
+    const lastCvAtByUser = Object.fromEntries(cvRows.map((row) => [row.user_id, row.last_cv_at || ""]));
     const matchCountByUser = Object.fromEntries(matchRows.map((row) => [row.user_id, row.count]));
     const lastLoginByUser = Object.fromEntries(loginRows.map((row) => [row.user_id, row.last_login]));
 
@@ -359,6 +362,7 @@ app.get("/api/admin/users", async (req, res) => {
           organizationName: orgProfileByUser[row.id]?.organization_name || "",
           website: orgProfileByUser[row.id]?.website || "",
           declaredSchool: declaredSchoolByUser[row.id] || "",
+          declaredSchoolAt: declaredSchoolByUser[row.id] ? lastCvAtByUser[row.id] || "" : "",
           affiliation: affiliationFor(row),
           adminModules: row.role_type === "admin" ? sanitizeAdminModules(parseJsonField(row.admin_modules_json, [])) : undefined
         };

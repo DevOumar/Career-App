@@ -627,7 +627,12 @@ export default function AdminAccountsPage({ user, language, currency = "EUR", in
                             [language === "en" ? "Contact email" : "E-mail du contact", selectedUser.affiliation?.contactEmail],
                             [language === "en" ? "License code" : "Code de licence", selectedUser.affiliation?.licenseCode],
                             [language === "en" ? "Linked since" : "Rattaché depuis", selectedUser.affiliation?.since ? formatDateTime(selectedUser.affiliation.since, language) : ""],
-                            [language === "en" ? "Declared school" : "École déclarée", selectedUser.declaredSchool]
+                            [
+                              language === "en" ? "School (from CV)" : "École (d'après son CV)",
+                              selectedUser.declaredSchool
+                                ? `${selectedUser.declaredSchool}${selectedUser.declaredSchoolAt ? ` · ${language === "en" ? "CV imported" : "CV importé le"} ${formatDateTime(selectedUser.declaredSchoolAt, language)}` : ""}`
+                                : ""
+                            ]
                           ]
                         }
                       : null,

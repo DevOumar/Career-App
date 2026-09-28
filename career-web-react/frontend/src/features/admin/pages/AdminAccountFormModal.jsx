@@ -226,7 +226,7 @@ export default function AdminAccountFormModal({ mode = "create", target = null, 
     if (isEdit && (form.accountType === "student" || form.accountType === "candidate")) {
       rows.push([t("Rattachement", "Affiliation"), affiliationLabel(target?.affiliation, language)]);
       if (target?.affiliation?.licenseCode) rows.push([t("Code utilisé", "Code used"), target.affiliation.licenseCode]);
-      if (target?.declaredSchool) rows.push([t("École déclarée", "Declared school"), target.declaredSchool]);
+      if (target?.declaredSchool) rows.push([t("École (d'après son CV)", "School (from CV)"), target.declaredSchool]);
     }
     if (isOrg && form.organizationName.trim()) rows.push([form.accountType === "school" ? t("École", "School") : t("Cabinet", "Agency"), form.organizationName.trim()]);
     if (form.accountType !== "admin") {
