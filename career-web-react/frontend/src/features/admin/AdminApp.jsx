@@ -1887,7 +1887,8 @@ export const ADMIN_FINANCE_SOURCES = [
   { id: "stripe", label: { fr: "Stripe (paiement réel)", en: "Stripe (real payment)" } },
   { id: "instant", label: { fr: "Activation instantanée", en: "Instant activation" } },
   { id: "license_redeem", label: { fr: "Code de licence", en: "License code" } },
-  { id: "admin_created", label: { fr: "Créé par l'admin", en: "Created by admin" } }
+  { id: "admin_created", label: { fr: "Créé par l'admin", en: "Created by admin" } },
+  { id: "admin_manual", label: { fr: "Ajout manuel (admin)", en: "Manual (admin)" } }
 ];
 
 export function formatEur(amount, currency = "EUR") {

@@ -184,13 +184,15 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
           stripe: "Stripe",
           instant: "Instant activation",
           license_redeem: "License code",
-          admin_created: "Created by admin"
+          admin_created: "Created by admin",
+          admin_manual: "Manual (admin)"
         }
       : {
           stripe: "Stripe",
           instant: "Activation instantanée",
           license_redeem: "Code de licence",
-          admin_created: "Créé par l'admin"
+          admin_created: "Créé par l'admin",
+          admin_manual: "Ajout manuel (admin)"
         };
 
   const [data, setData] = useState(null);
@@ -357,7 +359,7 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
   const totalCollected = Number(data.totalRevenueCollected || 0);
   const refundedCount = items.filter((item) => item.refunded).length;
   const allSourcesCount = Object.values(data.countBySource || {}).reduce((sum, count) => sum + Number(count || 0), 0);
-  const sourceIcon = { stripe: "finance", instant: "trend", license_redeem: "licenses", admin_created: "settings" };
+  const sourceIcon = { stripe: "finance", instant: "trend", license_redeem: "licenses", admin_created: "settings", admin_manual: "settings" };
 
   const cards = [
     { icon: "pricing", label: t("Valeur catalogue", "Listed value"), value: formatEur(totalListed, currency), tone: "" },
