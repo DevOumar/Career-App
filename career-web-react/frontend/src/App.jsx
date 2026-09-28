@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { CodeEntry } from "./components/CodeEntry.jsx";
 import Swal from "sweetalert2";
+import { promptPasswordChange } from "./lib/passwordNotice.js";
 import "sweetalert2/dist/sweetalert2.min.css";
 import { UiIcon } from "./components/UiIcon.jsx";
 import { AvatarCircle, getAvatarSource } from "./components/AvatarCircle.jsx";
@@ -1051,6 +1052,19 @@ export default function App() {
 
   const analysisUnlocked = Boolean(latestMatch);
   const user = session?.user;
+
+  // Mot de passe provisoire (compte créé par l'admin) : invitation à le changer.
+  useEffect(() => {
+    promptPasswordChange({
+      user,
+      language,
+      onOpenSecurity: () => {
+        setAccountPanel("security");
+        setAccountDrawerOpen(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.mustChangePassword]);
   const [satisfactionEligible, setSatisfactionEligible] = useState(false);
 
   useEffect(() => {
@@ -3366,7 +3380,8 @@ function AuthScreen({
   landingCopy,
   authSkipOtp = false
 }) {
-  const [showLanding, setShowLanding] = useState(true);
+  // careercv.fr/#/login (lien des e-mails) ouvre directement la connexion.
+  const [showLanding, setShowLanding] = useState(() => (typeof window === "undefined" ? true : !/^#\/login/.test(window.location.hash || "")));
   const [legalPage, setLegalPage] = useState(null);
   const [lastAuthMethod] = useState(getLastAuthMethod);
 

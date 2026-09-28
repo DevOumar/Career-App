@@ -1300,6 +1300,7 @@ await db.exec(`
 
 await db.exec(`
   ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TEXT NOT NULL DEFAULT '';
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS role_type TEXT NOT NULL DEFAULT 'candidate';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data_url TEXT NOT NULL DEFAULT '';
   ALTER TABLE users ADD COLUMN IF NOT EXISTS username TEXT NOT NULL DEFAULT '';
@@ -1885,6 +1886,118 @@ async function resolveAnnouncementAudience(audience) {
     : "SELECT id, first_name, email FROM users WHERE role_type <> 'admin'";
   const { rows } = await db.query(query, audience ? [audience] : []);
   return rows;
+}
+
+
+// E-mail de bienvenue d'un compte créé par l'administrateur : identifiants
+// de connexion et invitation à remplacer le mot de passe provisoire.
+function buildAccountWelcomeEmail({ firstName, email, password, accountLabel, organizationName, planName, licenseCode, seats, loginUrl }) {
+  const safe = (value) => escapeHtml(value || "");
+  const rows = [
+    ["Adresse de connexion", email],
+    ["Mot de passe provisoire", password],
+    ["Type de compte", accountLabel],
+    organizationName ? ["Établissement", organizationName] : null,
+    planName ? ["Offre", planName] : null,
+    licenseCode ? ["Code de licence", `${licenseCode}${seats ? ` (${seats} places)` : ""}`] : null
+  ].filter(Boolean);
+  const subject = "Votre compte Career CV est prêt";
+  const rowsHtml = rows
+    .map(
+      ([label, value]) =>
+        `<tr><td style="padding:10px 14px;color:#7b6d63;font-size:13px;border-bottom:1px solid #f0e6dc;">${safe(label)}</td><td style="padding:10px 14px;font-size:14px;font-weight:700;color:#171317;border-bottom:1px solid #f0e6dc;${label === "Mot de passe provisoire" ? "font-family:Consolas,Menlo,monospace;letter-spacing:.04em;" : ""}">${safe(value)}</td></tr>`
+    )
+    .join("");
+  const html = `<!doctype html>
+<html lang="fr">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${subject}</title></head>
+  <body style="margin:0;background:#f6f2ec;font-family:Arial,Helvetica,sans-serif;color:#171317;">
+    <div style="display:none;max-height:0;overflow:hidden;opacity:0;">Vos identifiants de connexion Career CV.</div>
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f2ec;padding:34px 12px;">
+      <tr><td align="center">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:590px;background:#ffffff;border:1px solid #eadfd3;border-radius:24px;overflow:hidden;box-shadow:0 18px 45px rgba(92,26,6,0.10);">
+          <tr><td style="padding:28px 30px 22px;background:linear-gradient(135deg,#5c1a06 0%,#b83309 100%);">
+            <div style="display:inline-block;width:42px;height:42px;border-radius:14px;background:#ffffff;color:#b83309;text-align:center;line-height:42px;font-size:22px;font-weight:900;vertical-align:middle;">CV</div>
+            <span style="display:inline-block;margin-left:12px;font-size:20px;font-weight:800;color:#ffffff;vertical-align:middle;">Career CV</span>
+          </td></tr>
+          <tr><td style="padding:30px 30px 6px;">
+            <p style="margin:0 0 8px;color:#7b6d63;font-size:14px;">Bonjour ${safe(firstName)},</p>
+            <h1 style="margin:0;font-size:26px;line-height:1.25;color:#171317;">Votre compte est prêt</h1>
+            <p style="margin:13px 0 0;color:#5f5651;font-size:15px;line-height:1.65;">L'équipe Career CV a créé votre compte. Voici vos informations de connexion.</p>
+          </td></tr>
+          <tr><td style="padding:20px 30px;">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border:1px solid #f0d7c7;border-radius:16px;background:#fffaf6;border-collapse:separate;overflow:hidden;">${rowsHtml}</table>
+          </td></tr>
+          <tr><td style="padding:0 30px 8px;">
+            <a href="${safe(loginUrl)}" style="display:inline-block;padding:14px 26px;border-radius:999px;background:#b83309;color:#ffffff;font-weight:800;font-size:15px;text-decoration:none;">Se connecter</a>
+          </td></tr>
+          <tr><td style="padding:18px 30px 28px;">
+            <div style="border-left:4px solid #b83309;background:#fff4ec;border-radius:14px;padding:14px 16px;color:#7a2a08;font-size:14px;line-height:1.55;">
+              <strong>Changez votre mot de passe dès votre première connexion</strong> : menu de votre profil → Gérer son compte → Sécurité → Mot de passe. Ce mot de passe provisoire ne doit pas être conservé.
+            </div>
+          </td></tr>
+          <tr><td style="padding:18px 30px;background:#fbf8f4;border-top:1px solid #eadfd3;color:#7b6d63;font-size:12px;line-height:1.5;">
+            &copy; ${new Date().getFullYear()} Career CV. Si vous n'attendiez pas ce compte, contactez contact@careercv.fr.
+          </td></tr>
+        </table>
+      </td></tr>
+    </table>
+  </body>
+</html>`;
+  const text = [
+    `Bonjour ${firstName || ""},`.trim(),
+    "",
+    "L'équipe Career CV a créé votre compte. Vos informations de connexion :",
+    ...rows.map(([label, value]) => `- ${label} : ${value}`),
+    "",
+    `Se connecter : ${loginUrl}`,
+    "",
+    "Changez votre mot de passe dès votre première connexion : menu de votre profil > Gérer son compte > Sécurité > Mot de passe.",
+    "",
+    "L'équipe Career CV"
+  ].join("\n");
+  return { subject, html, text };
+}
+
+// Envoi SMTP générique (mêmes essais de repli que les codes de vérification).
+async function sendAppEmail({ to, subject, text, html }) {
+  if (!SMTP_USER || !SMTP_PASS) return { sent: false, reason: "missing_smtp_config" };
+  const recipient = AUTH_EMAIL_TO || to;
+  const candidates = [{ host: SMTP_HOST, port: SMTP_PORT, secure: SMTP_SECURE }];
+  if (SMTP_HOST === "smtp.resend.com") {
+    for (const candidate of [
+      { host: SMTP_HOST, port: 587, secure: false },
+      { host: SMTP_HOST, port: 2587, secure: false },
+      { host: SMTP_HOST, port: 2465, secure: true }
+    ]) {
+      if (!candidates.some((item) => item.port === candidate.port && item.secure === candidate.secure)) candidates.push(candidate);
+    }
+  }
+  let lastError = null;
+  for (const candidate of candidates) {
+    const transporter = nodemailer.createTransport({
+      ...candidate,
+      family: 4,
+      connectionTimeout: SMTP_TIMEOUT_MS,
+      greetingTimeout: SMTP_TIMEOUT_MS,
+      socketTimeout: SMTP_TIMEOUT_MS,
+      auth: { user: SMTP_USER, pass: SMTP_PASS }
+    });
+    try {
+      await transporter.sendMail({
+        from: MAIL_FROM || `"${MAIL_FROM_NAME}" <${MAIL_FROM_ADDRESS || SMTP_USER}>`,
+        to: recipient,
+        subject,
+        text,
+        html
+      });
+      return { sent: true, recipient };
+    } catch (error) {
+      lastError = error;
+      console.warn(`[Career CV] Echec SMTP ${candidate.host}:${candidate.port} (${error.message}).`);
+    }
+  }
+  return { sent: false, reason: "smtp_send_error", error: lastError?.message || "smtp_send_error" };
 }
 
 async function sendVerificationEmail({ to, code, firstName, purpose = "login" }) {
@@ -4328,6 +4441,8 @@ function toPublicUser(userRow, relations) {
     // propose « Définir un mot de passe » plutôt que « Modifier ».
     hasPassword: Number(userRow.password_set ?? 1) === 1,
     emailVerified: Boolean(userRow.email_verified_at),
+    // Compte créé par l'admin avec un mot de passe provisoire à remplacer.
+    mustChangePassword: Boolean(Number(userRow.must_change_password || 0)),
     adminModules: accountType === "admin" ? parseJsonField(userRow.admin_modules_json, []) : undefined,
     avatarDataUrl,
     profile,
@@ -6002,6 +6117,9 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  buildAccountWelcomeEmail,
+  sendAppEmail,
+  APP_URL,
   countLicenseSeatsInUse,
   takeModuleAllowance,
   releaseModuleAllowance,

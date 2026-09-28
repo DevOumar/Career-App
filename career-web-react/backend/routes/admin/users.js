@@ -243,7 +243,9 @@ export function registerAdminUsersRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    buildAccountWelcomeEmail,
+    sendAppEmail
   } = app.locals.ctx;
 
 app.get("/api/admin/users", async (req, res) => {
@@ -549,6 +551,25 @@ app.post("/api/admin/users", async (req, res) => {
     const planCheck = accountType === "admin" ? { plan: null } : await resolvePlanForAccount(planId, accountType, getEffectivePlanById);
     if (planCheck.error) return fieldError(res, planCheck.error.field, planCheck.error.message);
 
+    // Offres école (par étudiant) : nombre de places choisi dans la
+    // fourchette du palier, enregistré sur le code de licence.
+    let seats = null;
+    if (planCheck.plan?.pricedPerSeat) {
+      const plan = planCheck.plan;
+      const raw = req.body?.seats;
+      seats = raw === undefined || raw === null || raw === "" ? Number(plan.seats) : Number(raw);
+      const max = plan.seatsMax || 100000;
+      if (!Number.isInteger(seats) || seats < plan.seats || seats > max) {
+        return fieldError(
+          res,
+          "seats",
+          plan.seatsMax
+            ? `Pour ce palier, choisissez entre ${plan.seats} et ${plan.seatsMax} places.`
+            : `Pour ce palier, choisissez au moins ${plan.seats} places.`
+        );
+      }
+    }
+
     const existingUser = await getUserRowByAnyEmail(email);
     if (existingUser) {
       return res.status(409).json({ error: "Un compte existe déjà avec cette adresse e-mail.", code: "field:email" });
@@ -574,8 +595,9 @@ app.post("/api/admin/users", async (req, res) => {
     await db.query(
       `INSERT INTO users (
         id, first_name, last_name, email, username, password_hash, password_salt, created_at,
-        updated_at, role_type, avatar_data_url, profile_json, subscription_json, admin_modules_json, email_verified_at
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        updated_at, role_type, avatar_data_url, profile_json, subscription_json, admin_modules_json, email_verified_at,
+        must_change_password
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,1)`,
       [
         id,
         firstName,
@@ -610,13 +632,40 @@ app.post("/api/admin/users", async (req, res) => {
     let licenseCode = null;
     if (planCheck.plan) {
       const plan = planCheck.plan;
-      await applyPlanToUser(id, plan, billingCycle || "monthly", null, null, "admin_created");
+      await applyPlanToUser(id, plan, billingCycle || "monthly", null, null, "admin_created", { quantity: seats });
       if (plan.seats) {
-        licenseCode = await generateLicenseCodeForPlan(id, plan);
+        licenseCode = await generateLicenseCodeForPlan(id, plan, seats);
       }
     }
 
-    return res.status(201).json({ user: await getPublicUserById(id), licenseCode });
+    // E-mail de bienvenue : identifiants + invitation à changer le mot de
+    // passe provisoire. Un échec d'envoi ne bloque pas la création.
+    const ACCOUNT_LABELS = {
+      student: "Étudiant / Candidat",
+      candidate: "Candidat",
+      school: "École",
+      recruiter_firm: "Cabinet de recrutement",
+      admin: "Administrateur"
+    };
+    let emailSent = false;
+    try {
+      const message = buildAccountWelcomeEmail({
+        firstName,
+        email,
+        password,
+        accountLabel: ACCOUNT_LABELS[accountType] || "Compte",
+        organizationName,
+        planName: planCheck.plan ? planCheck.plan.name?.fr || planCheck.plan.id : "",
+        licenseCode,
+        seats: licenseCode ? seats || planCheck.plan?.seats || null : null,
+        loginUrl: `${APP_URL.replace(/\/$/, "")}/#/login`
+      });
+      emailSent = (await sendAppEmail({ to: email, ...message })).sent;
+    } catch (mailError) {
+      console.warn(`E-mail de bienvenue non envoyé : ${mailError.message}`);
+    }
+
+    return res.status(201).json({ user: await getPublicUserById(id), licenseCode, seats, emailSent });
   } catch (error) {
     return res.status(error.statusCode || 500).json({ error: error.message || "Erreur serveur." });
   }

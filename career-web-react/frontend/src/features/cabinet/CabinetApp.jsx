@@ -1,4 +1,5 @@
 import React from "react";
+import { promptPasswordChange } from "../../lib/passwordNotice.js";
 import "../admin/admin-shell.css";
 // Module Cabinet : espace des cabinets de recrutement / cellules RH, avec la
 // même charpente que l'administration de la plateforme et l'espace École
@@ -153,6 +154,19 @@ export default function CabinetApp({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState("account");
+
+  // Mot de passe provisoire (compte créé par l'admin) : invitation à le changer.
+  useEffect(() => {
+    promptPasswordChange({
+      user,
+      language,
+      onOpenSecurity: () => {
+        setAccountPanel("security");
+        setAccountDrawerOpen(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.mustChangePassword]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem("career_app_cabinet_sidebar") === "collapsed";

@@ -4,6 +4,7 @@ import "../admin/admin-shell.css";
 // invitations, promotions, licence, statistiques, rapports, paramètres).
 import { useState, useEffect, useRef } from "react";
 import Swal from "sweetalert2";
+import { promptPasswordChange } from "../../lib/passwordNotice.js";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { AdminPageLoader } from "../../components/AdminPageLoader.jsx";
 import { AdminKpiCard } from "../../components/AdminKpiCard.jsx";
@@ -194,6 +195,19 @@ function SchoolApp({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState("account");
+
+  // Mot de passe provisoire (compte créé par l'admin) : invitation à le changer.
+  useEffect(() => {
+    promptPasswordChange({
+      user,
+      language,
+      onOpenSecurity: () => {
+        setAccountPanel("security");
+        setAccountDrawerOpen(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.mustChangePassword]);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {
       return localStorage.getItem("career_app_school_sidebar") === "collapsed";

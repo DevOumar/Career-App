@@ -13,6 +13,7 @@ import "./admin-shell.css";
 // de l'app.
 import { useState, useEffect, useRef } from "react";
 import Swal from "sweetalert2";
+import { promptPasswordChange } from "../../lib/passwordNotice.js";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import { AdminPageLoader } from "../../components/AdminPageLoader.jsx";
 import { AdminKpiCard } from "../../components/AdminKpiCard.jsx";
@@ -568,6 +569,19 @@ function AdminApp({
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [accountDrawerOpen, setAccountDrawerOpen] = useState(false);
   const [accountPanel, setAccountPanel] = useState("account");
+
+  // Mot de passe provisoire (compte créé par l'admin) : invitation à le changer.
+  useEffect(() => {
+    promptPasswordChange({
+      user,
+      language,
+      onOpenSecurity: () => {
+        setAccountPanel("security");
+        setAccountDrawerOpen(true);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.mustChangePassword]);
   // Desktop : barre latérale réduite (icônes seules). Mobile : tiroir ouvert/fermé.
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     try {

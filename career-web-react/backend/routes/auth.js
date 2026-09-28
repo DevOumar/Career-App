@@ -789,7 +789,7 @@ app.post("/api/auth/reset-password", async (req, res) => {
       // possession de l'adresse (vérifiée si elle ne l'était pas) ; pour un
       // compte Google, c'est ainsi qu'il obtient son premier mot de passe.
       `UPDATE users SET password_hash = $1, password_salt = $2, failed_login_attempts = 0, locked_until = '',
-         updated_at = $3, password_set = 1,
+         updated_at = $3, password_set = 1, must_change_password = 0,
          email_verified_at = CASE WHEN email_verified_at = '' THEN $3 ELSE email_verified_at END
        WHERE id = $4`,
       [next.hash, next.salt, resetAt, user.id]
@@ -851,7 +851,7 @@ app.post("/api/auth/password", async (req, res) => {
 
     const next = createPasswordRecord(newPassword);
     await db.query(
-      "UPDATE users SET password_hash = $1, password_salt = $2, updated_at = $3, password_set = 1 WHERE id = $4",
+      "UPDATE users SET password_hash = $1, password_salt = $2, updated_at = $3, password_set = 1, must_change_password = 0 WHERE id = $4",
       [next.hash, next.salt, nowIso(), userId]
     );
 

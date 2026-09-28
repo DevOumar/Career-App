@@ -32,6 +32,7 @@ const EMPTY_FORM = {
   password: "",
   accountType: "student",
   planId: "",
+  seats: "",
   billingCycle: "monthly",
   organizationName: "",
   schoolName: "",
@@ -98,6 +99,10 @@ export default function AdminAccountFormModal({ mode = "create", target = null, 
   const segment = ADMIN_ACCOUNT_TYPES.find((item) => item.id === form.accountType)?.segment;
   const plans = PLANS.filter((plan) => plan.segment === segment);
   const selectedPlan = plans.find((plan) => plan.id === form.planId) || null;
+  // Offres école : nombre de places choisi dans la fourchette du palier.
+  const seatsEditable = !isEdit && Boolean(selectedPlan?.pricedPerSeat);
+  const seatsValue = form.seats === "" ? Number(selectedPlan?.seats || 0) : Number(form.seats);
+  const effectiveSeats = seatsEditable ? seatsValue : selectedPlan?.seats || 0;
   const planHasBothCycles = selectedPlan && selectedPlan.monthlyPrice != null && selectedPlan.annualPrice != null && selectedPlan.monthlyPrice > 0;
   const isOrg = form.accountType === "school" || form.accountType === "recruiter_firm";
   const allModuleIds = ADMIN_MODULE_DEFS.map((item) => item.id);
@@ -111,7 +116,7 @@ export default function AdminAccountFormModal({ mode = "create", target = null, 
   }
 
   function changeType(nextType) {
-    setForm((prev) => ({ ...prev, accountType: nextType, planId: "", organizationName: "", website: "", schoolName: "" }));
+    setForm((prev) => ({ ...prev, accountType: nextType, planId: "", seats: "", organizationName: "", website: "", schoolName: "" }));
     setErrors({});
     setFormError("");
   }
@@ -153,6 +158,14 @@ export default function AdminAccountFormModal({ mode = "create", target = null, 
     }
     if (form.accountType === "student" && form.schoolName.trim().length > 120) next.schoolName = t("120 caractères maximum.", "120 characters maximum.");
 
+    if (seatsEditable) {
+      const min = Number(selectedPlan.seats);
+      const max = selectedPlan.seatsMax ? Number(selectedPlan.seatsMax) : null;
+      if (!Number.isInteger(seatsValue) || seatsValue < min || (max && seatsValue > max)) {
+        next.seats = max ? t(`Entre ${min} et ${max} places pour ce palier.`, `Between ${min} and ${max} seats for this tier.`) : t(`Au moins ${min} places pour ce palier.`, `At least ${min} seats for this tier.`);
+      }
+    }
+
     if (form.accountType === "admin" && moduleMode === "custom" && !form.adminModules.length) {
       next.adminModules = t("Cochez au moins un module, ou choisissez l'accès complet.", "Check at least one module, or choose full access.");
     }
@@ -191,6 +204,7 @@ export default function AdminAccountFormModal({ mode = "create", target = null, 
           password: form.password,
           accountType: form.accountType,
           planId: form.planId || null,
+          seats: seatsEditable ? seatsValue : undefined,
           billingCycle: form.billingCycle,
           organizationName: form.organizationName.trim(),
           schoolName: form.schoolName.trim(),
@@ -200,7 +214,8 @@ export default function AdminAccountFormModal({ mode = "create", target = null, 
         onDone?.({
           message: t("Compte créé.", "Account created."),
           email: form.email.trim().toLowerCase(),
-          licenseCode: result.licenseCode || null
+          licenseCode: result.licenseCode || null,
+          emailSent: Boolean(result.emailSent)
         });
       }
       onClose();
@@ -236,7 +251,14 @@ export default function AdminAccountFormModal({ mode = "create", target = null, 
           ? `${selectedPlan.name[language] || selectedPlan.name.fr}${planHasBothCycles ? ` · ${form.billingCycle === "annual" ? t("annuel", "annual") : t("mensuel", "monthly")}` : ""}`
           : t("Aucun (gratuit)", "None (free)")
       ]);
-      if (selectedPlan?.seats) rows.push([t("Code de licence", "License code"), t(`généré automatiquement (${selectedPlan.seats} sièges)`, `generated automatically (${selectedPlan.seats} seats)`)]);
+      if (selectedPlan?.seats) rows.push([t("Code de licence", "License code"), t(`généré automatiquement (${effectiveSeats} sièges)`, `generated automatically (${effectiveSeats} seats)`)]);
+      if (seatsEditable && effectiveSeats > 0) {
+        rows.push([
+          t("Coût annuel au tarif catalogue", "Annual cost at list price"),
+          `${(Number(selectedPlan.annualPrice) * effectiveSeats).toLocaleString(language === "en" ? "en-GB" : "fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} € (${effectiveSeats} × ${Number(selectedPlan.annualPrice).toLocaleString(language === "en" ? "en-GB" : "fr-FR", { minimumFractionDigits: 2 })} €)`
+        ]);
+      }
+      if (!isEdit) rows.push([t("E-mail de bienvenue", "Welcome email"), t("envoyé avec les identifiants", "sent with the login details")]);
     } else {
       rows.push([t("Modules accessibles", "Accessible modules"), moduleMode === "full" ? t(`Tous (${allModuleIds.length})`, `All (${allModuleIds.length})`) : `${form.adminModules.length} / ${allModuleIds.length}`]);
     }
@@ -398,6 +420,30 @@ export default function AdminAccountFormModal({ mode = "create", target = null, 
                 ))}
               </select>
               {fieldError("planId")}
+              {seatsEditable ? (
+                <label className="jy-field jy-seats-field">
+                  <span>
+                    {t("Nombre de places", "Number of seats")}
+                    <small>
+                      {selectedPlan.seatsMax
+                        ? t(` (${selectedPlan.seats} à ${selectedPlan.seatsMax})`, ` (${selectedPlan.seats} to ${selectedPlan.seatsMax})`)
+                        : t(` (${selectedPlan.seats} minimum)`, ` (${selectedPlan.seats} minimum)`)}
+                    </small>
+                  </span>
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    min={selectedPlan.seats}
+                    max={selectedPlan.seatsMax || undefined}
+                    step={1}
+                    placeholder={String(selectedPlan.seats)}
+                    value={form.seats}
+                    onChange={(event) => update("seats", event.target.value.replace(/[^\d]/g, "").slice(0, 6))}
+                    {...fieldProps("seats")}
+                  />
+                  {fieldError("seats")}
+                </label>
+              ) : null}
               {planHasBothCycles ? (
                 <div className="jy-seg jy-cycle-seg" role="radiogroup" aria-label={t("Facturation", "Billing")}>
                   {[
@@ -522,11 +568,17 @@ export function affiliationLabel(affiliation, language) {
 // Toast de succès, avec le code de licence copiable s'il a été généré.
 export function announceAccountResult(result, language) {
   const t = (fr, en) => (language === "en" ? en : fr);
+  const mailLine =
+    result?.emailSent === true
+      ? `<p style="margin:.8rem 0 0;color:#237804">${t(`E-mail de bienvenue envoyé à ${result.email}, avec ses identifiants.`, `Welcome email sent to ${result.email} with the login details.`)}</p>`
+      : result?.emailSent === false
+      ? `<p style="margin:.8rem 0 0;color:#b83309">${t("L'e-mail de bienvenue n'a pas pu être envoyé : transmettez vous-même l'adresse et le mot de passe provisoire.", "The welcome email could not be sent: share the address and temporary password yourself.")}</p>`
+      : "";
   if (result?.licenseCode) {
     Swal.fire({
       icon: "success",
       title: result.message,
-      html: `<p style="margin:0 0 .5rem">${t("Code de licence généré :", "Generated license code:")}</p><code style="font-size:1.05rem;padding:.3rem .6rem;border-radius:6px;background:#f3f1ec">${result.licenseCode}</code>`,
+      html: `<p style="margin:0 0 .5rem">${t("Code de licence généré :", "Generated license code:")}</p><code style="font-size:1.05rem;padding:.3rem .6rem;border-radius:6px;background:#f3f1ec">${result.licenseCode}</code>${mailLine}`,
       confirmButtonText: t("Copier le code", "Copy code"),
       showCancelButton: true,
       cancelButtonText: t("Fermer", "Close"),
@@ -534,6 +586,10 @@ export function announceAccountResult(result, language) {
     }).then((choice) => {
       if (choice.isConfirmed) navigator.clipboard?.writeText(result.licenseCode).catch(() => {});
     });
+    return;
+  }
+  if (mailLine) {
+    Swal.fire({ icon: "success", title: result.message, html: mailLine, confirmButtonColor: "#b83309" });
     return;
   }
   Swal.fire({
