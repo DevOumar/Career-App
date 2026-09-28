@@ -658,8 +658,7 @@ app.get("/api/admin/investor-metrics", async (req, res) => {
          (SELECT COUNT(*)::int FROM cabinet_mission_candidates) AS assignments,
          (SELECT COUNT(*)::int FROM cabinet_mission_candidates WHERE stage = 'placed') AS assignments_placed,
          (SELECT COUNT(*)::int FROM cabinet_missions) AS missions,
-         (SELECT COUNT(*)::int FROM cabinet_missions WHERE status = 'closed') AS missions_closed,
-         (SELECT COALESCE(SUM(placement_amount), 0) FROM cabinet_missions) AS fees`
+         (SELECT COUNT(*)::int FROM cabinet_missions WHERE status = 'closed') AS missions_closed`
     );
     const placement = placementRows[0] || {};
     const { rows: applicationRows } = await db.query(
@@ -709,7 +708,8 @@ app.get("/api/admin/investor-metrics", async (req, res) => {
         assignmentsPlaced: placement.assignments_placed || 0,
         missions: placement.missions || 0,
         missionsClosed: placement.missions_closed || 0,
-        fees: Number(placement.fees || 0),
+        // Honoraires des cabinets volontairement absents : ce sont leurs
+        // données commerciales, pas un indicateur de la plateforme.
         applications: applications.total || 0,
         applicationInterviews: applications.interviews || 0,
         applicationOffers: applications.offers || 0

@@ -235,10 +235,6 @@ export default function AdminInvestorMetrics({ user, language, currency = "EUR" 
               </strong>
             </span>
             <span>
-              <small>{t("Honoraires facturés par les cabinets", "Fees billed by firms")}</small>
-              <strong>{money(placement.fees)}</strong>
-            </span>
-            <span>
               <small>{t("Candidatures suivies (candidats)", "Tracked applications (candidates)")}</small>
               <strong>{placement.applications}</strong>
             </span>
