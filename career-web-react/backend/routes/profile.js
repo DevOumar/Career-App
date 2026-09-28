@@ -716,6 +716,18 @@ app.delete("/api/account", async (req, res) => {
     await db.query("DELETE FROM user_candidate_profiles WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_recruiter_profiles WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_org_profiles WHERE user_id = $1", [userId]);
+    // Données personnelles restantes (RGPD : droit à l'effacement).
+    await db.query("DELETE FROM satisfaction_surveys WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM job_applications WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM interview_conversations WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM interview_sessions WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM coding_sessions WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM match_feedback WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM ai_daily_usage WHERE user_id = $1", [userId]);
+    await db.query("DELETE FROM account_security_events WHERE user_id = $1", [userId]);
+    // Conservés sans lien avec la personne : mesures de coût IA (statistiques)
+    // et transactions (obligation de conservation comptable).
+    await db.query("UPDATE ai_usage SET user_id = NULL WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM user_accounts WHERE user_id = $1", [userId]);
     await db.query("DELETE FROM users WHERE id = $1", [userId]);
 

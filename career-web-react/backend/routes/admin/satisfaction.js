@@ -255,7 +255,7 @@ app.get("/api/admin/satisfaction", async (req, res) => {
     const { rows } = await db.query(
       `SELECT s.id, s.user_id, s.score, s.comment, s.created_at, u.first_name, u.last_name, u.email, u.avatar_data_url
        FROM satisfaction_surveys s
-       LEFT JOIN users u ON u.id = s.user_id
+       JOIN users u ON u.id = s.user_id
        ORDER BY s.created_at DESC
        LIMIT 500`
     );
