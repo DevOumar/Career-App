@@ -5080,11 +5080,34 @@ function requireCabinetOwnerRole(cabinet) {
   }
 }
 
+// Sièges réellement occupés par un code de licence = comptes rattachés à ce
+// code (hors propriétaire). Source de vérité : le compteur seats_used pouvait
+// dériver (compte supprimé, passage à une offre payante...) et bloquer des
+// places payées ; il est resynchronisé à chaque lecture.
+async function countLicenseSeatsInUse(code, ownerUserId = null) {
+  const { rows } = await db.query(
+    "SELECT COUNT(*)::int AS n FROM users WHERE subscription_json LIKE $1 AND id <> $2",
+    [`%"licenseCode":"${String(code).replace(/[^A-Za-z0-9-]/g, "")}"%`, ownerUserId || ""]
+  );
+  return Number(rows[0]?.n || 0);
+}
+
+async function syncLicenseSeatUsage(codeRows) {
+  for (const row of codeRows) {
+    const inUse = await countLicenseSeatsInUse(row.code, row.owner_user_id);
+    if (inUse !== Number(row.seats_used)) {
+      await db.query("UPDATE license_codes SET seats_used = $1 WHERE code = $2", [inUse, row.code]);
+      row.seats_used = inUse;
+    }
+  }
+  return codeRows;
+}
+
 async function getSchoolLicenseCodeRows(schoolUserId) {
   const { rows } = await db.query("SELECT * FROM license_codes WHERE owner_user_id = $1 ORDER BY created_at DESC", [
     schoolUserId
   ]);
-  return rows;
+  return syncLicenseSeatUsage(rows);
 }
 
 async function getSchoolStudentRows(schoolUserId) {
@@ -5104,7 +5127,7 @@ async function getCabinetLicenseCodeRows(cabinetUserId) {
   const { rows } = await db.query("SELECT * FROM license_codes WHERE owner_user_id = $1 ORDER BY created_at DESC", [
     cabinetUserId
   ]);
-  return rows;
+  return syncLicenseSeatUsage(rows);
 }
 
 async function getCabinetRecruiterRows(cabinetUserId) {
@@ -5979,6 +6002,7 @@ await loadPlatformSettings();
 // Dépendances partagées par tous les modules de routes (backend/routes/*.js) :
 // db, helpers, constantes — tout ce qui est défini plus haut dans ce fichier.
 app.locals.ctx = {
+  countLicenseSeatsInUse,
   takeModuleAllowance,
   releaseModuleAllowance,
   accountSnapshot,

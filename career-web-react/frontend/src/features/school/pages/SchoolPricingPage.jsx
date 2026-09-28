@@ -186,7 +186,13 @@ export default function SchoolPricingPage({ user, language, currency = "EUR", on
               {plan.contactSalesOnly ? (
                 <div className="admin-pricing-price-row">
                   <div className="admin-pricing-price">
-                    <strong>{copy.contactSales}</strong>
+                    <small>{t("À partir de", "From")}</small>
+                    <strong>{price.amount}</strong>
+                    <small>{copy.annualLabel}</small>
+                    <small className="admin-pricing-yearly">
+                      {t("Contrat négocié : ", "Negotiated contract: ")}
+                      {copy.contactSales.toLowerCase()}
+                    </small>
                   </div>
                 </div>
               ) : (

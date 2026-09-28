@@ -246,7 +246,8 @@ export function registerBillingRoutes(app) {
     generateEmailCandidates,
     probeSmtp,
     JOB_APPLICATION_STATUSES,
-    toPublicJobApplication
+    toPublicJobApplication,
+    countLicenseSeatsInUse
   } = app.locals.ctx;
 
 app.get("/api/billing/transactions", async (req, res) => {
@@ -588,7 +589,8 @@ app.post("/api/plans/redeem", async (req, res) => {
     }
 
     if (!alreadyRedeemed) {
-      if (Number(licenseRow.seats_used) >= Number(licenseRow.seats_total)) {
+      // Places réellement occupées (comptes rattachés), pas le compteur seul.
+      if ((await countLicenseSeatsInUse(code, licenseRow.owner_user_id)) >= Number(licenseRow.seats_total)) {
         return res.status(409).json({ error: "Ce code de licence a atteint son nombre maximum d'utilisateurs." });
       }
       if (switchingFromAnotherLicense) {
