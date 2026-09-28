@@ -81,6 +81,7 @@ import {
   generateSchoolReport
 } from "../../../lib/inMemoryDb.js";
 import { AdminLineIcon, JyDrawer, cvIssueLabel, AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
+import { appToast } from "../../../lib/appToast.js";
 
 export default function AdminQualityPage({ user, language }) {
   const copy = language === "en"
@@ -123,7 +124,7 @@ export default function AdminQualityPage({ user, language }) {
       await reanalyzeAdminCv({ adminUserId: user.id, cvId: item.id });
       reload();
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     } finally {
       setBusyId("");
     }
@@ -146,7 +147,7 @@ export default function AdminQualityPage({ user, language }) {
       setSelectedCv(null);
       reload();
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     } finally {
       setBusyId("");
     }

@@ -81,6 +81,7 @@ import {
   generateSchoolReport
 } from "../../../lib/inMemoryDb.js";
 import { AdminLineIcon, JyDrawer, AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
+import { appToast } from "../../../lib/appToast.js";
 
 const LICENSE_COLUMN_KEYS = [
   { key: "code", required: true },
@@ -198,7 +199,7 @@ export default function AdminLicenseCodesPage({ user, language, initialSearch })
       await revokeAdminLicenseCode(user.id, code);
       load();
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     } finally {
       setBusyCode("");
     }
@@ -210,7 +211,7 @@ export default function AdminLicenseCodesPage({ user, language, initialSearch })
       await restoreAdminLicenseCode(user.id, code);
       load();
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     } finally {
       setBusyCode("");
     }

@@ -49,6 +49,7 @@ import {
 import AccountDrawer from "../../account/AccountDrawer.jsx";
 import { ConnectedFooter } from "../../../App.jsx";
 import { SchoolExportCsvButton, SchoolLicenseCard, SchoolEmptyState } from "../SchoolApp.jsx";
+import { appToast } from "../../../lib/appToast.js";
 
 export default function SchoolDashboardPage({ user, language, onGoToTab }) {
   const [overview, setOverview] = useState(null);
@@ -91,7 +92,7 @@ export default function SchoolDashboardPage({ user, language, onGoToTab }) {
       await sendSchoolAnnouncement(user.id, { subject: segment.subject, message: segment.message, studentIds: segment.studentIds });
       Swal.fire({ icon: "success", title: copy.relanceSent, timer: 1800, showConfirmButton: false });
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     } finally {
       setRelanceBusy("");
     }

@@ -82,6 +82,7 @@ import {
   generateSchoolReport
 } from "../../../lib/inMemoryDb.js";
 import { AdminLineIcon, AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
+import { appToast } from "../../../lib/appToast.js";
 
 // Icône associée à chaque public (avatar de la "conversation").
 const AUDIENCE_ICONS = { "": "accounts", all: "accounts", student: "profile", school: "schools", recruiter_firm: "cabinets" };
@@ -471,7 +472,7 @@ export default function AdminAnnouncementsPage({ user, language }) {
       setActiveId(remaining[0]?.id || null);
       toast(t("Annonce supprimée.", "Announcement deleted."));
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     }
   }
 

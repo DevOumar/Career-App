@@ -50,6 +50,7 @@ import {
 import AccountDrawer from "../../account/AccountDrawer.jsx";
 import { ConnectedFooter } from "../../../App.jsx";
 import { SchoolExportCsvButton, SchoolLicenseCard, SchoolEmptyState } from "../SchoolApp.jsx";
+import { appToast } from "../../../lib/appToast.js";
 
 // Colonnes proposées par « Colonnes » (préférence mémorisée par liste).
 const STUDENT_COLUMN_KEYS = [
@@ -274,7 +275,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
         customClass: { popup: "career-toast", title: "career-toast-title" }
       });
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     }
   }
 
@@ -306,7 +307,7 @@ export default function SchoolStudentsPage({ user, language, initialSearch }) {
         customClass: { popup: "career-toast", title: "career-toast-title" }
       });
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     }
   }
 

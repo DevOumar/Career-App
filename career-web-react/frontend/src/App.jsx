@@ -2688,8 +2688,8 @@ export default function App() {
               <strong>{language === "en" ? "Access suspended by your school" : "Accès suspendu par votre établissement"}</strong>
               <span>
                 {language === "en"
-                  ? "Your school has temporarily suspended the access it provides: AI modules, interviews and coding test are unavailable. Your CVs and history remain available. Contact your school to reactivate it."
-                  : "Votre école a suspendu temporairement l'accès qu'elle vous fournit : modules IA, entretiens et test technique sont indisponibles. Vos CV et votre historique restent accessibles. Contactez votre établissement pour le réactiver."}
+                  ? "Your school has temporarily suspended the access it provides. Unavailable until reactivation: CV import and analysis, ATS optimisation, AI letter, salary negotiation, Email Scout, interviews and coding test. Your CVs already imported, your history and your applications remain available. Contact your school to reactivate it."
+                  : "Votre école a suspendu temporairement l'accès qu'elle vous fournit. Indisponibles jusqu'à la réactivation : import et analyse de CV, optimisation ATS, Lettre IA, négociation salariale, Email Scout, entretiens et test technique. Vos CV déjà importés, votre historique et vos candidatures restent consultables. Contactez votre établissement pour le réactiver."}
               </span>
             </div>
           </div>

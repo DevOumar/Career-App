@@ -20,6 +20,7 @@ import {
 } from "../../../lib/inMemoryDb.js";
 import { AdminLineIcon } from "../../admin/AdminApp.jsx";
 import { MfaDialog, MfaError } from "../../account/mfa/MfaUi.jsx";
+import { appToast } from "../../../lib/appToast.js";
 
 const EMPTY_ANNOUNCEMENT = { subject: "", message: "", promotionId: "" };
 const EMPTY_EVENT = { title: "", eventDate: "", description: "" };
@@ -154,7 +155,7 @@ export default function SchoolCommunicationPage({ user, language, initialTab = "
       reload();
       toast(t("Événement supprimé.", "Event deleted."));
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     }
   }
 

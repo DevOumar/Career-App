@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from "react";
-import Swal from "sweetalert2";
 import { UiIcon } from "../../components/UiIcon.jsx";
 import {
   CODING_LANGUAGES,
@@ -19,6 +18,7 @@ import "./coding.css";
 import { AiDisclaimer } from "../../components/AiDisclaimer.jsx";
 import { CodeEditorArt } from "../../components/ModuleWorkspace.jsx";
 import { MarkdownText } from "../../components/MarkdownText.jsx";
+import { appToast } from "../../lib/appToast.js";
 
 // Badge de langage (monogramme aux couleurs du langage), à la place d'emojis.
 function LangBadge({ lang }) {
@@ -129,13 +129,10 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
     } catch (err) {
       refreshCodingQuota();
       const quotaReached = err.code === "DAILY_QUOTA_REACHED";
-      Swal.fire({
-        icon: quotaReached ? "info" : "error",
-        title: quotaReached
-          ? language === "en" ? "Daily limit reached" : "Limite du jour atteinte"
-          : language === "en" ? "Generation Error" : "Erreur de génération",
-        text: err.message || (language === "en" ? "Failed to generate challenge." : "Impossible de générer le défi technique.")
-      });
+      appToast(
+        quotaReached ? "info" : "error",
+        err.message || (language === "en" ? "Failed to generate challenge." : "Impossible de générer le défi technique.")
+      );
     } finally {
       setIsGenerating(false);
     }
@@ -144,11 +141,7 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
   // Évaluer la solution
   async function handleEvaluate() {
     if (!userCode.trim()) {
-      Swal.fire({
-        icon: "warning",
-        title: language === "en" ? "Empty Code" : "Code vide",
-        text: language === "en" ? "Please write some code before requesting a review." : "Veuillez écrire du code avant de lancer l'évaluation."
-      });
+      appToast("warning", language === "en" ? "Please write some code before requesting a review." : "Veuillez écrire du code avant de lancer l'évaluation.");
       return;
     }
 
@@ -170,11 +163,7 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
         }, 120);
       }
     } catch (err) {
-      Swal.fire({
-        icon: "error",
-        title: language === "en" ? "Review Error" : "Erreur d'évaluation",
-        text: err.message || (language === "en" ? "Failed to review code." : "Impossible d'évaluer le code.")
-      });
+      appToast("error", err.message || (language === "en" ? "Failed to review code." : "Impossible d'évaluer le code."));
     } finally {
       setIsEvaluating(false);
     }
@@ -183,11 +172,7 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
   // Sauvegarder la session d'entraînement
   async function handleSaveSession() {
     if (!user?.id) {
-      Swal.fire({
-        icon: "info",
-        title: language === "en" ? "Account Required" : "Compte requis",
-        text: language === "en" ? "Sign in to save your training history." : "Connectez-vous pour enregistrer votre historique d'exercices."
-      });
+      appToast("info", language === "en" ? "Sign in to save your training history." : "Connectez-vous pour enregistrer votre historique d'exercices.");
       return;
     }
 
@@ -205,19 +190,10 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
           evaluation
         }
       });
-      Swal.fire({
-        icon: "success",
-        title: copy.sessionSaved,
-        timer: 1800,
-        showConfirmButton: false
-      });
+      appToast("success", copy.sessionSaved);
       loadHistory();
     } catch (err) {
-      Swal.fire({
-        icon: "error",
-        title: language === "en" ? "Save Error" : "Erreur de sauvegarde",
-        text: err.message
-      });
+      appToast("error", err.message || (language === "en" ? "Save failed." : "Sauvegarde impossible."));
     } finally {
       setIsSaving(false);
     }
@@ -230,7 +206,7 @@ export function CodingPage({ language = "fr", user, embedded = false }) {
       await deleteCodingSession({ userId: user.id, sessionId });
       setHistoryItems((prev) => prev.filter((item) => item.id !== sessionId));
     } catch (err) {
-      Swal.fire({ icon: "error", text: err.message });
+      appToast("error", err.message);
     }
   }
 

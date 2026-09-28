@@ -10,6 +10,7 @@ import { formatDateTime } from "../../../lib/format.js";
 import { generateSchoolReport, getSchoolProfile, getSchoolReports } from "../../../lib/inMemoryDb.js";
 import { AdminLineIcon, JyDrawer } from "../../admin/AdminApp.jsx";
 import { MfaDialog, MfaError } from "../../account/mfa/MfaUi.jsx";
+import { appToast } from "../../../lib/appToast.js";
 
 const esc = (value) => String(value ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
@@ -102,7 +103,7 @@ footer{margin-top:28px;padding-top:10px;border-top:1px solid #e7e4dc;color:#6d72
 </body></html>`;
     const win = window.open("", "_blank", "width=900,height=900");
     if (!win) {
-      Swal.fire({ icon: "info", title: t("Autorisez les fenêtres pop-up pour imprimer le rapport.", "Allow pop-ups to print the report.") });
+      appToast("info", t("Autorisez les fenêtres pop-up pour imprimer le rapport.", "Allow pop-ups to print the report."));
       return;
     }
     win.document.open();

@@ -19,6 +19,7 @@ import {
 import { AdminLineIcon, JyDrawer } from "../../admin/AdminApp.jsx";
 import { MfaDialog, MfaError } from "../../account/mfa/MfaUi.jsx";
 import { AdminExportMenu } from "../../admin/AdminListTools.jsx";
+import { appToast } from "../../../lib/appToast.js";
 
 const LEVEL_OPTIONS = ["L1", "L2", "L3", "M1", "M2", "BUT1", "BUT2", "BUT3", "BTS1", "BTS2", "Prépa", "Bachelor", "MBA", "Doctorat"];
 const ACADEMIC_YEAR_PATTERN = /^\d{4}-\d{4}$/;
@@ -188,7 +189,7 @@ export default function SchoolPromotionsPage({ user, language }) {
       reload();
       toast(t("Promotion supprimée.", "Promotion deleted."));
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     }
   }
 
@@ -200,7 +201,7 @@ export default function SchoolPromotionsPage({ user, language }) {
       setAssignId("");
       reload();
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     } finally {
       setBusy("");
     }

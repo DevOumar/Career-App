@@ -81,6 +81,7 @@ import {
   generateSchoolReport
 } from "../../../lib/inMemoryDb.js";
 import { AdminLineIcon, JyDrawer, JyBarChart, AdminTrendChart, AdminDonutChart, AdminPagination, AdminOrgCard, AdminMiniMetric, formatEur, planPriceLabel, getPaginationRange, eventTypeLabel, adminNotificationText, getAllowedAdminModules, ADMIN_MODULE_DEFS, ADMIN_MODULE_LABELS, ADMIN_DASHBOARD_ROLES, ADMIN_ACCOUNT_SUBTABS, ADMIN_PAGE_SIZE, ADMIN_FINANCE_SOURCES, ADMIN_EVENT_LABELS, ADMIN_ANNOUNCEMENT_AUDIENCES } from "../AdminApp.jsx";
+import { appToast } from "../../../lib/appToast.js";
 
 // Périodicité de facturation, stockée en anglais côté base.
 const BILLING_CYCLE_LABELS = {
@@ -253,7 +254,7 @@ export default function AdminFinancePage({ user, language, currency = "EUR", ini
         customClass: { popup: "career-toast", title: "career-toast-title" }
       });
     } catch (err) {
-      Swal.fire({ icon: "error", title: getFriendlyErrorMessage(err, language) });
+      appToast("error", getFriendlyErrorMessage(err, language));
     } finally {
       setRefundingId("");
     }
